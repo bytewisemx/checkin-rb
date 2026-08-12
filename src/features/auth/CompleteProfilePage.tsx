@@ -26,13 +26,12 @@ export function CompleteProfilePage() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4 relative overflow-hidden">
-      <div className="absolute top-[-20%] left-[-10%] w-[50%] h-[50%] bg-rb-turquoise/20 rounded-full blur-[120px]" />
-      <div className="absolute bottom-[-10%] right-[-20%] w-[40%] h-[40%] bg-rb-navy/20 rounded-full blur-[120px]" />
+    <div className="min-h-screen bg-[#f9f7f6] flex items-center justify-center p-4 relative overflow-hidden">
 
-      <div className="glass w-full max-w-lg p-8 rounded-2xl z-10 animate-fade-in shadow-2xl">
+
+      <div className="bg-white w-full max-w-lg p-8 rounded z-10 animate-fade-in shadow-xl border border-gray-100">
         <div className="flex flex-col items-center mb-6">
-          <div className="w-16 h-16 bg-gradient-to-tr from-rb-navy to-rb-turquoise rounded-full flex items-center justify-center shadow-lg mb-4 text-white">
+          <div className="w-16 h-16 bg-rb-navy rounded flex items-center justify-center shadow-sm mb-4 text-white">
             <UserCircle className="w-10 h-10" />
           </div>
           <h1 className="text-2xl font-bold text-slate-800 text-center">Completa tu Perfil</h1>

@@ -8,13 +8,13 @@ export default {
     extend: {
       colors: {
         rb: {
-          navy: '#2A2B7C',
-          turquoise: '#00B8AF',
-          coral: '#EF3121',
+          navy: '#55311c',      // Primary dark brown
+          turquoise: '#8c7569', // Secondary taupe
+          coral: '#a58e80',     // Neutral warm gray/brown for alerts
         }
       },
       fontFamily: {
-        sans: ['Inter', 'system-ui', 'sans-serif'],
+        sans: ['Nunito', 'system-ui', 'sans-serif'],
       },
       animation: {
         'fade-in': 'fadeIn 0.5s ease-out',

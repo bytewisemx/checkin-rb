@@ -1,6 +1,23 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { getSecureServerTime, captureClientIP, calculateLateness } from '../services/security';
+export interface TaskTag {
+  text: string;
+  colorClass: string;
+}
+
+export interface Task {
+  id: string;
+  title: string;
+  description: string;
+  status: 'pending' | 'progress' | 'review' | 'completed';
+  timeSpent: string;
+  estimatedTime: string;
+  tags?: TaskTag[];
+  assignee?: string;
+  dueDate?: string;
+  subtasksCount?: number;
+}
 
 export interface User {
   id: string;
@@ -13,6 +30,7 @@ export interface User {
   team?: string;
   isProfileComplete: boolean;
   expectedEntryTime: string; // Ej: "09:00"
+  profileImage?: string;
 }
 
 export interface PauseBlock {
@@ -60,9 +78,13 @@ interface CheckinState {
 
   mockEmployeesData: MockEmployee[];
   toasts: GlobalToast[];
+  tasks: Task[];
 
   addToast: (msg: string, type?: 'info' | 'success' | 'error') => void;
   removeToast: (id: number) => void;
+  moveTask: (taskId: string, newStatus: Task['status']) => void;
+  addTask: (task: Omit<Task, 'id'>) => void;
+  deleteTask: (taskId: string) => void;
 
   login: (email: string, password?: string) => boolean;
   logout: () => void;
@@ -139,6 +161,38 @@ const initialMockEmployees: MockEmployee[] = [
   }
 ];
 
+const initialTasks: Task[] = [
+  { 
+    id: '1', title: 'Monthly budget for Community ads', description: '', status: 'pending', timeSpent: '00:00:00', estimatedTime: '120m',
+    tags: [
+      { text: 'Reviewing', colorClass: 'bg-green-100 text-green-700' },
+      { text: 'Changes Needed', colorClass: 'bg-yellow-200 text-yellow-800' },
+      { text: 'No', colorClass: 'bg-yellow-200 text-yellow-800' }
+    ],
+    assignee: 'Ana', dueDate: '16 Feb, 2025', subtasksCount: 1
+  },
+  { 
+    id: '2', title: 'Identify web updates', description: '', status: 'progress', timeSpent: '00:00:00', estimatedTime: '60m',
+    tags: [], assignee: 'Carlos', dueDate: 'Sunday', subtasksCount: 3
+  },
+  { 
+    id: '3', title: '[Help Site] How to use the Community mobile app', description: '', status: 'review', timeSpent: '00:00:00', estimatedTime: '240m',
+    tags: [
+      { text: 'Not started', colorClass: 'bg-red-200 text-red-800' },
+      { text: 'No', colorClass: 'bg-yellow-200 text-yellow-800' }
+    ],
+    assignee: 'Laura', dueDate: '17 Apr, 2025', subtasksCount: 2
+  },
+  { 
+    id: '4', title: 'Community mobile app announcement', description: '', status: 'completed', timeSpent: '02:00:00', estimatedTime: '120m',
+    tags: [
+      { text: 'Not started', colorClass: 'bg-red-200 text-red-800' },
+      { text: 'Ready for Review', colorClass: 'bg-teal-100 text-teal-800' }
+    ],
+    assignee: 'Luis', dueDate: '20 Apr, 2025', subtasksCount: 0
+  },
+];
+
 export const useCheckinStore = create<CheckinState>()(
   persist(
     (set, get) => ({
@@ -148,6 +202,32 @@ export const useCheckinStore = create<CheckinState>()(
       history: [],
       mockEmployeesData: [],
       toasts: [],
+      tasks: initialTasks,
+
+      moveTask: (taskId, newStatus) => {
+        const { tasks, user, addToast } = get();
+        if (!user) return;
+        
+        const task = tasks.find(t => t.id === taskId);
+        if (!task) return;
+
+        // Regla: Si está en completado, solo el supervisor la puede sacar
+        if (task.status === 'completed' && user.role !== 'supervisor') {
+           addToast('Solo el supervisor puede reactivar una tarea completada.', 'error');
+           return;
+        }
+
+        set({ tasks: tasks.map(t => t.id === taskId ? { ...t, status: newStatus } : t) });
+      },
+
+      addTask: (taskData) => {
+        const id = Math.random().toString(36).substring(2, 9);
+        set(state => ({ tasks: [...state.tasks, { ...taskData, id }] }));
+      },
+
+      deleteTask: (taskId) => {
+        set(state => ({ tasks: state.tasks.filter(t => t.id !== taskId) }));
+      },
 
       addToast: (msg, type = 'info') => {
         const id = Date.now();
@@ -417,7 +497,8 @@ export const useCheckinStore = create<CheckinState>()(
         user: state.user,
         isAuthenticated: state.isAuthenticated,
         activeCheckin: state.activeCheckin,
-        history: state.history
+        history: state.history,
+        tasks: state.tasks
       }),
     }
   )

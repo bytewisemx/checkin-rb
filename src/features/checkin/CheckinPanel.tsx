@@ -64,113 +64,125 @@ export function CheckinPanel() {
   };
 
   return (
-    <div className="w-full max-w-3xl mx-auto p-4 sm:p-6 mt-4">
+    <div className="w-full mt-4 flex flex-col min-h-[70vh] bg-transparent pb-10">
 
-      {/* Contenedor Clean & Light SaaS */}
-      <div className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
-
-        {/* Cabecera Limpia */}
-        <div className="px-6 sm:px-8 py-5 flex items-center justify-between border-b border-slate-100 bg-white">
-          <div className="flex items-center space-x-2">
-            <Clock className="w-5 h-5 text-indigo-500" />
-            <h2 className="font-semibold text-slate-800 text-lg">Control de Asistencia</h2>
+      {/* Header Minimalista con Logo */}
+      <div className="w-full px-8 py-6 flex items-center justify-between">
+        {/* Logo Minimalista */}
+        <div className="flex items-center space-x-3">
+          <div className="w-10 h-10 rounded-full bg-slate-900 flex items-center justify-center">
+            <span className="text-white font-bold tracking-widest text-sm">RB</span>
           </div>
-
-          {/* Badge de Conectividad Moderno */}
-          {isOffline ? (
-            <div className="flex items-center px-3 py-1 bg-amber-50 border border-amber-100 rounded-full text-xs font-medium text-amber-700">
-              <WifiOff className="w-3.5 h-3.5 mr-1.5 text-amber-500" />
-              Esperando conexión...
-            </div>
-          ) : (
-            <div className="flex items-center px-3 py-1 bg-emerald-50 border border-emerald-100 rounded-full text-xs font-medium text-emerald-700">
-              <Wifi className="w-3.5 h-3.5 mr-1.5 text-emerald-500" />
-              En línea
-            </div>
-          )}
+          <div className="flex flex-col">
+            <span className="font-bold text-slate-800 tracking-tight leading-none">CHECK-IN</span>
+            <span className="text-[10px] text-slate-400 font-medium tracking-[0.2em] mt-0.5">PORTAL</span>
+          </div>
         </div>
 
-        <div className="p-6 sm:p-10 bg-slate-50/30">
-          {errorMsg && (
-            <div className="mb-6 p-4 bg-red-50 text-red-600 border border-red-100 rounded-xl text-sm font-medium flex items-center">
-              {errorMsg}
-            </div>
-          )}
+        {/* Indicador de Red Ultra Minimalista (Solo un punto) */}
+        <div className="flex items-center" title={isOffline ? 'Sin conexión' : 'En línea'}>
+          <div className={`w-2 h-2 rounded-full ${isOffline ? 'bg-amber-500 animate-pulse' : 'bg-emerald-500'}`} />
+        </div>
+      </div>
 
-          <div className="flex flex-col items-center justify-center space-y-8">
-            {!activeCheckin ? (
-              <button
-                onClick={handleStart}
-                disabled={isLocating}
-                className="group relative w-full max-w-sm bg-indigo-600 text-white font-medium py-4 rounded-xl shadow-md shadow-indigo-600/20 hover:bg-indigo-700 hover:shadow-lg transition-all active:scale-[0.98] disabled:opacity-70 disabled:active:scale-100"
+      <div className="flex-1 flex flex-col items-center justify-center relative px-4">
+        {errorMsg && (
+          <div className="absolute top-0 text-red-500 text-sm font-medium">
+            {errorMsg}
+          </div>
+        )}
+
+        {!activeCheckin ? (
+          <div className="flex flex-col items-center justify-center space-y-12">
+            <button
+              onClick={handleStart}
+              disabled={isLocating}
+              className="group relative flex items-center justify-center transition-transform active:scale-95 hover:scale-105 disabled:opacity-70 disabled:hover:scale-100 disabled:active:scale-100"
+              aria-label="Iniciar Jornada"
+            >
+              <svg 
+                viewBox="0 0 120 120" 
+                className="w-32 h-32 sm:w-48 sm:h-48 drop-shadow-2xl" 
+                xmlns="http://www.w3.org/2000/svg"
               >
-                <div className="flex items-center justify-center text-lg">
-                  <Play className="w-5 h-5 mr-2.5 fill-current" />
-                  <span>{isLocating ? 'Obteniendo ubicación...' : 'Iniciar Jornada'}</span>
-                </div>
-              </button>
-            ) : (
-              <div className="flex flex-col items-center w-full space-y-8">
-
-                {/* Reloj Clean (Montserrat tabular-nums para estabilidad) */}
-                <div className={`w-full max-w-sm flex flex-col items-center justify-center py-10 rounded-2xl transition-colors border shadow-sm ${isCurrentlyPaused
-                    ? 'border-amber-200 bg-amber-50 text-amber-900'
-                    : isOverTime
-                      ? 'border-red-200 bg-red-50 text-red-700'
-                      : 'border-slate-200 bg-white text-slate-800'
-                  }`}>
-                  <div className="text-sm font-medium mb-3 text-slate-500 uppercase tracking-wider">
-                    {isCurrentlyPaused ? 'Descanso Activo' : isOverTime ? 'Alerta: Exceso de Tiempo' : 'Tiempo Transcurrido'}
-                  </div>
-                  <div className={`text-6xl sm:text-7xl font-montserrat font-bold tabular-nums tracking-tight ${isOverTime && !isCurrentlyPaused ? 'text-red-500' : 'text-slate-800'}`}>
-                    {durationStr}
-                  </div>
-                </div>
-
-                {/* Controles de Botones Redondeados */}
-                <div className="flex flex-col sm:flex-row gap-4 w-full max-w-sm">
-                  <button
-                    onClick={handlePauseToggle}
-                    className={`flex-1 flex items-center justify-center py-3.5 px-6 rounded-xl border font-semibold transition-all active:scale-[0.98]
-                      ${isCurrentlyPaused
-                        ? 'bg-slate-800 text-white border-slate-800 hover:bg-slate-700 shadow-md'
-                        : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50 shadow-sm'}
-                    `}
-                  >
-                    {isCurrentlyPaused ? <Play className="w-4 h-4 mr-2 fill-current" /> : <Pause className="w-4 h-4 mr-2 fill-current" />}
-                    <span>{isCurrentlyPaused ? 'Reanudar' : 'Tomar Descanso'}</span>
-                  </button>
-
-                  <button
-                    onClick={endCheckin}
-                    className="flex-1 flex items-center justify-center py-3.5 px-6 bg-red-500 text-white rounded-xl font-semibold hover:bg-red-600 transition-all active:scale-[0.98] shadow-md shadow-red-500/20"
-                  >
-                    <Square className="w-4 h-4 mr-2 fill-current" />
-                    <span>Finalizar Día</span>
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* Indicador de Ubicación Clean */}
-            <div className="flex flex-col items-center mt-6">
-              <div className="flex items-center text-sm font-medium text-slate-500 px-4 py-2 bg-slate-100/70 rounded-full border border-slate-200">
-                <MapPin className="w-4 h-4 mr-2 text-indigo-400" />
-                {activeCheckin?.address ? (
-                  <span>{activeCheckin.address}</span>
-                ) : (
-                  <span>Ubicación GPS registrada al iniciar</span>
-                )}
-              </div>
+                <defs>
+                  <linearGradient id="frontGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                    <stop offset="0%" stopColor="#2563EB" />
+                    <stop offset="100%" stopColor="#1E3A8A" />
+                  </linearGradient>
+                  <linearGradient id="sideGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+                    <stop offset="0%" stopColor="#1E40AF" />
+                    <stop offset="100%" stopColor="#0F172A" />
+                  </linearGradient>
+                  <linearGradient id="highlightGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+                    <stop offset="0%" stopColor="#60A5FA" stopOpacity="0.5"/>
+                    <stop offset="100%" stopColor="#2563EB" stopOpacity="0"/>
+                  </linearGradient>
+                </defs>
+                <path d="M 30 35 L 30 100 L 100 65 Z" fill="url(#sideGrad)" />
+                <path d="M 25 25 L 25 90 L 95 55 Z" fill="url(#frontGrad)" />
+                <path d="M 25 25 L 28 28 L 28 85 L 25 90 Z" fill="url(#highlightGrad)" />
+                <path d="M 25 25 L 95 55 L 85 55 L 28 28 Z" fill="url(#highlightGrad)" />
+              </svg>
+            </button>
+            <div className="text-center opacity-40">
+              <span className="text-xs font-bold uppercase tracking-[0.3em] text-slate-800">
+                {isLocating ? 'Procesando...' : 'Press to Start'}
+              </span>
             </div>
           </div>
-        </div>
+        ) : (
+          <div className="flex flex-col items-center w-full space-y-16">
 
-        {/* El componente Strip Card Calendar Limpio */}
-        <div className="bg-white border-t border-slate-100 py-6 px-4 sm:px-8">
-          <StripCardCalendar />
-        </div>
+            {/* Reloj Ultra Minimalista (Sin ningún contenedor visual) */}
+            <div className="flex flex-col items-center">
+              <div className={`text-xs font-bold mb-6 uppercase tracking-[0.3em] ${
+                isCurrentlyPaused ? 'text-amber-500' : isOverTime ? 'text-red-500 animate-pulse' : 'text-slate-400'
+              }`}>
+                {isCurrentlyPaused ? 'Pausa' : isOverTime ? 'Exceso' : 'Transcurrido'}
+              </div>
+              <div className={`text-8xl sm:text-[140px] leading-none font-montserrat font-bold tabular-nums tracking-tighter ${
+                isOverTime && !isCurrentlyPaused ? 'text-red-500' : 'text-slate-900'
+              }`}>
+                {durationStr}
+              </div>
+            </div>
 
+            {/* Controles Fantasma (Ghost) */}
+            <div className="flex gap-12 sm:gap-24">
+              <button
+                onClick={handlePauseToggle}
+                className="flex flex-col items-center justify-center text-slate-400 hover:text-slate-900 transition-colors active:scale-95"
+              >
+                <div className={`p-4 rounded-full mb-3 ${isCurrentlyPaused ? 'bg-slate-900 text-white' : 'bg-transparent text-slate-900'}`}>
+                  {isCurrentlyPaused ? <Play className="w-8 h-8 fill-current" /> : <Pause className="w-8 h-8 fill-current" />}
+                </div>
+                <span className="text-xs font-bold uppercase tracking-[0.2em]">{isCurrentlyPaused ? 'Reanudar' : 'Pausa'}</span>
+              </button>
+
+              <button
+                onClick={endCheckin}
+                className="flex flex-col items-center justify-center text-red-300 hover:text-red-600 transition-colors active:scale-95"
+              >
+                <div className="p-4 bg-transparent text-red-500 mb-3">
+                  <Square className="w-8 h-8 fill-current" />
+                </div>
+                <span className="text-xs font-bold uppercase tracking-[0.2em]">Fin</span>
+              </button>
+            </div>
+            
+            {/* Ubicación (Solo texto flotante) */}
+            <div className="flex items-center text-xs font-medium text-slate-400 tracking-wider">
+              <MapPin className="w-3 h-3 mr-2 opacity-50" />
+              {activeCheckin?.address ? activeCheckin.address : 'Ubicación Registrada'}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Calendario Minimalista sin bordes fuertes */}
+      <div className="mt-16 w-full max-w-4xl mx-auto px-4 opacity-50 hover:opacity-100 transition-opacity duration-500">
+        <StripCardCalendar />
       </div>
     </div>
   );

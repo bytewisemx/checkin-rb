@@ -1,5 +1,6 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { useCheckinStore } from './store/useCheckinStore';
+import { useState } from 'react';
 
 // Vistas
 import { AuthPage } from './features/auth/AuthPage';
@@ -7,50 +8,58 @@ import { CompleteProfilePage } from './features/auth/CompleteProfilePage';
 import { CalendarView } from './features/history/CalendarView';
 import { CheckinPanel } from './features/checkin/CheckinPanel';
 import { SupervisorDashboard } from './features/manager/SupervisorDashboard';
+import { KanbanBoard } from './features/projects/KanbanBoard';
 
 // Componentes UI Globales
 import { Button } from './components/common/Button';
 import { ToastContainer } from './components/common/ToastContainer';
 import { MiniPlayerWidget } from './components/common/MiniPlayerWidget';
-import { LogOut, User } from 'lucide-react';
+import { LogOut, User, Clock, LayoutGrid } from 'lucide-react';
 
 function EmployeeDashboard() {
+  const [activeTab, setActiveTab] = useState<'checkin' | 'projects'>('checkin');
+
   return (
-    <main className="max-w-4xl mx-auto pb-12 animate-fade-in">
-      <CheckinPanel />
-      <CalendarView />
+    <main className="w-full pb-12 px-4 lg:px-8 animate-fade-in">
+      <div className="flex justify-center mt-6 mb-2">
+        <div className="bg-[#f9f7f6] p-1.5 rounded-full border border-slate-200 shadow-sm flex items-center space-x-1">
+          <button 
+            onClick={() => setActiveTab('checkin')}
+            className={`flex items-center px-6 py-2.5 rounded-full text-sm font-bold transition-all ${activeTab === 'checkin' ? 'bg-white text-rb-navy shadow-md border border-slate-100' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50'}`}
+          >
+            <Clock className="w-4 h-4 mr-2" />
+            Asistencia Global
+          </button>
+          <button 
+            onClick={() => setActiveTab('projects')}
+            className={`flex items-center px-6 py-2.5 rounded-full text-sm font-bold transition-all ${activeTab === 'projects' ? 'bg-white text-rb-navy shadow-md border border-slate-100' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50'}`}
+          >
+            <LayoutGrid className="w-4 h-4 mr-2" />
+            Proyectos y Tareas
+          </button>
+        </div>
+      </div>
+
+      {activeTab === 'checkin' ? (
+        <div className="animate-fade-in w-full max-w-[1600px] mx-auto">
+          <CheckinPanel />
+          <CalendarView />
+        </div>
+      ) : (
+        <KanbanBoard />
+      )}
     </main>
   );
 }
 
+import { GlobalHeader } from './components/common/GlobalHeader';
+
 function MainLayout() {
-  const { user, logout } = useCheckinStore();
+  const { user } = useCheckinStore();
 
   return (
     <div className="min-h-screen bg-slate-50">
-      <header className="bg-rb-navy text-white p-4 shadow-md sticky top-0 z-50">
-        <div className="max-w-6xl mx-auto flex justify-between items-center">
-          <div className="flex items-center space-x-2">
-            <div className="w-8 h-8 bg-white/10 rounded flex items-center justify-center font-bold">
-              RB
-            </div>
-            <span className="font-semibold tracking-wide">
-              Checkin <span className="hidden sm:inline font-normal opacity-80 text-sm ml-2">Russell Bedford</span>
-            </span>
-          </div>
-
-          <div className="flex items-center space-x-4">
-            <div className="hidden md:flex items-center text-sm bg-white/10 px-3 py-1 rounded-full">
-              <User className="w-4 h-4 mr-2" />
-              {user?.name} {user?.lastName}
-              {user?.role === 'supervisor' && <span className="ml-2 px-1.5 py-0.5 bg-rb-turquoise rounded text-[10px] uppercase font-bold text-rb-navy">Admin</span>}
-            </div>
-            <Button variant="outline" size="sm" onClick={logout} className="border-white/20 text-white hover:bg-white/10">
-              <LogOut className="w-4 h-4" />
-            </Button>
-          </div>
-        </div>
-      </header>
+      <GlobalHeader />
 
       {user?.role === 'supervisor' ? <SupervisorDashboard /> : <EmployeeDashboard />}
 
@@ -82,7 +91,7 @@ export default function App() {
   return (
     <>
       <ToastContainer />
-      <Router>
+      <Router basename={import.meta.env.BASE_URL}>
         <Routes>
           <Route path="/login" element={<AuthPage />} />
 
