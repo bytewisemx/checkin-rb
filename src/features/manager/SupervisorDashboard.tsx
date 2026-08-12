@@ -1,10 +1,8 @@
 import { useState } from 'react';
 import { useCheckinStore } from '../../store/useCheckinStore';
-import type { MockEmployee, MockEmployeeHistory } from '../../store/useCheckinStore';
+import type { MockEmployee } from '../../store/useCheckinStore';
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
-import { Users, Clock, MapPin, ChevronDown, ChevronUp, X, Map } from 'lucide-react';
-import { format } from 'date-fns';
-import { es } from 'date-fns/locale';
+import { Users, MapPin, ChevronDown, ChevronUp, X } from 'lucide-react';
 import L from 'leaflet';
 import { CalendarView } from '../history/CalendarView';
 
@@ -79,7 +77,6 @@ function EmployeeRow({ employee, onOpenMap }: { employee: MockEmployee; onOpenMa
             {/* El calendario ahora controla los modales de detalle y botones de mapa */}
             <CalendarView 
               employeeHistory={employee.history} 
-              isSupervisorView={true} 
               onOpenMap={onOpenMap} 
             />
           </div>

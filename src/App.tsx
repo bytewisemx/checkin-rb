@@ -11,10 +11,8 @@ import { SupervisorDashboard } from './features/manager/SupervisorDashboard';
 import { KanbanBoard } from './features/projects/KanbanBoard';
 
 // Componentes UI Globales
-import { Button } from './components/common/Button';
+import { Clock, LayoutGrid } from 'lucide-react';
 import { ToastContainer } from './components/common/ToastContainer';
-import { MiniPlayerWidget } from './components/common/MiniPlayerWidget';
-import { LogOut, User, Clock, LayoutGrid } from 'lucide-react';
 
 function EmployeeDashboard() {
   const [activeTab, setActiveTab] = useState<'checkin' | 'projects'>('checkin');

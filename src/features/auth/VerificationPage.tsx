@@ -77,7 +77,7 @@ export function VerificationPage() {
             {code.map((digit, idx) => (
               <input
                 key={idx}
-                ref={el => inputsRef.current[idx] = el}
+                ref={el => { inputsRef.current[idx] = el; }}
                 type="text"
                 inputMode="numeric"
                 maxLength={1}

@@ -7,11 +7,10 @@ import { es } from 'date-fns/locale';
 
 interface CalendarViewProps {
   employeeHistory?: CheckinRecord[];
-  isSupervisorView?: boolean;
   onOpenMap?: (location: {lat: number, lng: number}, address: string) => void;
 }
 
-export function CalendarView({ employeeHistory, isSupervisorView = false, onOpenMap }: CalendarViewProps) {
+export function CalendarView({ employeeHistory, onOpenMap }: CalendarViewProps) {
   const storeHistory = useCheckinStore(state => state.history);
   const history = employeeHistory || storeHistory;
 

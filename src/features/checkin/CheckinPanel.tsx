@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useCheckinStore } from '../../store/useCheckinStore';
-import { MapPin, Play, Square, Pause, Wifi, WifiOff, Clock } from 'lucide-react';
+import { MapPin, Play, Square, Pause } from 'lucide-react';
 import { getAddressFromCoordinates } from '../../services/geocoding';
 import { useImmutableTimer } from '../../hooks/useTimer';
 import { StripCardCalendar } from '../history/StripCardCalendar';

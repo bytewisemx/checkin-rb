@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useCheckinStore } from '../../store/useCheckinStore';
 import { Button } from '../../components/common/Button';
 import { UserPlus, ArrowLeft } from 'lucide-react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 
 export function RegisterPage() {
   const registerUser = useCheckinStore(state => state.registerUser);

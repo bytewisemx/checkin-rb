@@ -94,6 +94,14 @@ interface CheckinState {
   pauseCheckin: () => Promise<void>;
   resumeCheckin: () => Promise<void>;
   endCheckin: () => Promise<void>;
+
+  // Auth Stubs
+  pendingEmail?: string;
+  verificationType?: 'registration' | 'recovery';
+  requestPasswordReset: (email: string) => void;
+  verifyCode: (code: string) => boolean;
+  resetPassword: (_password: string) => void;
+  registerUser: (email: string, password?: string) => void;
 }
 
 // Helpers de tiempo para mocks
@@ -488,6 +496,19 @@ export const useCheckinStore = create<CheckinState>()(
           history: history.map(r => r.id === updatedRecord.id ? updatedRecord : r),
           mockEmployeesData: updatedMockData
         });
+      },
+
+      requestPasswordReset: (email: string) => {
+        set({ pendingEmail: email, verificationType: 'recovery' });
+      },
+      verifyCode: (code: string) => {
+        return code === '123456';
+      },
+      resetPassword: (_password: string) => {
+        set({ pendingEmail: undefined, verificationType: undefined });
+      },
+      registerUser: (email: string, _password?: string) => {
+        set({ pendingEmail: email, verificationType: 'registration' });
       }
     }),
     {

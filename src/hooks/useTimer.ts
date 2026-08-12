@@ -21,7 +21,6 @@ export function useImmutableTimer(startTimeMs: number | null, pauses: PauseBlock
       
       // Calcular cuánto tiempo de pausa acumulado hay
       let totalPauseMs = 0;
-      let isCurrentlyPaused = false;
 
       pauses.forEach(p => {
         if (p.endMs) {
@@ -29,7 +28,6 @@ export function useImmutableTimer(startTimeMs: number | null, pauses: PauseBlock
         } else {
           // Está en pausa ahorita, sumar el tiempo de pausa hasta AHORA
           totalPauseMs += (nowMs - p.startMs);
-          isCurrentlyPaused = true;
         }
       });
 

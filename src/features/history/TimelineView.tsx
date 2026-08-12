@@ -1,5 +1,4 @@
-import { format } from 'date-fns';
-import { es } from 'date-fns/locale';
+
 import { useCheckinStore } from '../../store/useCheckinStore';
 import { MapPin, Clock, ArrowRight, Hourglass } from 'lucide-react';
 
@@ -26,7 +25,7 @@ export function TimelineView() {
               <div className="flex justify-between items-center mb-2">
                 <span className="font-semibold text-white">Jornada Activa</span>
                 <span className="text-xs text-white/80">
-                  Desde {format(new Date(activeCheckin.checkInTime!), 'HH:mm', { locale: es })}
+                  Desde {activeCheckin.checkInTimeMs ? new Date(activeCheckin.checkInTimeMs).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' }) : '--:--'}
                 </span>
               </div>
               {activeCheckin.address && (
@@ -40,7 +39,7 @@ export function TimelineView() {
         )}
 
         {/* History Blocks */}
-        {history.filter(h => h.checkOutTime).map((record) => {
+        {history.filter(h => h.checkOutTimeMs).map((record) => {
           const hrs = Math.floor((record.totalDurationMinutes || 0) / 60);
           const mins = (record.totalDurationMinutes || 0) % 60;
           
@@ -61,9 +60,9 @@ export function TimelineView() {
                   </div>
                   
                   <div className="flex items-center text-slate-500 font-mono text-xs bg-slate-50 p-1.5 rounded w-fit">
-                    <span>{format(new Date(record.checkInTime!), 'HH:mm')}</span>
+                    <span>{record.checkInTimeMs ? new Date(record.checkInTimeMs).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' }) : '--:--'}</span>
                     <ArrowRight className="w-3 h-3 mx-2 text-slate-300" />
-                    <span>{format(new Date(record.checkOutTime!), 'HH:mm')}</span>
+                    <span>{record.checkOutTimeMs ? new Date(record.checkOutTimeMs).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' }) : '--:--'}</span>
                   </div>
                   
                   {record.address && (
