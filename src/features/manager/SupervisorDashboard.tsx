@@ -1,149 +1,493 @@
 import { useState } from 'react';
+import { useRayonerStore } from '../../store/useRayonerStore';
 import { useCheckinStore } from '../../store/useCheckinStore';
-import type { MockEmployee } from '../../store/useCheckinStore';
-import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
-import { Users, MapPin, ChevronDown, ChevronUp, X } from 'lucide-react';
-import L from 'leaflet';
-import { CalendarView } from '../history/CalendarView';
+import { useNotificationStore } from '../../store/useNotificationStore';
+import { getEffectiveModules } from '../../services/rbac';
+import {
+  Users,
+  GitFork,
+  BarChart3,
+  AlertTriangle,
+  Play,
+  DollarSign,
+  KeyRound,
+  Copy,
+  Check,
+  Lock,
+  MailCheck,
+  Bell,
+  CheckCircle2,
+  ScanFace,
+  ShieldCheck,
+} from 'lucide-react';
+import { RayonerTree } from './rayoner/RayonerTree';
+import { RayonerTimeReport } from './rayoner/RayonerTimeReport';
+import { RayonerTaskModal } from './rayoner/RayonerTaskModal';
+import { TeamMembersView } from './rayoner/TeamMembersView';
+import { SupervisorInvitationsView } from './invitations/SupervisorInvitationsView';
+import { CheckinPanel } from '../checkin/CheckinPanel';
 
-// Fix para el icono de Leaflet
-delete (L.Icon.Default.prototype as any)._getIconUrl;
-L.Icon.Default.mergeOptions({
-  iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
-  iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
-  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
-});
+export type SupervisorTab = 'tree' | 'report' | 'attendance' | 'invitations' | 'my_checkin';
 
-// Componente de Modal para el Mapa
-function MapModal({ location, address, onClose }: { location: { lat: number; lng: number }; address: string; onClose: () => void }) {
+export interface SupervisorDashboardProps {
+  initialTab?: SupervisorTab;
+}
+
+export function SupervisorDashboard({ initialTab }: SupervisorDashboardProps = {}) {
+  const {
+    activeWorkers,
+    projects,
+    tasks,
+    taskActualHours,
+    getSupervisorCode,
+    getTeamMembersBySupervisor,
+    corporateMasterKeys,
+  } = useRayonerStore();
+  const { user, getEffectiveUserModules, addToast } = useCheckinStore();
+  const { getNotificationsForRecipient, markAsRead } = useNotificationStore();
+
+  const effectiveModules = getEffectiveUserModules(user?.id) || getEffectiveModules(user);
+  const canSeeTree = effectiveModules.tasks || effectiveModules.clients;
+  const canSeeReports = effectiveModules.reports;
+  const forcedFacialByTI = effectiveModules.facialCheckIn;
+  const showPersonalCheckInTab = forcedFacialByTI || effectiveModules.checkIn;
+
+  const teamMembers = getTeamMembersBySupervisor(user?.id, user?.role);
+  const supervisorNotifications = getNotificationsForRecipient(user?.id, user?.role);
+  const unreadCompletedAlerts = supervisorNotifications.filter(
+    (n) => !n.read && n.type === 'task_completed'
+  );
+
+  const [copiedCode, setCopiedCode] = useState(false);
+  const [copiedMasterKey, setCopiedMasterKey] = useState(false);
+  const supervisorCode = getSupervisorCode(user?.id || '');
+  const masterKey = corporateMasterKeys?.[0] || 'RB-SOCIO-2026';
+
+  const defaultTab: SupervisorTab = initialTab
+    ? initialTab
+    : canSeeTree
+    ? 'tree'
+    : canSeeReports
+    ? 'report'
+    : 'attendance';
+
+  // Estados de Navegación del Panel de Supervisión
+  const [activeTab, setActiveTab] = useState<SupervisorTab>(defaultTab);
+
+  // Resolver pestaña efectiva respetando los módulos activos configurados por TI
+  const resolvedTab: SupervisorTab = (() => {
+    if (activeTab === 'tree' && !canSeeTree) {
+      return canSeeReports ? 'report' : 'attendance';
+    }
+    if (activeTab === 'report' && !canSeeReports) {
+      return canSeeTree ? 'tree' : 'attendance';
+    }
+    if (activeTab === 'my_checkin' && !showPersonalCheckInTab) {
+      return canSeeTree ? 'tree' : 'attendance';
+    }
+    return activeTab;
+  })();
+
+  // Estado para el modal de tareas de Rayoner
+  const [taskModalState, setTaskModalState] = useState<{
+    isOpen: boolean;
+    taskId?: string | null;
+    projectId?: string | null;
+  }>({
+    isOpen: false,
+    taskId: null,
+    projectId: null,
+  });
+
+  const [selectedProjectIdForReport, setSelectedProjectIdForReport] = useState<string | null>(null);
+
+  const handleCopyCode = () => {
+    navigator.clipboard.writeText(supervisorCode);
+    setCopiedCode(true);
+    addToast(`Código ${supervisorCode} copiado al portapapeles.`, 'success');
+    setTimeout(() => setCopiedCode(false), 2500);
+  };
+
+  const handleCopyMasterKey = () => {
+    navigator.clipboard.writeText(masterKey);
+    setCopiedMasterKey(true);
+    addToast(
+      `Clave Maestra Corporativa ${masterKey} copiada. Compártela únicamente con socios directores.`,
+      'info'
+    );
+    setTimeout(() => setCopiedMasterKey(false), 2500);
+  };
+
+  // Métricas de Alerta en Vivo
+  const projectsInAlert = projects.filter((p) => {
+    const pTasks = tasks.filter((t) => t.projectId === p.id);
+    const actual = pTasks.reduce((acc, t) => acc + (taskActualHours[t.id] || 0), 0);
+    const planned = p.totalBudgetHours || 1;
+    return actual / planned >= 0.8;
+  });
+
+  const handleOpenReportForProject = (projectId: string) => {
+    if (!canSeeReports) {
+      addToast('El módulo de Reportes fue deshabilitado para tu perfil por TI.', 'error');
+      return;
+    }
+    setSelectedProjectIdForReport(projectId);
+    setActiveTab('report');
+  };
+
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4 animate-fade-in">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl overflow-hidden relative">
-        <div className="flex justify-between items-center p-4 border-b border-slate-100 bg-slate-50">
-          <h3 className="font-semibold text-slate-800 flex items-center">
-            <MapPin className="w-5 h-5 mr-2 text-rb-turquoise" />
-            Ubicación Registrada
-          </h3>
-          <button onClick={onClose} className="p-2 bg-white rounded-full hover:bg-slate-200 text-slate-500 transition-colors">
-            <X className="w-5 h-5" />
+    <div className="w-full max-w-7xl mx-auto p-4 lg:p-8 space-y-6 animate-fade-in bg-[#0B111E] text-[#F8FAFC]">
+      {/* 1. Header Ejecutivo de Rayoner */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between pb-4 border-b border-[#233354] gap-4">
+        <div>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs font-heading font-bold tracking-widest text-[#38BDF8] uppercase bg-[#1E40AF]/20 border border-[#1E40AF]/40 px-2 py-0.5 rounded-sm">
+              RAYONER TIME SUITE
+            </span>
+            <span className="text-xs text-[#64748B]">•</span>
+            <span className="text-xs font-medium text-[#94A3B8]">
+              Panel de Supervisión y Control de Horas
+            </span>
+            {!forcedFacialByTI ? (
+              <span className="inline-flex items-center gap-1 text-[10px] font-heading font-semibold bg-[#0F172A] text-[#38BDF8] border border-[#233354] px-2 py-0.5 rounded-md">
+                <ShieldCheck className="w-3 h-3 text-[#38BDF8]" />
+                Exento de Biometría por Defecto
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1 text-[10px] font-heading font-semibold bg-[#1A2742] text-[#F59E0B] border border-[#F59E0B]/30 px-2 py-0.5 rounded-md">
+                <ScanFace className="w-3 h-3 text-[#F59E0B]" />
+                Biometría Forzada por TI Activa
+              </span>
+            )}
+          </div>
+          <h1 className="text-2xl font-heading font-bold text-[#F8FAFC] tracking-tight mt-1">
+            Gestión de Clientes, Proyectos y Rentabilidad
+          </h1>
+        </div>
+
+        {/* Pestañas de Navegación del Panel del Supervisor */}
+        <div className="flex flex-wrap bg-[#131D31] p-1 rounded-md border border-[#233354] self-start md:self-auto gap-1">
+          {canSeeTree && (
+            <button
+              onClick={() => setActiveTab('tree')}
+              className={`flex items-center px-4 py-2 rounded-md text-xs font-heading font-semibold transition-colors cursor-pointer ${
+                resolvedTab === 'tree'
+                  ? 'bg-[#1E40AF] text-white shadow-xs'
+                  : 'text-[#94A3B8] hover:text-[#F8FAFC] hover:bg-[#1A2742]'
+              }`}
+            >
+              <GitFork className="w-3.5 h-3.5 mr-1.5 text-current" />
+              Árbol C/P/T
+            </button>
+          )}
+
+          {canSeeReports && (
+            <button
+              onClick={() => setActiveTab('report')}
+              className={`flex items-center px-4 py-2 rounded-md text-xs font-heading font-semibold transition-colors cursor-pointer ${
+                resolvedTab === 'report'
+                  ? 'bg-[#1E40AF] text-white shadow-xs'
+                  : 'text-[#94A3B8] hover:text-[#F8FAFC] hover:bg-[#1A2742]'
+              }`}
+            >
+              <BarChart3 className="w-3.5 h-3.5 mr-1.5 text-current" />
+              Informe de Tiempos
+            </button>
+          )}
+
+          <button
+            onClick={() => setActiveTab('attendance')}
+            className={`flex items-center px-4 py-2 rounded-md text-xs font-heading font-semibold transition-colors cursor-pointer ${
+              resolvedTab === 'attendance'
+                ? 'bg-[#1E40AF] text-white shadow-xs'
+                : 'text-[#94A3B8] hover:text-[#F8FAFC] hover:bg-[#1A2742]'
+            }`}
+          >
+            <Users className="w-3.5 h-3.5 mr-1.5 text-current" />
+            Asistencia y Equipos
+          </button>
+
+          <button
+            onClick={() => setActiveTab('invitations')}
+            className={`flex items-center px-4 py-2 rounded-md text-xs font-heading font-semibold transition-colors cursor-pointer ${
+              resolvedTab === 'invitations'
+                ? 'bg-[#1E40AF] text-white shadow-xs'
+                : 'text-[#94A3B8] hover:text-[#F8FAFC] hover:bg-[#1A2742]'
+            }`}
+          >
+            <MailCheck className="w-3.5 h-3.5 mr-1.5 text-current" />
+            Invitaciones & Whitelist
+          </button>
+
+          {showPersonalCheckInTab && (
+            <button
+              onClick={() => setActiveTab('my_checkin')}
+              className={`flex items-center px-4 py-2 rounded-md text-xs font-heading font-semibold transition-colors cursor-pointer ${
+                resolvedTab === 'my_checkin'
+                  ? 'bg-[#1E40AF] text-white shadow-xs'
+                  : 'text-[#38BDF8] hover:text-white hover:bg-[#1A2742]'
+              }`}
+            >
+              <ScanFace className="w-3.5 h-3.5 mr-1.5 text-current" />
+              {forcedFacialByTI ? 'Mi Check-in Facial (TI)' : 'Mi Asistencia'}
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Aviso cuando TI habilita verificación facial obligatoria a un Supervisor específico */}
+      {forcedFacialByTI && resolvedTab !== 'my_checkin' && (
+        <div className="bg-[#131D31] border border-[#233354] rounded-md p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
+          <div className="flex items-center space-x-3">
+            <div className="w-9 h-9 rounded-md bg-[#1A2742] text-[#F59E0B] border border-[#F59E0B]/30 flex items-center justify-center shrink-0">
+              <ScanFace className="w-4 h-4" />
+            </div>
+            <div>
+              <h3 className="text-xs font-heading font-bold uppercase tracking-wider text-[#F8FAFC]">
+                Verificación Facial Activada por Administración TI
+              </h3>
+              <p className="text-xs text-[#94A3B8] mt-0.5">
+                TI ha requerido verificación facial con vector numérico 128D para tu cuenta de supervisión.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => setActiveTab('my_checkin')}
+            className="px-3.5 py-1.5 bg-[#1E40AF] hover:bg-[#1D4ED8] text-white rounded-md text-xs font-heading font-semibold cursor-pointer shrink-0 transition-colors"
+          >
+            Ir a Mi Check-in Facial
           </button>
         </div>
-        <div className="p-4 bg-slate-50 text-sm text-slate-600 border-b border-slate-100">
-          {address}
-        </div>
-        <div className="h-[400px] w-full">
-          <MapContainer center={[location.lat, location.lng]} zoom={15} className="w-full h-full">
-            <TileLayer
-              attribution='&copy; OpenStreetMap'
-              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-            />
-            <Marker position={[location.lat, location.lng]}>
-              <Popup>{address}</Popup>
-            </Marker>
-          </MapContainer>
-        </div>
-      </div>
-    </div>
-  );
-}
+      )}
 
-// Componente para una fila de empleado expansible
-function EmployeeRow({ employee, onOpenMap }: { employee: MockEmployee; onOpenMap: (loc: {lat: number, lng: number}, addr: string) => void }) {
-  const [isExpanded, setIsExpanded] = useState(false);
-
-  return (
-    <div className="border border-slate-200 rounded-xl mb-3 overflow-hidden bg-white shadow-sm hover:shadow transition-shadow">
-      {/* Header Fila */}
-      <div 
-        className="flex items-center justify-between p-4 cursor-pointer hover:bg-slate-50 transition-colors"
-        onClick={() => setIsExpanded(!isExpanded)}
-      >
-        <div className="flex flex-col">
-          <span className="font-semibold text-slate-800">{employee.name}</span>
-          <span className="text-xs text-slate-500 flex items-center mt-1">
-            <span className={`w-2 h-2 rounded-full mr-2 ${employee.status === 'active' ? 'bg-green-500 animate-pulse' : 'bg-slate-400'}`} />
-            {employee.status === 'active' ? 'Activo ahora' : 'Inactivo'}
-          </span>
-        </div>
-        <div className="flex items-center text-slate-400">
-          {isExpanded ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
-        </div>
-      </div>
-
-      {/* Detalle Historial (Expansible) */}
-      {isExpanded && (
-        <div className="bg-slate-50 border-t border-slate-100 p-2 sm:p-4">
-          <div className="bg-white p-2 rounded-xl shadow-sm border border-slate-200">
-            {/* El calendario ahora controla los modales de detalle y botones de mapa */}
-            <CalendarView 
-              employeeHistory={employee.history} 
-              onOpenMap={onOpenMap} 
-            />
+      {/* Banner de Vinculación y Seguridad de Socios */}
+      <div className="bg-[#131D31] text-[#F8FAFC] rounded-md p-4 md:p-5 border border-[#233354] space-y-4 shadow-sm">
+        {/* Fila 1: Código de Supervisor para Colaboradores */}
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="flex items-start sm:items-center space-x-3.5">
+            <div className="w-10 h-10 rounded-md bg-[#1A2742] flex items-center justify-center shrink-0 border border-[#233354] text-[#38BDF8]">
+              <KeyRound className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center space-x-2">
+                <span className="text-[10px] font-heading font-bold uppercase tracking-wider bg-[#0F172A] text-[#38BDF8] border border-[#233354] px-2 py-0.5 rounded-sm">
+                  CÓDIGO DE SUPERVISOR
+                </span>
+                <span className="text-xs text-[#94A3B8] font-medium hidden sm:inline">
+                  {teamMembers.length} Colaboradores vinculados
+                </span>
+              </div>
+              <h3 className="text-sm font-heading font-bold text-[#F8FAFC] mt-0.5">
+                Código de Asignación para Nuevos Colaboradores
+              </h3>
+              <p className="text-xs text-[#94A3B8] max-w-xl mt-0.5">
+                Comparte este código con tus colaboradores para que se vinculen automáticamente a tu supervisión.
+              </p>
+            </div>
           </div>
+
+          <div className="flex items-center space-x-2.5 self-start md:self-auto shrink-0 bg-[#1A2742] p-2 rounded-md border border-[#233354]">
+            <div className="px-3 py-1 font-mono text-sm md:text-base font-bold tracking-widest text-[#38BDF8]">
+              {supervisorCode}
+            </div>
+            <button
+              onClick={handleCopyCode}
+              className={`px-3 py-1.5 rounded-md text-xs font-heading font-semibold flex items-center space-x-1.5 transition-colors cursor-pointer ${
+                copiedCode
+                  ? 'bg-[#1E40AF] text-white shadow-xs'
+                  : 'bg-[#1E40AF] hover:bg-[#1D4ED8] text-white'
+              }`}
+            >
+              {copiedCode ? (
+                <>
+                  <Check className="w-3.5 h-3.5 text-white" />
+                  <span>Copiado</span>
+                </>
+              ) : (
+                <>
+                  <Copy className="w-3.5 h-3.5 text-white" />
+                  <span>Copiar Código</span>
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+
+        {/* Fila 2: Clave Maestra Corporativa para Socios y Supervisores */}
+        <div className="pt-3 border-t border-[#233354] flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+          <div className="flex items-center space-x-2.5 text-[#94A3B8]">
+            <div className="p-1 rounded-md bg-[#1A2742] text-[#F59E0B] border border-[#233354]">
+              <Lock className="w-3.5 h-3.5" />
+            </div>
+            <div>
+              <span className="font-semibold text-[#F8FAFC]">Clave Maestra Corporativa:</span>{' '}
+              <span className="text-[#94A3B8] text-[11px]">
+                Requerida para registrar cuentas de nuevos Socios y Supervisores.
+              </span>
+            </div>
+          </div>
+
+          <div className="flex items-center space-x-2 shrink-0 bg-[#0B111E] px-3 py-1 rounded-md border border-[#233354]">
+            <span className="font-mono font-bold text-[#F59E0B] tracking-wider text-xs">
+              {masterKey}
+            </span>
+            <button
+              onClick={handleCopyMasterKey}
+              className="px-2 py-0.5 bg-[#1A2742] hover:bg-[#233354] text-[#F8FAFC] rounded-sm text-[10px] font-heading font-semibold flex items-center space-x-1 cursor-pointer transition-colors border border-[#233354]"
+              title="Copiar Clave Maestra de Socios"
+            >
+              {copiedMasterKey ? (
+                <>
+                  <Check className="w-3 h-3 text-[#38BDF8]" />
+                  <span className="text-[#38BDF8]">Copiada</span>
+                </>
+              ) : (
+                <>
+                  <Copy className="w-3 h-3 text-[#94A3B8]" />
+                  <span>Copiar</span>
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Notificación en tiempo real cuando un empleado completa una tarea */}
+      {effectiveModules.tasks && unreadCompletedAlerts.length > 0 && (
+        <div className="bg-[#131D31] text-[#F8FAFC] rounded-md p-3.5 border border-[#233354] flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-fade-in shadow-xs">
+          <div className="flex items-center space-x-3">
+            <div className="w-8 h-8 rounded-md bg-[#1E40AF]/20 border border-[#1E40AF]/40 flex items-center justify-center text-[#38BDF8] shrink-0">
+              <Bell className="w-4 h-4 animate-bounce" />
+            </div>
+            <div>
+              <span className="text-[10px] font-heading font-bold uppercase tracking-wider bg-[#1E40AF] text-[#F8FAFC] px-2 py-0.5 rounded-sm">
+                AVANCE EN TIEMPO REAL
+              </span>
+              <p className="text-xs font-semibold text-[#F8FAFC] mt-0.5">{unreadCompletedAlerts[0].message}</p>
+            </div>
+          </div>
+          <button
+            onClick={() => markAsRead(unreadCompletedAlerts[0].id)}
+            className="px-3 py-1.5 bg-[#1E40AF] hover:bg-[#1D4ED8] text-white rounded-md text-xs font-heading font-semibold flex items-center space-x-1.5 cursor-pointer self-start sm:self-auto shrink-0 transition-colors"
+          >
+            <CheckCircle2 className="w-3.5 h-3.5" />
+            <span>Enterado</span>
+          </button>
         </div>
       )}
-    </div>
-  );
-}
 
-export function SupervisorDashboard() {
-  const { mockEmployeesData } = useCheckinStore();
-  
-  // Estado para el modal del mapa
-  const [mapData, setMapData] = useState<{ location: {lat: number, lng: number}, address: string } | null>(null);
+      {/* 2. Barra de Pulso Operativo (Scorecards en Vivo) */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        {/* KPI 1: Colaboradores en Vivo */}
+        <div className="bg-[#131D31] border border-[#233354] rounded-md p-4 shadow-xs flex items-center justify-between text-[#F8FAFC]">
+          <div>
+            <span className="text-xs font-heading font-bold text-[#94A3B8] uppercase tracking-wider block">
+              En Vivo: ¿Quién trabaja en qué?
+            </span>
+            <div className="flex items-center space-x-2 mt-1">
+              <span className="text-2xl font-heading font-bold text-[#F8FAFC] metric-value">
+                {activeWorkers.length} Activos
+              </span>
+              <span className="w-2 h-2 rounded-full bg-[#38BDF8] animate-pulse" />
+            </div>
+            <p className="text-[11px] text-[#94A3B8] mt-0.5 truncate">
+              {activeWorkers.length > 0
+                ? `${activeWorkers[0].userName} en ${activeWorkers[0].taskName.substring(0, 20)}...`
+                : 'Ningún cronómetro activo'}
+            </p>
+          </div>
+          <div className="w-9 h-9 rounded-md bg-[#1A2742] text-[#38BDF8] border border-[#233354] flex items-center justify-center shrink-0">
+            <Play className="w-4 h-4 fill-current" />
+          </div>
+        </div>
 
-  // Agrupar por equipo
-  const groupedByTeam = mockEmployeesData.reduce((acc, emp) => {
-    const team = emp.team || 'Sin Equipo';
-    if (!acc[team]) acc[team] = [];
-    acc[team].push(emp);
-    return acc;
-  }, {} as Record<string, MockEmployee[]>);
+        {/* KPI 2: Proyectos en Alerta (>= 80%) */}
+        <div className="bg-[#131D31] border border-[#233354] rounded-md p-4 shadow-xs flex items-center justify-between text-[#F8FAFC]">
+          <div>
+            <span className="text-xs font-heading font-bold text-[#94A3B8] uppercase tracking-wider block">
+              Proyectos al ≥80% Consumo
+            </span>
+            <div className="flex items-center space-x-2 mt-1">
+              <span
+                className={`text-2xl font-heading font-bold metric-value ${
+                  projectsInAlert.length > 0 ? 'text-[#F59E0B]' : 'text-[#F8FAFC]'
+                }`}
+              >
+                {projectsInAlert.length} En Riesgo
+              </span>
+              {projectsInAlert.length > 0 && (
+                <span className="text-[10px] font-heading font-bold bg-[#1A2742] text-[#F59E0B] border border-[#F59E0B]/30 px-2 py-0.5 rounded-sm">
+                  ALERTA
+                </span>
+              )}
+            </div>
+            <p className="text-[11px] text-[#94A3B8] mt-0.5 truncate">
+              {projectsInAlert.length > 0
+                ? projectsInAlert.map((p) => p.name).join(', ')
+                : 'Todos en rango óptimo'}
+            </p>
+          </div>
+          <div className="w-9 h-9 rounded-md bg-[#1A2742] text-[#F59E0B] border border-[#233354] flex items-center justify-center shrink-0">
+            <AlertTriangle className="w-4 h-4" />
+          </div>
+        </div>
 
-  return (
-    <div className="w-full max-w-5xl mx-auto p-4 lg:p-6 space-y-8 animate-fade-in">
-      
-      <div className="flex items-center justify-between border-b border-slate-200 pb-4">
-        <div>
-          <h2 className="text-2xl font-bold text-slate-800 flex items-center">
-            <Users className="w-6 h-6 mr-2 text-rb-navy" />
-            Panel de Supervisión Administrativa
-          </h2>
-          <p className="text-sm text-slate-500 mt-1">Directorio de colaboradores y bitácora de asistencia.</p>
+        {/* KPI 3: Control Presupuestario */}
+        <div className="bg-[#131D31] border border-[#233354] rounded-md p-4 shadow-xs flex items-center justify-between text-[#F8FAFC]">
+          <div>
+            <span className="text-xs font-heading font-bold text-[#94A3B8] uppercase tracking-wider block">
+              Proyección Financiera
+            </span>
+            <div className="flex items-center space-x-2 mt-1">
+              <span className="text-2xl font-heading font-bold text-[#F8FAFC] metric-value">100% Auditado</span>
+            </div>
+            <p className="text-[11px] text-[#94A3B8] mt-0.5">
+              Hard-stops de cronómetro activos por colaborador
+            </p>
+          </div>
+          <div className="w-9 h-9 rounded-md bg-[#1A2742] text-[#38BDF8] border border-[#233354] flex items-center justify-center shrink-0">
+            <DollarSign className="w-4 h-4" />
+          </div>
         </div>
       </div>
 
-      <div className="space-y-8">
-        {Object.entries(groupedByTeam).map(([team, employees]) => (
-          <div key={team} className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-            <div className="bg-slate-100/50 px-6 py-4 border-b border-slate-200">
-              <h3 className="font-bold text-slate-700 text-lg flex items-center">
-                <span className="w-2 h-6 bg-rb-turquoise rounded-full mr-3"></span>
-                Área: {team}
-                <span className="ml-3 px-2 py-0.5 bg-white text-xs text-slate-500 rounded-full border border-slate-200 shadow-sm">
-                  {employees.length} {employees.length === 1 ? 'colaborador' : 'colaboradores'}
-                </span>
-              </h3>
-            </div>
-            
-            <div className="p-6">
-              {employees.map(emp => (
-                <EmployeeRow 
-                  key={emp.id} 
-                  employee={emp} 
-                  onOpenMap={(loc, addr) => setMapData({ location: loc, address: addr })} 
-                />
-              ))}
-            </div>
-          </div>
-        ))}
-      </div>
+      {/* 3. Renderizado de la Vista Seleccionada */}
+      {resolvedTab === 'tree' && canSeeTree && (
+        <RayonerTree
+          onOpenTaskModal={(taskId, projectId) =>
+            setTaskModalState({ isOpen: true, taskId, projectId })
+          }
+          onSelectProjectForReport={handleOpenReportForProject}
+        />
+      )}
 
-      {mapData && (
-        <MapModal 
-          location={mapData.location} 
-          address={mapData.address} 
-          onClose={() => setMapData(null)} 
+      {resolvedTab === 'report' && canSeeReports && (
+        <RayonerTimeReport initialProjectId={selectedProjectIdForReport} />
+      )}
+
+      {resolvedTab === 'attendance' && (
+        <TeamMembersView
+          onNavigateToTree={() => {
+            if (canSeeTree) setActiveTab('tree');
+          }}
+        />
+      )}
+
+      {resolvedTab === 'invitations' && <SupervisorInvitationsView />}
+
+      {resolvedTab === 'my_checkin' && showPersonalCheckInTab && (
+        <div className="pt-2">
+          <CheckinPanel />
+        </div>
+      )}
+
+      {/* Modal Multitarea de Rayoner */}
+      {effectiveModules.tasks && (
+        <RayonerTaskModal
+          isOpen={taskModalState.isOpen}
+          onClose={() => setTaskModalState({ isOpen: false, taskId: null, projectId: null })}
+          taskId={taskModalState.taskId}
+          projectId={taskModalState.projectId}
         />
       )}
     </div>

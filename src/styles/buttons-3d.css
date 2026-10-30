@@ -1,0 +1,119 @@
+/* ==========================================================================
+   BOTONES CON EFECTO 3D PURO (CLIP-PATH, GRADIENTES Y VARIABLES CSS)
+   Coreografía secuencial de estados, extrusión isométrica y perspectiva
+   ========================================================================== */
+
+/* Botón de Extrusión Isométrica (Acción Principal / Captura) */
+.btn-3d-extrude {
+  --c: 8px;
+  --g: calc(var(--c) * 0.707);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Sora', 'Space Grotesk', sans-serif;
+  font-size: 0.875rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  padding: 10px 20px;
+  color: #F8FAFC;
+  background-color: #0F172A;
+  cursor: pointer;
+  border: solid transparent;
+  border-width: 0 0 var(--c) var(--c);
+  background-image:
+    linear-gradient(-45deg, transparent var(--g), rgba(56, 189, 248, 0.4) 0),
+    linear-gradient(135deg, transparent var(--g), rgba(30, 64, 175, 0.6) 0);
+  background-size: var(--c) 100%, 100% var(--c);
+  background-position: left, bottom;
+  background-repeat: no-repeat;
+  background-origin: border-box;
+  transform: translate(calc(var(--c) / -1), calc(var(--c) / 1));
+  clip-path: polygon(
+    var(--c) 0%,
+    var(--c) 0%,
+    100% 0%,
+    100% calc(100% - var(--c)),
+    100% calc(100% - var(--c)),
+    var(--c) calc(100% - var(--c)),
+    var(--c) calc(100% - var(--c))
+  );
+  transition: 0.25s, background-color 0.25s 0.25s, color 0.25s 0.25s;
+  box-sizing: border-box;
+  text-decoration: none;
+  user-select: none;
+}
+
+.btn-3d-extrude:hover:not(:disabled) {
+  background-color: #1E40AF;
+  color: #FFFFFF;
+  transform: translate(0, 0);
+  clip-path: polygon(
+    0% var(--c),
+    var(--c) 0%,
+    100% 0%,
+    100% calc(100% - var(--c)),
+    calc(100% - var(--c)) 100%,
+    0% 100%,
+    0% 100%
+  );
+}
+
+.btn-3d-extrude:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: translate(0, 0);
+}
+
+/* Botón de Perspectiva Lateral (Acción Secundaria / Cancelar) */
+.btn-3d-fold {
+  --d: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Sora', 'Space Grotesk', sans-serif;
+  font-size: 0.875rem;
+  font-weight: 500;
+  padding: 10px calc(16px + var(--d)) 10px 16px;
+  color: #94A3B8;
+  background-color: #131D31;
+  cursor: pointer;
+  border: none;
+  background-image: linear-gradient(rgba(56, 189, 248, 0.2) 0 0);
+  background-position: right;
+  background-size: var(--d) 100%;
+  background-repeat: no-repeat;
+  clip-path: polygon(
+    0 0,
+    calc(100% - var(--d)) 0,
+    calc(100% - var(--d)) 2px,
+    calc(100% - var(--d)) calc(100% - 2px),
+    calc(100% - var(--d)) 100%,
+    0 100%
+  );
+  transform: perspective(800px) rotateY(0deg);
+  transition: 0.25s, color 0.25s 0.25s, background-color 0.25s 0.25s;
+  box-sizing: border-box;
+  text-decoration: none;
+  user-select: none;
+}
+
+.btn-3d-fold:hover:not(:disabled) {
+  background-color: #0B111E;
+  color: #F8FAFC;
+  transform: perspective(800px) rotateY(-20deg);
+  clip-path: polygon(
+    0 0,
+    calc(100% - var(--d)) 0,
+    100% 2px,
+    100% calc(100% - 2px),
+    calc(100% - var(--d)) 100%,
+    0 100%
+  );
+}
+
+.btn-3d-fold:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: perspective(800px) rotateY(0deg);
+}
+

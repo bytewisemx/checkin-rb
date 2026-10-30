@@ -1,6 +1,22 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { getSecureServerTime, captureClientIP, calculateLateness } from '../services/security';
+import {
+  normalizeRole,
+  getDefaultModulesForRole,
+  getEffectiveModules,
+  updateUserModulesApi,
+  updateUserBiometricsApi,
+  type UserRole,
+  type UserModules,
+  type BiometricVectorRecord,
+} from '../services/rbac';
+import {
+  buildBiometricVectorRecord,
+  DEFAULT_BIOMETRIC_THRESHOLD,
+} from '../services/facialBiometrics';
+import { useRayonerStore } from './useRayonerStore';
+
 export interface TaskTag {
   text: string;
   colorClass: string;
@@ -24,13 +40,38 @@ export interface User {
   name: string;
   lastName?: string;
   email: string;
-  role: 'employee' | 'supervisor';
+  role: UserRole | 'employee' | 'supervisor';
   verified: boolean;
   birthDate?: string;
   team?: string;
+  status?: 'active' | 'inactive';
   isProfileComplete: boolean;
-  expectedEntryTime: string; // Ej: "09:00"
-  profileImage?: string;
+  expectedEntryTime: string;
+  profileImage?: string; // Avatar SVG o ilustración de perfil (NO imagen de biometría)
+  // Biometría vectorial estrictamente SIN imágenes (solo floats, fecha ISO y versión de modelo)
+  faceDescriptor?: number[];
+  biometrics?: BiometricVectorRecord | null;
+  biometricThreshold?: number;
+  isBiometricsEnrolled?: boolean;
+  // Permisos granulares por usuario gestionados por TI
+  modules?: UserModules;
+  // Referencias jerárquicas requeridas
+  supervisor_id?: string | null;
+  supervisorId?: string;
+  supervisorName?: string;
+  created_by_ti_id?: string | null;
+  createdByTiId?: string;
+  assigned_team_members?: string[];
+}
+
+export interface ManagedUserPermissionEntry {
+  id: string;
+  name: string;
+  email: string;
+  role: UserRole;
+  team?: string;
+  modules: UserModules;
+  biometrics?: BiometricVectorRecord | null;
 }
 
 export interface PauseBlock {
@@ -40,8 +81,8 @@ export interface PauseBlock {
 
 export interface CheckinRecord {
   id: string;
-  date: string; // ISO String format YYYY-MM-DD
-  checkInTimeMs: number | null; // Usamos MS de NTP en vez de Strings inestables
+  date: string;
+  checkInTimeMs: number | null;
   checkOutTimeMs: number | null;
   pauses: PauseBlock[];
   location: { lat: number; lng: number } | null;
@@ -50,18 +91,26 @@ export interface CheckinRecord {
   clientIp: string | null;
   isLate: boolean;
   minutesLate: number;
+  // Estrictamente prohibido guardar facePhotoUrl / base64; solo score y distancia vectorial
+  biometricMatchScore?: number | null;
+  biometricDistance?: number | null;
 }
 
 export interface MockEmployee {
   id: string;
   email: string;
   name: string;
+  role?: UserRole;
   team: string;
   status: 'active' | 'inactive';
   workedMinutesToday: number;
   isProfileComplete: boolean;
   history: CheckinRecord[];
   expectedEntryTime: string;
+  supervisor_id?: string | null;
+  created_by_ti_id?: string | null;
+  modules?: UserModules;
+  biometrics?: BiometricVectorRecord | null;
 }
 
 export interface GlobalToast {
@@ -74,9 +123,10 @@ interface CheckinState {
   user: User | null;
   isAuthenticated: boolean;
   activeCheckin: CheckinRecord | null;
-  history: CheckinRecord[]; // Historial de sesión actual
+  history: CheckinRecord[];
 
   mockEmployeesData: MockEmployee[];
+  userPermissionsDirectory: Record<string, ManagedUserPermissionEntry>;
   toasts: GlobalToast[];
   tasks: Task[];
 
@@ -89,13 +139,50 @@ interface CheckinState {
   login: (email: string, password?: string) => boolean;
   logout: () => void;
   updateProfile: (data: Partial<User>) => void;
+  loginWithFirebaseUser: (
+    fbUser: { uid: string; email: string | null; displayName?: string | null; photoURL?: string | null },
+    invitationData?: {
+      supervisorId: string;
+      supervisorName: string;
+      team: string;
+      roleTitle?: string;
+      role?: UserRole | 'employee' | 'supervisor';
+      created_by_ti_id?: string | null;
+    }
+  ) => void;
 
-  startCheckin: (lat: number, lng: number, address: string) => Promise<void>;
+  // Biometría vectorial sin imágenes + Tolerancia configurable
+  enrollBiometrics: (
+    descriptor: number[],
+    endpointTarget?: 'me' | string,
+    threshold?: number
+  ) => Promise<BiometricVectorRecord>;
+  setBiometricThreshold: (threshold: number) => void;
+
+  // Control de Tema Claro / Oscuro (Ajustable en menú de ajustes)
+  theme: 'dark' | 'light';
+  setTheme: (theme: 'dark' | 'light') => void;
+  toggleTheme: () => void;
+
+  // Gestión granular de módulos por usuario (Panel TI)
+  updateUserModules: (
+    targetUserId: string,
+    modules: UserModules,
+    meta?: { name?: string; email?: string; role?: UserRole; team?: string }
+  ) => Promise<void>;
+  getEffectiveUserModules: (userId?: string) => UserModules;
+
+  startCheckin: (
+    lat: number,
+    lng: number,
+    address: string,
+    matchScore?: number,
+    biometricDistance?: number
+  ) => Promise<void>;
   pauseCheckin: () => Promise<void>;
   resumeCheckin: () => Promise<void>;
   endCheckin: () => Promise<void>;
 
-  // Auth Stubs
   pendingEmail?: string;
   verificationType?: 'registration' | 'recovery';
   requestPasswordReset: (email: string) => void;
@@ -104,7 +191,23 @@ interface CheckinState {
   registerUser: (email: string, password?: string) => void;
 }
 
-// Helpers de tiempo para mocks
+const permissionsRealtimeChannel =
+  typeof window !== 'undefined' && 'BroadcastChannel' in window
+    ? new BroadcastChannel('rb_permissions_realtime_channel')
+    : null;
+
+function broadcastPermissionsUpdate(payload?: unknown) {
+  try {
+    permissionsRealtimeChannel?.postMessage({
+      type: 'PERMISSIONS_OR_BIOMETRICS_UPDATED',
+      payload,
+      timestamp: Date.now(),
+    });
+  } catch {
+    // Ignore broadcast errors
+  }
+}
+
 const getPastDateStr = (daysAgo: number) => {
   const d = new Date();
   d.setDate(d.getDate() - daysAgo);
@@ -117,22 +220,17 @@ const generateMockHistory = (days: number): CheckinRecord[] => {
   const dayMs = 24 * 60 * 60 * 1000;
 
   for (let i = 1; i <= days; i++) {
-    // Fecha calculada
     const d = new Date(now - i * dayMs);
-    // Saltarse fines de semana (0=Dom, 6=Sab) para que sea realista
     if (d.getDay() === 0 || d.getDay() === 6) continue;
 
-    // Aleatoriedad para llegadas tarde
-    const isLate = Math.random() > 0.7; // 30% de probabilidad de llegar tarde
+    const isLate = Math.random() > 0.7;
     const minutesLate = isLate ? Math.floor(Math.random() * 45) + 11 : 0;
 
-    // Checkin a las 9:00 AM aprox + minutos tarde
     const checkinDate = new Date(d);
     checkinDate.setHours(9, isLate ? minutesLate : Math.floor(Math.random() * 9), 0, 0);
 
-    // Checkout 8-9 horas despues
     const checkoutDate = new Date(checkinDate);
-    const workedHours = 8 + (Math.random() * 1.5); // entre 8 y 9.5 horas de trabajo
+    const workedHours = 8 + Math.random() * 1.5;
     checkoutDate.setHours(checkoutDate.getHours() + Math.floor(workedHours));
     checkoutDate.setMinutes(Math.floor(Math.random() * 60));
 
@@ -144,60 +242,150 @@ const generateMockHistory = (days: number): CheckinRecord[] => {
       checkInTimeMs: checkinDate.getTime(),
       checkOutTimeMs: checkoutDate.getTime(),
       pauses: [],
-      location: { lat: 19.4326 + (Math.random() * 0.01), lng: -99.1332 + (Math.random() * 0.01) },
+      location: { lat: 19.4326 + Math.random() * 0.01, lng: -99.1332 + Math.random() * 0.01 },
       address: 'Av. Reforma, CDMX (Simulado)',
       totalDurationMinutes: durationMins,
       clientIp: '189.200.10.15',
       isLate,
-      minutesLate
+      minutesLate,
     });
   }
   return history;
 };
 
+const initialPermissionsDirectory: Record<string, ManagedUserPermissionEntry> = {
+  'ti-root-01': {
+    id: 'ti-root-01',
+    name: 'Administrador TI (Root)',
+    email: 'ti.root@russellbedford.mx',
+    role: 'TI',
+    team: 'Infraestructura & Seguridad TI',
+    modules: getDefaultModulesForRole('TI'),
+    biometrics: null,
+  },
+  'admin-99': {
+    id: 'admin-99',
+    name: 'Supervisor Prueba',
+    email: 'supervisor.prueba@russellbedford.mx',
+    role: 'Supervisor',
+    team: 'Administración y Supervisión',
+    modules: getDefaultModulesForRole('Supervisor'), // facialCheckIn: false por defecto (Exento)
+    biometrics: null,
+  },
+  'sup-1': {
+    id: 'sup-1',
+    name: 'Mtro. Roberto Silva',
+    email: 'roberto.silva@russellbedford.mx',
+    role: 'Supervisor',
+    team: 'Supervisión Auditoría Fiscal',
+    modules: getDefaultModulesForRole('Supervisor'), // facialCheckIn: false por defecto (Exento)
+    biometrics: null,
+  },
+  'rh-01': {
+    id: 'rh-01',
+    name: 'Dirección Recursos Humanos (RH)',
+    email: 'rh.prueba@russellbedford.mx',
+    role: 'RH',
+    team: 'Capital Humano y Asistencia',
+    modules: getDefaultModulesForRole('RH'),
+    biometrics: null,
+  },
+  'usr-ana': {
+    id: 'usr-ana',
+    name: 'Colaborador Prueba',
+    email: 'colaborador.prueba@russellbedford.mx',
+    role: 'Empleado',
+    team: 'Auditoría Fiscal',
+    modules: getDefaultModulesForRole('Empleado'),
+    biometrics: null,
+  },
+  'usr-carlos': {
+    id: 'usr-carlos',
+    name: 'Carlos Ruiz',
+    email: 'carlos.ruiz@russellbedford.mx',
+    role: 'Empleado',
+    team: 'Auditoría Fiscal',
+    modules: getDefaultModulesForRole('Empleado'),
+    biometrics: null,
+  },
+  'usr-luis': {
+    id: 'usr-luis',
+    name: 'Luis Mendoza',
+    email: 'luis.mendoza@russellbedford.mx',
+    role: 'Empleado',
+    team: 'Consultoría e Impuestos',
+    modules: getDefaultModulesForRole('Empleado'),
+    biometrics: null,
+  },
+  'usr-sofia': {
+    id: 'usr-sofia',
+    name: 'Sofía Valdés',
+    email: 'sofia.valdes@russellbedford.mx',
+    role: 'Empleado',
+    team: 'Contabilidad Corporativa',
+    modules: {
+      // Ejemplo práctico inicial o configurable: empleada activa
+      checkIn: true,
+      facialCheckIn: true,
+      tasks: true,
+      reports: false,
+      clients: false,
+    },
+    biometrics: null,
+  },
+  'usr-miguel': {
+    id: 'usr-miguel',
+    name: 'Miguel Ángel Ramos',
+    email: 'miguel.ramos@russellbedford.mx',
+    role: 'Empleado',
+    team: 'Precios de Transferencia',
+    modules: getDefaultModulesForRole('Empleado'),
+    biometrics: null,
+  },
+};
+
 const initialMockEmployees: MockEmployee[] = [
   {
-    id: 'mock-emp-101',
-    email: 'demo@russellbedford.mx',
-    name: 'Ana Demo Historial',
-    team: 'Auditoría Interna',
-    status: 'inactive',
+    id: 'usr-ana',
+    email: 'colaborador.prueba@russellbedford.mx',
+    name: 'Colaborador Prueba',
+    role: 'Empleado',
+    team: 'Auditoría Fiscal',
+    status: 'active',
     isProfileComplete: true,
-    workedMinutesToday: 0,
+    workedMinutesToday: 405,
     expectedEntryTime: '09:00',
-    history: generateMockHistory(60) // Genera 60 días hacia atrás de historia
-  }
-];
-
-const initialTasks: Task[] = [
-  { 
-    id: '1', title: 'Monthly budget for Community ads', description: '', status: 'pending', timeSpent: '00:00:00', estimatedTime: '120m',
-    tags: [
-      { text: 'Reviewing', colorClass: 'bg-green-100 text-green-700' },
-      { text: 'Changes Needed', colorClass: 'bg-yellow-200 text-yellow-800' },
-      { text: 'No', colorClass: 'bg-yellow-200 text-yellow-800' }
-    ],
-    assignee: 'Ana', dueDate: '16 Feb, 2025', subtasksCount: 1
+    supervisor_id: 'admin-99',
+    modules: getDefaultModulesForRole('Empleado'),
+    history: generateMockHistory(20),
   },
-  { 
-    id: '2', title: 'Identify web updates', description: '', status: 'progress', timeSpent: '00:00:00', estimatedTime: '60m',
-    tags: [], assignee: 'Carlos', dueDate: 'Sunday', subtasksCount: 3
+  {
+    id: 'usr-carlos',
+    email: 'carlos.ruiz@russellbedford.mx',
+    name: 'Carlos Ruiz',
+    role: 'Empleado',
+    team: 'Auditoría Fiscal',
+    status: 'active',
+    isProfileComplete: true,
+    workedMinutesToday: 330,
+    expectedEntryTime: '09:00',
+    supervisor_id: 'admin-99',
+    modules: getDefaultModulesForRole('Empleado'),
+    history: generateMockHistory(15),
   },
-  { 
-    id: '3', title: '[Help Site] How to use the Community mobile app', description: '', status: 'review', timeSpent: '00:00:00', estimatedTime: '240m',
-    tags: [
-      { text: 'Not started', colorClass: 'bg-red-200 text-red-800' },
-      { text: 'No', colorClass: 'bg-yellow-200 text-yellow-800' }
-    ],
-    assignee: 'Laura', dueDate: '17 Apr, 2025', subtasksCount: 2
-  },
-  { 
-    id: '4', title: 'Community mobile app announcement', description: '', status: 'completed', timeSpent: '02:00:00', estimatedTime: '120m',
-    tags: [
-      { text: 'Not started', colorClass: 'bg-red-200 text-red-800' },
-      { text: 'Ready for Review', colorClass: 'bg-teal-100 text-teal-800' }
-    ],
-    assignee: 'Luis', dueDate: '20 Apr, 2025', subtasksCount: 0
+  {
+    id: 'usr-luis',
+    email: 'luis.mendoza@russellbedford.mx',
+    name: 'Luis Mendoza',
+    role: 'Empleado',
+    team: 'Consultoría e Impuestos',
+    status: 'active',
+    isProfileComplete: true,
+    workedMinutesToday: 450,
+    expectedEntryTime: '09:00',
+    supervisor_id: 'admin-99',
+    modules: getDefaultModulesForRole('Empleado'),
+    history: generateMockHistory(18),
   },
 ];
 
@@ -208,112 +396,350 @@ export const useCheckinStore = create<CheckinState>()(
       isAuthenticated: false,
       activeCheckin: null,
       history: [],
-      mockEmployeesData: [],
+      mockEmployeesData: initialMockEmployees,
+      userPermissionsDirectory: initialPermissionsDirectory,
       toasts: [],
-      tasks: initialTasks,
+      tasks: [],
+      theme: 'dark',
+
+      setTheme: (theme: 'dark' | 'light') => {
+        set({ theme });
+        try {
+          if (typeof document !== 'undefined') {
+            if (theme === 'dark') {
+              document.documentElement.classList.add('dark');
+            } else {
+              document.documentElement.classList.remove('dark');
+            }
+            document.documentElement.setAttribute('data-theme', theme);
+          }
+          localStorage.setItem('rb_theme', theme);
+        } catch {
+          // ignore
+        }
+      },
+
+      toggleTheme: () => {
+        const current = get().theme || 'dark';
+        const next = current === 'dark' ? 'light' : 'dark';
+        get().setTheme(next);
+      },
 
       moveTask: (taskId, newStatus) => {
-        const { tasks, user, addToast } = get();
+        const { user, addToast } = get();
         if (!user) return;
-        
-        const task = tasks.find(t => t.id === taskId);
-        if (!task) return;
-
-        // Regla: Si está en completado, solo el supervisor la puede sacar
-        if (task.status === 'completed' && user.role !== 'supervisor') {
-           addToast('Solo el supervisor puede reactivar una tarea completada.', 'error');
-           return;
+        const normRole = normalizeRole(user.role);
+        const effMods = getEffectiveModules(user);
+        if (normRole === 'RH' || !effMods.tasks) {
+          addToast('Acceso denegado (403): El módulo de tareas no está habilitado para tu cuenta.', 'error');
+          return;
         }
-
-        set({ tasks: tasks.map(t => t.id === taskId ? { ...t, status: newStatus } : t) });
+        useRayonerStore.getState().moveTaskStatus(taskId, newStatus, user.id, user.name);
       },
 
       addTask: (taskData) => {
-        const id = Math.random().toString(36).substring(2, 9);
-        set(state => ({ tasks: [...state.tasks, { ...taskData, id }] }));
+        const { user, addToast } = get();
+        const effMods = getEffectiveModules(user);
+        if (!effMods.tasks) {
+          addToast('Acceso denegado (403): Módulo de tareas deshabilitado.', 'error');
+          return;
+        }
+        useRayonerStore.getState().addTask(
+          {
+            title: taskData.title,
+            name: taskData.title,
+            description: taskData.description,
+            projectId: 'prj-aud-2026',
+            assigned_to: 'usr-ana',
+            created_by: user?.id || 'admin-99',
+            status: taskData.status === 'progress' ? 'in_progress' : taskData.status,
+            plannedHours: 8,
+            priority: 'medium',
+            isBillable: true,
+            isActive: true,
+          },
+          true
+        );
       },
 
       deleteTask: (taskId) => {
-        set(state => ({ tasks: state.tasks.filter(t => t.id !== taskId) }));
+        useRayonerStore.getState().deleteTask(taskId);
       },
 
       addToast: (msg, type = 'info') => {
-        const id = Date.now();
-        set(state => ({ toasts: [...state.toasts, { message: msg, type, id }] }));
+        const id = Date.now() + Math.random();
+        set((state) => ({ toasts: [...state.toasts, { message: msg, type, id }] }));
         setTimeout(() => get().removeToast(id), 5000);
       },
 
       removeToast: (id) => {
-        set(state => ({ toasts: state.toasts.filter(t => t.id !== id) }));
+        set((state) => ({ toasts: state.toasts.filter((t) => t.id !== id) }));
+      },
+
+      getEffectiveUserModules: (userId) => {
+        const { user, userPermissionsDirectory } = get();
+        const targetId = userId || user?.id;
+        if (!targetId) return getDefaultModulesForRole('Empleado');
+        const dirEntry = userPermissionsDirectory[targetId];
+        if (dirEntry) {
+          return getEffectiveModules({ role: dirEntry.role, modules: dirEntry.modules });
+        }
+        return getEffectiveModules(user);
+      },
+
+      updateUserModules: async (targetUserId, modules, meta) => {
+        const { user, userPermissionsDirectory, mockEmployeesData } = get();
+        const existing = userPermissionsDirectory[targetUserId];
+        const resolvedRole = normalizeRole(meta?.role || existing?.role || 'Empleado');
+
+        // Aplicar sanitización RBAC (RH nunca tiene tasks ni clients)
+        const sanitizedModules: UserModules =
+          resolvedRole === 'RH'
+            ? {
+                checkIn: Boolean(modules.checkIn),
+                facialCheckIn: Boolean(modules.facialCheckIn),
+                tasks: false,
+                reports: Boolean(modules.reports),
+                clients: false,
+              }
+            : {
+                checkIn: Boolean(modules.checkIn),
+                facialCheckIn: Boolean(modules.facialCheckIn),
+                tasks: Boolean(modules.tasks),
+                reports: Boolean(modules.reports),
+                clients: Boolean(modules.clients),
+              };
+
+        await updateUserModulesApi(targetUserId, sanitizedModules, {
+          id: user?.id || 'ti-root-01',
+          role: user?.role || 'TI',
+          name: meta?.name || existing?.name,
+          email: meta?.email || existing?.email,
+        });
+
+        const updatedEntry: ManagedUserPermissionEntry = {
+          id: targetUserId,
+          name: meta?.name || existing?.name || targetUserId,
+          email: meta?.email || existing?.email || `${targetUserId}@russellbedford.mx`,
+          role: resolvedRole,
+          team: meta?.team || existing?.team,
+          modules: sanitizedModules,
+          biometrics: existing?.biometrics || null,
+        };
+
+        const nextDirectory = {
+          ...userPermissionsDirectory,
+          [targetUserId]: updatedEntry,
+        };
+
+        const nextMockEmployees = mockEmployeesData.map((emp) =>
+          emp.id === targetUserId ? { ...emp, modules: sanitizedModules } : emp
+        );
+
+        const nextCurrentUser =
+          user && user.id === targetUserId
+            ? { ...user, modules: sanitizedModules }
+            : user;
+
+        set({
+          userPermissionsDirectory: nextDirectory,
+          mockEmployeesData: nextMockEmployees,
+          user: nextCurrentUser,
+        });
+
+        broadcastPermissionsUpdate({ userId: targetUserId, modules: sanitizedModules });
       },
 
       login: (email, password) => {
-        const { addToast, mockEmployeesData } = get();
+        const { addToast, mockEmployeesData, userPermissionsDirectory } = get();
+        const lowerEmail = email.trim().toLowerCase();
 
         if (password !== 'admin123') {
           addToast('Contraseña incorrecta. (Usa: admin123)', 'error');
           return false;
         }
 
-        if (email.toLowerCase().includes('supervisor')) {
-          // Inyectar datos demo automáticamente si no existen en el caché
-          const currentMockData = get().mockEmployeesData;
-          let updatedMockData = currentMockData;
-          if (!currentMockData.some(e => e.email === 'demo@russellbedford.mx')) {
-            updatedMockData = [...currentMockData, initialMockEmployees[0]];
-          }
-
+        // 1. NIVEL TI (Root / Administrador del Sistema)
+        if (
+          lowerEmail.includes('ti.') ||
+          lowerEmail.startsWith('ti@') ||
+          lowerEmail.includes('root') ||
+          lowerEmail === 'ti.root@russellbedford.mx'
+        ) {
+          const dir = userPermissionsDirectory['ti-root-01'];
           set({
             user: {
-              id: 'admin-99',
-              name: 'Supervisor',
-              lastName: 'General',
-              email,
-              role: 'supervisor',
+              id: 'ti-root-01',
+              name: 'Administrador',
+              lastName: 'TI (Root)',
+              email: 'ti.root@russellbedford.mx',
+              role: 'TI',
               verified: true,
               isProfileComplete: true,
-              team: 'Administración',
-              expectedEntryTime: '09:00'
+              team: 'Infraestructura & Seguridad TI',
+              expectedEntryTime: '09:00',
+              status: 'active',
+              modules: dir?.modules || getDefaultModulesForRole('TI'),
+              biometrics: dir?.biometrics || null,
+              faceDescriptor: dir?.biometrics?.faceDescriptor,
+              isBiometricsEnrolled: Boolean(dir?.biometrics?.faceDescriptor?.length),
+              biometricThreshold: DEFAULT_BIOMETRIC_THRESHOLD,
             },
             isAuthenticated: true,
-            mockEmployeesData: updatedMockData
           });
           return true;
         }
 
-        let existingEmp = mockEmployeesData.find(e => e.email === email.toLowerCase());
+        // 2. NIVEL RH (Recursos Humanos - Perfil Restringido)
+        if (
+          lowerEmail.includes('rh.') ||
+          lowerEmail.startsWith('rh@') ||
+          lowerEmail.includes('recursoshumanos') ||
+          lowerEmail === 'rh.auditoria@russellbedford.mx' ||
+          lowerEmail === 'rh.prueba@russellbedford.mx'
+        ) {
+          const dir = userPermissionsDirectory['rh-01'];
+          set({
+            user: {
+              id: 'rh-01',
+              name: 'Dirección',
+              lastName: 'Recursos Humanos (RH)',
+              email: 'rh.prueba@russellbedford.mx',
+              role: 'RH',
+              verified: true,
+              isProfileComplete: true,
+              team: 'Capital Humano y Asistencia',
+              expectedEntryTime: '09:00',
+              status: 'active',
+              modules: dir?.modules || getDefaultModulesForRole('RH'),
+              biometrics: dir?.biometrics || null,
+              faceDescriptor: dir?.biometrics?.faceDescriptor,
+              isBiometricsEnrolled: Boolean(dir?.biometrics?.faceDescriptor?.length),
+              biometricThreshold: DEFAULT_BIOMETRIC_THRESHOLD,
+            },
+            isAuthenticated: true,
+          });
+          return true;
+        }
+
+        // 3. NIVEL SUPERVISOR (Líder de Equipo - Exento de biometría por defecto salvo flag de TI)
+        if (lowerEmail.includes('supervisor') || lowerEmail.includes('silva')) {
+          const isSilva = lowerEmail.includes('silva');
+          const supId = isSilva ? 'sup-1' : 'admin-99';
+          const dir = userPermissionsDirectory[supId];
+          set({
+            user: {
+              id: supId,
+              name: isSilva ? 'Mtro. Roberto' : 'Supervisor',
+              lastName: isSilva ? 'Silva' : 'Prueba',
+              email: isSilva ? 'roberto.silva@russellbedford.mx' : 'supervisor.prueba@russellbedford.mx',
+              role: 'Supervisor',
+              verified: true,
+              isProfileComplete: true,
+              team: 'Administración y Supervisión',
+              expectedEntryTime: '09:00',
+              status: 'active',
+              created_by_ti_id: 'ti-root-01',
+              createdByTiId: 'ti-root-01',
+              assigned_team_members: isSilva
+                ? ['usr-miguel']
+                : ['usr-ana', 'usr-carlos', 'usr-luis', 'usr-sofia'],
+              modules: dir?.modules || getDefaultModulesForRole('Supervisor'),
+              biometrics: dir?.biometrics || null,
+              faceDescriptor: dir?.biometrics?.faceDescriptor,
+              isBiometricsEnrolled: Boolean(dir?.biometrics?.faceDescriptor?.length),
+              biometricThreshold: DEFAULT_BIOMETRIC_THRESHOLD,
+            },
+            isAuthenticated: true,
+          });
+          return true;
+        }
+
+        // 4. NIVEL EMPLEADO / OPERATIVO (Subordinado)
+        if (
+          lowerEmail.includes('colaborador') ||
+          lowerEmail.includes('ana') ||
+          lowerEmail === 'ana@russellbedford.mx' ||
+          lowerEmail === 'colaborador.prueba@russellbedford.mx' ||
+          lowerEmail === 'demo@russellbedford.mx'
+        ) {
+          const dir = userPermissionsDirectory['usr-ana'];
+          set({
+            user: {
+              id: 'usr-ana',
+              name: 'Colaborador',
+              lastName: 'Prueba',
+              email: 'colaborador.prueba@russellbedford.mx',
+              role: 'Empleado',
+              verified: true,
+              isProfileComplete: true,
+              team: 'Auditoría Fiscal',
+              expectedEntryTime: '09:00',
+              status: 'active',
+              supervisor_id: 'admin-99',
+              supervisorId: 'admin-99',
+              supervisorName: 'Supervisor Prueba',
+              modules: dir?.modules || getDefaultModulesForRole('Empleado'),
+              biometrics: dir?.biometrics || null,
+              faceDescriptor: dir?.biometrics?.faceDescriptor,
+              isBiometricsEnrolled: Boolean(dir?.biometrics?.faceDescriptor?.length),
+              biometricThreshold: DEFAULT_BIOMETRIC_THRESHOLD,
+            },
+            isAuthenticated: true,
+            history: generateMockHistory(15),
+            activeCheckin: null,
+          });
+          return true;
+        }
+
+        let existingEmp = mockEmployeesData.find((e) => e.email === lowerEmail);
 
         if (!existingEmp) {
           existingEmp = {
             id: 'user-' + Math.random().toString(36).substring(7),
-            email: email.toLowerCase(),
-            name: email.split('@')[0],
-            team: 'Sin Asignar',
-            status: 'inactive',
-            isProfileComplete: false,
+            email: lowerEmail,
+            name: lowerEmail.split('@')[0],
+            role: 'Empleado',
+            team: 'Auditoría Fiscal',
+            status: 'active',
+            isProfileComplete: true,
             workedMinutesToday: 0,
-            history: [],
-            expectedEntryTime: '09:00' // Regla fija de la compañía (9 AM)
+            history: generateMockHistory(5),
+            expectedEntryTime: '09:00',
+            supervisor_id: 'admin-99',
+            modules: getDefaultModulesForRole('Empleado'),
           };
           set({ mockEmployeesData: [...mockEmployeesData, existingEmp] });
         }
 
-        const activeToday = existingEmp.history.find(h => h.date === getPastDateStr(0) && !h.checkOutTimeMs);
+        const dir = userPermissionsDirectory[existingEmp.id];
+        const activeToday = existingEmp.history.find(
+          (h) => h.date === getPastDateStr(0) && !h.checkOutTimeMs
+        );
 
         set({
           user: {
             id: existingEmp.id,
             name: existingEmp.name,
             email: existingEmp.email,
-            role: 'employee',
+            role: existingEmp.role || 'Empleado',
             verified: true,
             isProfileComplete: existingEmp.isProfileComplete,
             team: existingEmp.team,
-            expectedEntryTime: existingEmp.expectedEntryTime
+            expectedEntryTime: existingEmp.expectedEntryTime,
+            supervisor_id: existingEmp.supervisor_id || 'admin-99',
+            supervisorId: existingEmp.supervisor_id || 'admin-99',
+            modules: dir?.modules || existingEmp.modules || getDefaultModulesForRole(existingEmp.role || 'Empleado'),
+            biometrics: dir?.biometrics || existingEmp.biometrics || null,
+            faceDescriptor: dir?.biometrics?.faceDescriptor || existingEmp.biometrics?.faceDescriptor,
+            isBiometricsEnrolled: Boolean(
+              dir?.biometrics?.faceDescriptor?.length || existingEmp.biometrics?.faceDescriptor?.length
+            ),
+            biometricThreshold: DEFAULT_BIOMETRIC_THRESHOLD,
           },
           isAuthenticated: true,
-          history: [...existingEmp.history], // Historial de este usuario cargado del mock global
-          activeCheckin: activeToday || null
+          history: [...existingEmp.history],
+          activeCheckin: activeToday || null,
         });
 
         return true;
@@ -323,46 +749,254 @@ export const useCheckinStore = create<CheckinState>()(
         set({ user: null, isAuthenticated: false, activeCheckin: null, history: [] });
       },
 
+      loginWithFirebaseUser: (fbUser, invitationData) => {
+        const { mockEmployeesData, userPermissionsDirectory } = get();
+        const userEmail = (fbUser.email || '').toLowerCase();
+
+        let assignedRole: UserRole = 'Empleado';
+        if (invitationData?.role) {
+          assignedRole = normalizeRole(invitationData.role);
+        } else if (userEmail.includes('ti.') || userEmail.includes('root')) {
+          assignedRole = 'TI';
+        } else if (userEmail.includes('rh.') || userEmail.startsWith('rh@')) {
+          assignedRole = 'RH';
+        } else if (userEmail.includes('supervisor')) {
+          assignedRole = 'Supervisor';
+        }
+
+        const defaultMods = getDefaultModulesForRole(assignedRole);
+        const existingDir = userPermissionsDirectory[fbUser.uid];
+        const effectiveMods = existingDir?.modules || defaultMods;
+
+        const rawName = fbUser.displayName || (userEmail ? userEmail.split('@')[0] : 'Colaborador');
+        const [firstName, ...restName] = rawName.split(' ');
+
+        const newEmp: MockEmployee = {
+          id: fbUser.uid,
+          email: userEmail,
+          name: firstName || 'Usuario',
+          role: assignedRole,
+          team: invitationData?.team || (assignedRole === 'Supervisor' ? 'Supervisión General' : 'Auditoría Fiscal'),
+          status: 'active',
+          isProfileComplete: false,
+          workedMinutesToday: 0,
+          history: [],
+          expectedEntryTime: '09:00',
+          supervisor_id: assignedRole === 'Empleado' ? invitationData?.supervisorId || 'admin-99' : null,
+          created_by_ti_id:
+            assignedRole === 'Supervisor'
+              ? invitationData?.created_by_ti_id || invitationData?.supervisorId || 'ti-root-01'
+              : null,
+          modules: effectiveMods,
+          biometrics: existingDir?.biometrics || null,
+        };
+
+        set({
+          mockEmployeesData: [
+            ...mockEmployeesData.filter((e) => e.id !== fbUser.uid && e.email !== userEmail),
+            newEmp,
+          ],
+          userPermissionsDirectory: {
+            ...userPermissionsDirectory,
+            [fbUser.uid]: {
+              id: fbUser.uid,
+              name: rawName,
+              email: userEmail,
+              role: assignedRole,
+              team: newEmp.team,
+              modules: effectiveMods,
+              biometrics: existingDir?.biometrics || null,
+            },
+          },
+          user: {
+            id: newEmp.id,
+            name: newEmp.name,
+            lastName: restName.join(' '),
+            email: newEmp.email,
+            role: assignedRole,
+            verified: true,
+            isProfileComplete: false,
+            team: newEmp.team,
+            expectedEntryTime: '09:00',
+            supervisor_id: newEmp.supervisor_id,
+            supervisorId: newEmp.supervisor_id || undefined,
+            supervisorName: invitationData?.supervisorName,
+            created_by_ti_id: newEmp.created_by_ti_id,
+            createdByTiId: newEmp.created_by_ti_id || undefined,
+            assigned_team_members: assignedRole === 'Supervisor' ? [] : undefined,
+            modules: effectiveMods,
+            biometrics: existingDir?.biometrics || null,
+            faceDescriptor: existingDir?.biometrics?.faceDescriptor,
+            isBiometricsEnrolled: Boolean(existingDir?.biometrics?.faceDescriptor?.length),
+            biometricThreshold: DEFAULT_BIOMETRIC_THRESHOLD,
+          },
+          isAuthenticated: true,
+          history: [],
+          activeCheckin: null,
+        });
+      },
+
       updateProfile: (data) => {
-        const { user, mockEmployeesData } = get();
+        const { user, mockEmployeesData, userPermissionsDirectory } = get();
         if (!user) return;
 
-        const updatedUser = { ...user, ...data, isProfileComplete: true };
-        const updatedMockData = mockEmployeesData.map(emp =>
-          emp.id === user.id ? {
-            ...emp,
-            name: (data.name || '') + ' ' + (data.lastName || ''),
-            team: data.team || emp.team,
-            isProfileComplete: true
-          } : emp
+        const normalizedRole = data.role ? normalizeRole(data.role) : normalizeRole(user.role);
+        const dirEntry = userPermissionsDirectory[user.id];
+        const nextModules =
+          data.modules ||
+          dirEntry?.modules ||
+          (data.role && normalizeRole(data.role) !== normalizeRole(user.role)
+            ? getDefaultModulesForRole(normalizedRole)
+            : user.modules || getDefaultModulesForRole(normalizedRole));
+
+        const fullName = `${data.name || user.name} ${data.lastName ?? user.lastName ?? ''}`.trim();
+
+        const updatedUser: User = {
+          ...user,
+          ...data,
+          role: normalizedRole,
+          modules: nextModules,
+          supervisor_id: data.supervisor_id ?? data.supervisorId ?? user.supervisor_id,
+          supervisorId: data.supervisorId ?? data.supervisor_id ?? user.supervisorId,
+          created_by_ti_id: data.created_by_ti_id ?? data.createdByTiId ?? user.created_by_ti_id,
+          isProfileComplete: data.isProfileComplete ?? true,
+        };
+
+        const updatedMockData = mockEmployeesData.map((emp) =>
+          emp.id === user.id
+            ? {
+                ...emp,
+                name: fullName,
+                team: data.team || emp.team,
+                role: normalizedRole,
+                supervisor_id: updatedUser.supervisor_id,
+                created_by_ti_id: updatedUser.created_by_ti_id,
+                modules: nextModules,
+                isProfileComplete: updatedUser.isProfileComplete,
+              }
+            : emp
         );
 
         set({
           user: updatedUser,
-          mockEmployeesData: updatedMockData
+          mockEmployeesData: updatedMockData,
+          userPermissionsDirectory: {
+            ...userPermissionsDirectory,
+            [user.id]: {
+              id: user.id,
+              name: fullName,
+              email: updatedUser.email,
+              role: normalizedRole,
+              team: updatedUser.team,
+              modules: nextModules,
+              biometrics: updatedUser.biometrics || dirEntry?.biometrics || null,
+            },
+          },
         });
       },
 
-      startCheckin: async (lat, lng, address) => {
+      setBiometricThreshold: (threshold) => {
+        const { user } = get();
+        if (!user) return;
+        const clamped = Math.min(0.65, Math.max(0.42, Number(threshold.toFixed(2))));
+        set({
+          user: {
+            ...user,
+            biometricThreshold: clamped,
+          },
+        });
+      },
+
+      enrollBiometrics: async (descriptor, endpointTarget = 'me', threshold) => {
+        const { user, mockEmployeesData, userPermissionsDirectory, addToast } = get();
+        const vectorRecord = buildBiometricVectorRecord(descriptor);
+
+        if (!user) return vectorRecord;
+
+        // Enviar al endpoint PUT /api/users/me/biometrics y PUT /api/users/:id/biometrics (sin imágenes)
+        const targetParam = endpointTarget === 'me' ? 'me' : user.id;
+        const apiRes = await updateUserBiometricsApi(targetParam, vectorRecord.faceDescriptor, {
+          id: user.id,
+          role: user.role,
+        });
+        if (targetParam === 'me') {
+          await updateUserBiometricsApi(user.id, vectorRecord.faceDescriptor, {
+            id: user.id,
+            role: user.role,
+          });
+        }
+
+        const savedBiometrics = apiRes.biometrics || vectorRecord;
+        const nextThreshold =
+          typeof threshold === 'number'
+            ? Math.min(0.65, Math.max(0.42, threshold))
+            : user.biometricThreshold || DEFAULT_BIOMETRIC_THRESHOLD;
+
+        const updatedUser: User = {
+          ...user,
+          faceDescriptor: savedBiometrics.faceDescriptor,
+          biometrics: savedBiometrics,
+          biometricThreshold: nextThreshold,
+          isBiometricsEnrolled: true,
+        };
+
+        const updatedMockData = mockEmployeesData.map((emp) =>
+          emp.id === user.id
+            ? { ...emp, biometrics: savedBiometrics }
+            : emp
+        );
+
+        const existingDir = userPermissionsDirectory[user.id];
+        const nextDirectory = {
+          ...userPermissionsDirectory,
+          [user.id]: {
+            id: user.id,
+            name: `${user.name} ${user.lastName || ''}`.trim(),
+            email: user.email,
+            role: normalizeRole(user.role),
+            team: user.team,
+            modules: existingDir?.modules || getEffectiveModules(user),
+            biometrics: savedBiometrics,
+          },
+        };
+
+        set({
+          user: updatedUser,
+          mockEmployeesData: updatedMockData,
+          userPermissionsDirectory: nextDirectory,
+        });
+
+        broadcastPermissionsUpdate({ userId: user.id, biometricsUpdated: true });
+        addToast(
+          'Vector biométrico facial guardado (128 floats, 0 imágenes almacenadas).',
+          'success'
+        );
+
+        return savedBiometrics;
+      },
+
+      startCheckin: async (lat, lng, address, matchScore, biometricDistance) => {
         const { user, history, mockEmployeesData, addToast } = get();
         if (!user) return;
 
-        // 1. Backend Simulador (Lógica asíncrona Anti-Fraude)
         const [secureTimeMs, clientIp] = await Promise.all([
           getSecureServerTime(),
-          captureClientIP()
+          captureClientIP(),
         ]);
 
         const { late, minutesLate } = calculateLateness(secureTimeMs, user.expectedEntryTime);
 
         if (late) {
-          addToast(`Registro tardío: Tienes ${minutesLate} minutos de retardo respecto a tu horario (${user.expectedEntryTime} AM).`, 'error');
+          addToast(
+            `Registro tardío: Tienes ${minutesLate} minutos de retardo respecto a tu horario (${user.expectedEntryTime} AM).`,
+            'error'
+          );
         }
 
         const dateIsoStr = new Date(secureTimeMs).toISOString().split('T')[0];
 
         const newRecord: CheckinRecord = {
-          id: Math.random().toString(36).substr(2, 9),
+          id: Math.random().toString(36).substring(2, 11),
           date: dateIsoStr,
           checkInTimeMs: secureTimeMs,
           checkOutTimeMs: null,
@@ -372,21 +1006,25 @@ export const useCheckinStore = create<CheckinState>()(
           totalDurationMinutes: null,
           clientIp,
           isLate: late,
-          minutesLate
+          minutesLate,
+          biometricMatchScore: matchScore ?? null,
+          biometricDistance: biometricDistance ?? null,
         };
 
-        const updatedMockData = mockEmployeesData.map(emp =>
-          emp.id === user.id ? {
-            ...emp,
-            status: 'active' as const,
-            history: [newRecord, ...emp.history]
-          } : emp
+        const updatedMockData = mockEmployeesData.map((emp) =>
+          emp.id === user.id
+            ? {
+                ...emp,
+                status: 'active' as const,
+                history: [newRecord, ...emp.history],
+              }
+            : emp
         );
 
         set({
           activeCheckin: newRecord,
           history: [newRecord, ...history],
-          mockEmployeesData: updatedMockData
+          mockEmployeesData: updatedMockData,
         });
       },
 
@@ -398,26 +1036,28 @@ export const useCheckinStore = create<CheckinState>()(
 
         const newPause: PauseBlock = {
           startMs: secureTimeMs,
-          endMs: null // Pausa abierta
+          endMs: null,
         };
 
         const updatedRecord = {
           ...activeCheckin,
-          pauses: [...activeCheckin.pauses, newPause]
+          pauses: [...activeCheckin.pauses, newPause],
         };
 
-        const updatedMockData = mockEmployeesData.map(emp =>
-          emp.id === user.id ? {
-            ...emp,
-            status: 'inactive' as const,
-            history: emp.history.map(h => h.id === updatedRecord.id ? updatedRecord : h)
-          } : emp
+        const updatedMockData = mockEmployeesData.map((emp) =>
+          emp.id === user.id
+            ? {
+                ...emp,
+                status: 'inactive' as const,
+                history: emp.history.map((h) => (h.id === updatedRecord.id ? updatedRecord : h)),
+              }
+            : emp
         );
 
         set({
           activeCheckin: updatedRecord,
-          history: history.map(r => r.id === updatedRecord.id ? updatedRecord : r),
-          mockEmployeesData: updatedMockData
+          history: history.map((r) => (r.id === updatedRecord.id ? updatedRecord : r)),
+          mockEmployeesData: updatedMockData,
         });
       },
 
@@ -427,27 +1067,28 @@ export const useCheckinStore = create<CheckinState>()(
 
         const secureTimeMs = await getSecureServerTime();
 
-        // Cerrar la última pausa abierta
         const updatedPauses = [...activeCheckin.pauses];
         updatedPauses[updatedPauses.length - 1].endMs = secureTimeMs;
 
         const updatedRecord = {
           ...activeCheckin,
-          pauses: updatedPauses
+          pauses: updatedPauses,
         };
 
-        const updatedMockData = mockEmployeesData.map(emp =>
-          emp.id === user.id ? {
-            ...emp,
-            status: 'active' as const,
-            history: emp.history.map(h => h.id === updatedRecord.id ? updatedRecord : h)
-          } : emp
+        const updatedMockData = mockEmployeesData.map((emp) =>
+          emp.id === user.id
+            ? {
+                ...emp,
+                status: 'active' as const,
+                history: emp.history.map((h) => (h.id === updatedRecord.id ? updatedRecord : h)),
+              }
+            : emp
         );
 
         set({
           activeCheckin: updatedRecord,
-          history: history.map(r => r.id === updatedRecord.id ? updatedRecord : r),
-          mockEmployeesData: updatedMockData
+          history: history.map((r) => (r.id === updatedRecord.id ? updatedRecord : r)),
+          mockEmployeesData: updatedMockData,
         });
       },
 
@@ -457,35 +1098,33 @@ export const useCheckinStore = create<CheckinState>()(
 
         const secureTimeMs = await getSecureServerTime();
 
-        // Validar si dejaron la pausa activa antes de salir
         const updatedPauses = [...activeCheckin.pauses];
         if (updatedPauses.length > 0 && !updatedPauses[updatedPauses.length - 1].endMs) {
           updatedPauses[updatedPauses.length - 1].endMs = secureTimeMs;
         }
 
-        // Calcular minutos efectivos
         let totalPauseMs = 0;
-        updatedPauses.forEach(p => {
-          if (p.endMs) totalPauseMs += (p.endMs - p.startMs);
+        updatedPauses.forEach((p) => {
+          if (p.endMs) totalPauseMs += p.endMs - p.startMs;
         });
 
-        const effectiveMs = (secureTimeMs - activeCheckin.checkInTimeMs) - totalPauseMs;
+        const effectiveMs = secureTimeMs - activeCheckin.checkInTimeMs - totalPauseMs;
         const durationMinutes = Math.floor(effectiveMs / 60000);
 
         const updatedRecord: CheckinRecord = {
           ...activeCheckin,
           pauses: updatedPauses,
           checkOutTimeMs: secureTimeMs,
-          totalDurationMinutes: durationMinutes
+          totalDurationMinutes: durationMinutes,
         };
 
-        const updatedMockData = mockEmployeesData.map(emp => {
+        const updatedMockData = mockEmployeesData.map((emp) => {
           if (emp.id === user.id) {
             return {
               ...emp,
               status: 'inactive' as const,
               workedMinutesToday: emp.workedMinutesToday + durationMinutes,
-              history: emp.history.map(h => h.id === updatedRecord.id ? updatedRecord : h)
+              history: emp.history.map((h) => (h.id === updatedRecord.id ? updatedRecord : h)),
             };
           }
           return emp;
@@ -493,8 +1132,8 @@ export const useCheckinStore = create<CheckinState>()(
 
         set({
           activeCheckin: null,
-          history: history.map(r => r.id === updatedRecord.id ? updatedRecord : r),
-          mockEmployeesData: updatedMockData
+          history: history.map((r) => (r.id === updatedRecord.id ? updatedRecord : r)),
+          mockEmployeesData: updatedMockData,
         });
       },
 
@@ -509,18 +1148,77 @@ export const useCheckinStore = create<CheckinState>()(
       },
       registerUser: (email: string, _password?: string) => {
         set({ pendingEmail: email, verificationType: 'registration' });
-      }
+      },
     }),
     {
       name: 'checkin-rb-storage',
-      partialize: (state) => ({
-        mockEmployeesData: state.mockEmployeesData,
-        user: state.user,
-        isAuthenticated: state.isAuthenticated,
-        activeCheckin: state.activeCheckin,
-        history: state.history,
-        tasks: state.tasks
-      }),
+      partialize: (state) => {
+        // Garantizar en persistencia que jamás se guarde ninguna imagen biométrica base64 heredada
+        const cleanUser = state.user
+          ? (() => {
+              const copy = { ...state.user } as Record<string, unknown>;
+              delete copy.enrolledFacePhoto;
+              delete copy.facePhotoUrl;
+              return copy as unknown as User;
+            })()
+          : null;
+
+        return {
+          mockEmployeesData: state.mockEmployeesData,
+          userPermissionsDirectory: state.userPermissionsDirectory,
+          user: cleanUser,
+          isAuthenticated: state.isAuthenticated,
+          activeCheckin: state.activeCheckin,
+          history: state.history,
+          theme: state.theme || 'dark',
+        };
+      },
+      onRehydrateStorage: () => (state) => {
+        const currentTheme = state?.theme || 'dark';
+        if (typeof document !== 'undefined') {
+          if (currentTheme === 'dark') {
+            document.documentElement.classList.add('dark');
+          } else {
+            document.documentElement.classList.remove('dark');
+          }
+          document.documentElement.setAttribute('data-theme', currentTheme);
+        }
+      },
     }
   )
 );
+
+// Sincronización en caliente entre pestañas cuando TI cambia permisos por checkboxes
+if (typeof window !== 'undefined') {
+  const syncFromStorage = () => {
+    useCheckinStore.persist.rehydrate();
+    const state = useCheckinStore.getState();
+    if (state.user && state.userPermissionsDirectory[state.user.id]) {
+      const latestDir = state.userPermissionsDirectory[state.user.id];
+      useCheckinStore.setState({
+        user: {
+          ...state.user,
+          modules: latestDir.modules,
+          biometrics: latestDir.biometrics ?? state.user.biometrics,
+          faceDescriptor:
+            latestDir.biometrics?.faceDescriptor ?? state.user.faceDescriptor,
+          isBiometricsEnrolled: Boolean(
+            latestDir.biometrics?.faceDescriptor?.length || state.user.faceDescriptor?.length
+          ),
+        },
+      });
+    }
+  };
+
+  permissionsRealtimeChannel?.addEventListener('message', (event) => {
+    if (event.data?.type === 'PERMISSIONS_OR_BIOMETRICS_UPDATED') {
+      syncFromStorage();
+    }
+  });
+
+  window.addEventListener('storage', (e) => {
+    if (e.key === 'checkin-rb-storage') {
+      syncFromStorage();
+    }
+  });
+}

@@ -13,17 +13,19 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   isLoading?: boolean;
 }
 
-export function Button({ 
-  children, 
-  variant = 'primary', 
-  size = 'md', 
-  className, 
+export function Button({
+  children,
+  variant = 'primary',
+  size = 'md',
+  className,
   isLoading,
-  ...props 
+  ...props
 }: ButtonProps) {
-  
+
   const baseStyles = "inline-flex items-center justify-center rounded font-medium transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none";
-  
+
+
+
   const variants = {
     primary: "bg-rb-navy text-white hover:bg-rb-navy/90 hover:shadow-md focus:ring-rb-navy",
     secondary: "bg-rb-turquoise text-white hover:bg-rb-navy focus:ring-rb-turquoise",

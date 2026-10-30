@@ -1,146 +1,212 @@
-import React, { useState, useRef } from 'react';
-import { Menu, Plus, Search, HelpCircle, Sparkles, User, LogOut, Camera } from 'lucide-react';
+import { useState, useMemo, useEffect } from 'react';
+import { RefreshCw, Search, HelpCircle, User, LogOut, ShieldAlert, Sliders, Sun, Moon } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { useCheckinStore } from '../../store/useCheckinStore';
+import { useGamificationStore } from '../../store/useGamificationStore';
+import { useHelpTourStore } from '../../store/useHelpTourStore';
+import { calculateGamification } from '../../services/gamification';
+import { logoutFirebase } from '../../services/firebase';
+import { normalizeRole, getEffectiveModules } from '../../services/rbac';
+import { RankMedal } from './RankMedal';
+import { UserProfileModal } from './UserProfileModal';
+import { NotificationBell } from './NotificationBell';
+import { HelpDrawer } from '../help/HelpDrawer';
+import { ProductTour } from '../help/ProductTour';
 
 export function GlobalHeader() {
-  const { user, logout, updateProfile, addToast, addTask } = useCheckinStore();
-  const [isProfileOpen, setIsProfileOpen] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const navigate = useNavigate();
+  const { user, getEffectiveUserModules, addToast, history, activeCheckin, logout, theme, toggleTheme } = useCheckinStore();
+  const {
+    manualEditsByDate,
+    taskSwitchesByDate,
+    checkAndResetSeason,
+  } = useGamificationStore();
 
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        updateProfile({ profileImage: reader.result as string });
-        addToast('Imagen de perfil actualizada correctamente', 'success');
-        setIsProfileOpen(false);
-      };
-      reader.readAsDataURL(file);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [isReloading, setIsReloading] = useState(false);
+  const { toggleHelpDrawer } = useHelpTourStore();
+
+  const normalizedRole = normalizeRole(user?.role);
+  const effectiveModules = getEffectiveUserModules(user?.id) || getEffectiveModules(user);
+  const hideTasksAndProjectsUI = normalizedRole === 'RH' || (!effectiveModules.tasks && !effectiveModules.clients);
+
+  const gamification = useMemo(() => {
+    return calculateGamification({
+      history,
+      activeCheckin,
+      manualEditsByDate,
+      taskSwitchesByDate,
+      expectedEntryTime: user?.expectedEntryTime || '09:00',
+    });
+  }, [history, activeCheckin, manualEditsByDate, taskSwitchesByDate, user]);
+
+  useEffect(() => {
+    checkAndResetSeason(gamification.points, gamification.rank.tier);
+  }, [gamification.points, gamification.rank.tier, checkAndResetSeason]);
+
+  const handleReload = () => {
+    setIsReloading(true);
+    addToast('Recargando datos...', 'info');
+    setTimeout(() => {
+      window.location.reload();
+    }, 250);
+  };
+
+  const handleQuickLogout = async () => {
+    await logoutFirebase();
+    logout();
+    addToast('Sesión cerrada. Regresando a pantalla de inicio.', 'info');
+  };
+
+  const getRoleBadgeStyle = () => {
+    switch (normalizedRole) {
+      case 'TI':
+        return 'bg-[#1E40AF]/20 text-[#38BDF8] border-[#1E40AF]/50';
+      case 'Supervisor':
+        return 'bg-[#0F172A] text-[#38BDF8] border-[#233354]';
+      case 'RH':
+        return 'bg-[#1A2742] text-[#F59E0B] border-[#F59E0B]/40';
+      default:
+        return 'bg-[#1A2742] text-[#F8FAFC] border-[#233354]';
     }
   };
 
-  const handleCreateTask = () => {
-    addTask({
-      title: 'Nueva Tarea Creada desde el Menú',
-      description: '',
-      status: 'pending',
-      timeSpent: '00:00',
-      estimatedTime: '60m',
-      assignee: user?.name,
-      dueDate: new Date().toLocaleDateString(),
-    });
-    addToast('Tarea creada exitosamente. Revisa tu tablero.', 'success');
-  };
-
   return (
-    <header className="bg-[#2B2B2B] text-slate-300 h-14 flex items-center justify-between px-4 sticky top-0 z-50">
-      
-      {/* Lado Izquierdo */}
-      <div className="flex items-center space-x-4 w-1/4">
-        <button className="p-1.5 hover:bg-white/10 rounded-md transition-colors text-slate-400">
-          <Menu className="w-5 h-5" />
-        </button>
-        <button 
-          onClick={handleCreateTask}
-          className="flex items-center space-x-1.5 bg-white/5 hover:bg-white/10 border border-white/10 px-3 py-1.5 rounded-full transition-colors text-sm font-medium text-slate-200"
-        >
-          <div className="bg-[#FF5A5A] rounded-full p-0.5">
-            <Plus className="w-3.5 h-3.5 text-white" strokeWidth={3} />
-          </div>
-          <span>Create</span>
-        </button>
-      </div>
-
-      {/* Centro (Buscador) */}
-      <div className="flex-1 flex justify-center max-w-2xl">
-        <div className="relative w-full">
-          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-          <input 
-            type="text" 
-            placeholder="Search Phoenix" 
-            className="w-full bg-[#3B3B3B] text-slate-200 placeholder:text-slate-400 text-sm rounded-full py-1.5 pl-9 pr-4 border border-transparent focus:border-slate-500 focus:outline-none focus:bg-[#444] transition-all"
-          />
-        </div>
-      </div>
-
-      {/* Lado Derecho */}
-      <div className="flex items-center justify-end space-x-4 w-1/4">
-        
-        <button 
-          onClick={() => addToast('Centro de ayuda en construcción', 'info')}
-          className="w-7 h-7 rounded-full border border-slate-500 flex items-center justify-center text-slate-400 hover:text-slate-200 hover:border-slate-400 transition-colors"
-        >
-          <HelpCircle className="w-4 h-4" />
-        </button>
-        
-        <button 
-          onClick={() => addToast('Características IA próximamente', 'info')}
-          className="text-pink-400 hover:text-pink-300 transition-colors"
-        >
-          <Sparkles className="w-5 h-5" />
-        </button>
-
-        {/* Perfil Pill */}
-        <div className="relative">
-          <button 
-            onClick={() => setIsProfileOpen(!isProfileOpen)}
-            className="flex items-center bg-white rounded-full p-0.5 pl-2 shadow-sm border border-slate-200 hover:shadow-md transition-shadow h-9"
+    <>
+      <header className="bg-[#131D31] text-[#F8FAFC] border-b border-[#233354] h-14 flex items-center justify-between px-4 sticky top-0 z-40">
+        {/* Lado Izquierdo: Botón de Recargar + Indicador de Rol RBAC */}
+        <div className="flex items-center space-x-2.5 w-1/4">
+          <button
+            onClick={handleReload}
+            title="Recargar página"
+            className="flex items-center justify-center w-8 h-8 rounded-md bg-[#1A2742] hover:bg-[#233354] text-[#94A3B8] hover:text-[#F8FAFC] transition-colors cursor-pointer border border-[#233354] group"
+            aria-label="Recargar"
           >
-            {/* Ilustración de decoración */}
-            <div className="mr-2 hidden sm:block">
-               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M12 2L15 8L22 9L17 14L18.5 21L12 17.5L5.5 21L7 14L2 9L9 8L12 2Z" fill="#FFC75F" />
-                <path d="M12 2L15 8L22 9L17 14L18.5 21L12 17.5V2Z" fill="#FF9671" />
-              </svg>
+            <RefreshCw
+              className={`w-3.5 h-3.5 transition-transform duration-500 ${
+                isReloading ? 'animate-spin' : 'group-hover:rotate-180'
+              }`}
+            />
+          </button>
+
+          <span
+            className={`text-[10px] font-heading font-bold uppercase tracking-wider px-2 py-0.5 rounded-md border hidden sm:inline-flex items-center space-x-1 ${getRoleBadgeStyle()}`}
+          >
+            <span>ROL: {normalizedRole}</span>
+          </span>
+        </div>
+
+        {/* Centro: Si es RH o tiene módulos tasks/clients deshabilitados, no renderiza buscador de proyectos/tareas */}
+        <div className="flex-1 flex justify-center max-w-2xl">
+          {hideTasksAndProjectsUI ? (
+            <div className="flex items-center space-x-2 bg-[#1A2742] border border-[#233354] text-[#38BDF8] px-3.5 py-1.5 rounded-md text-xs font-medium">
+              <ShieldAlert className="w-4 h-4 text-[#38BDF8] shrink-0" />
+              <span className="truncate">
+                {normalizedRole === 'RH'
+                  ? 'PERFIL RH RESTRINGIDO • Solo Lectura de Asistencia y Horas (Sin acceso a Tareas ni Clientes)'
+                  : 'MODO ASISTENCIA PURA • Módulo de Tareas deshabilitado para tu cuenta por TI'}
+              </span>
             </div>
-            
-            {/* Avatar */}
-            <div className="w-7 h-7 rounded-full overflow-hidden bg-slate-200 border border-slate-100 flex items-center justify-center">
+          ) : (
+            <div className="relative w-full">
+              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-[#94A3B8]" />
+              <input
+                type="text"
+                placeholder="Buscar proyectos, tareas o personas..."
+                className="w-full bg-[#1A2742] text-[#F8FAFC] placeholder:text-[#64748B] text-xs rounded-md py-1.5 pl-9 pr-3.5 border border-[#233354] focus:border-[#38BDF8] transition-all"
+              />
+            </div>
+          )}
+        </div>
+
+        {/* Lado Derecho */}
+        <div className="flex items-center justify-end space-x-2 w-1/4">
+          {normalizedRole === 'TI' && (
+            <button
+              onClick={() => navigate('/admin/users-permissions')}
+              className="hidden xl:inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-md bg-[#1E40AF] hover:bg-[#1D4ED8] text-white border border-[#1E40AF] text-[11px] font-heading font-semibold cursor-pointer transition-colors shadow-xs"
+              title="Abrir matriz de módulos por usuario (/admin/users-permissions)"
+            >
+              <Sliders className="w-3.5 h-3.5 text-[#38BDF8]" />
+              <span>Permisos</span>
+            </button>
+          )}
+
+          {/* Botón de Tonalidad Rápido (Claro / Oscuro) */}
+          <button
+            onClick={toggleTheme}
+            className="w-8 h-8 rounded-md bg-[#1A2742] border border-[#233354] flex items-center justify-center text-[#94A3B8] hover:text-[#F8FAFC] hover:border-[#38BDF8] transition-colors cursor-pointer"
+            title={theme === 'dark' ? 'Cambiar a Tonalidad Clara' : 'Cambiar a Tonalidad Oscura'}
+            aria-label="Cambiar tema claro u oscuro"
+          >
+            {theme === 'dark' ? (
+              <Sun className="w-4 h-4 text-amber-400 hover:text-amber-300 transition-transform hover:rotate-45" />
+            ) : (
+              <Moon className="w-4 h-4 text-slate-700 hover:text-blue-600 transition-transform hover:-rotate-12" />
+            )}
+          </button>
+
+          <button
+            id="btn-help"
+            onClick={toggleHelpDrawer}
+            className="w-8 h-8 rounded-md bg-[#1A2742] border border-[#233354] flex items-center justify-center text-[#94A3B8] hover:text-[#F8FAFC] hover:border-[#38BDF8] transition-colors cursor-pointer"
+            title="Ayuda y Guías Interactivas"
+            aria-label="Abrir centro de ayuda"
+          >
+            <HelpCircle className="w-4 h-4" />
+          </button>
+
+          {/* Bandeja de Notificaciones de Tareas (oculta para RH o si user.modules.tasks === false) */}
+          {normalizedRole !== 'RH' && effectiveModules.tasks && <NotificationBell />}
+
+          {/* Pastilla de Perfil */}
+          <button
+            id="nav-settings"
+            onClick={() => setProfileOpen(true)}
+            title={`Rol: ${normalizedRole} • Rango: ${gamification.rank.title}. Haz clic para ver perfil y ajustes.`}
+            className="group flex items-center bg-[#1A2742] rounded-md p-1 pl-2 border border-[#233354] hover:border-[#38BDF8] transition-all h-8 cursor-pointer select-none"
+          >
+            <div className="mr-1.5 flex items-center">
+              <RankMedal tier={gamification.rank.tier} size="sm" />
+            </div>
+
+            <span className="text-xs font-medium text-[#F8FAFC] hidden lg:inline-block mr-2 max-w-[120px] truncate">
+              {user?.name} {user?.lastName || ''}
+            </span>
+
+            <div
+              className="w-6 h-6 rounded-md overflow-hidden bg-[#0B111E] border border-[#233354] flex items-center justify-center transition-transform group-hover:scale-105"
+            >
               {user?.profileImage ? (
                 <img src={user.profileImage} alt="Profile" className="w-full h-full object-cover" />
               ) : (
-                <User className="w-4 h-4 text-slate-500" />
+                <User className="w-3.5 h-3.5 text-[#94A3B8]" />
               )}
             </div>
           </button>
 
-          {/* Menú Desplegable */}
-          {isProfileOpen && (
-            <div className="absolute right-0 top-full mt-2 w-56 bg-white rounded-xl shadow-xl border border-slate-200 py-2 z-50 animate-fade-in text-slate-800">
-              <div className="px-4 py-3 border-b border-slate-100 mb-2">
-                <p className="font-semibold text-sm truncate">{user?.name} {user?.lastName}</p>
-                <p className="text-xs text-slate-500 truncate">{user?.email}</p>
-              </div>
-              
-              <button 
-                onClick={() => fileInputRef.current?.click()}
-                className="w-full flex items-center px-4 py-2 text-sm hover:bg-slate-50 transition-colors"
-              >
-                <Camera className="w-4 h-4 mr-3 text-slate-400" />
-                Cambiar Imagen
-              </button>
-              
-              <input 
-                type="file" 
-                accept="image/*" 
-                ref={fileInputRef} 
-                onChange={handleImageUpload} 
-                className="hidden" 
-              />
-              
-              <button 
-                onClick={logout}
-                className="w-full flex items-center px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors"
-              >
-                <LogOut className="w-4 h-4 mr-3" />
-                Cerrar Sesión
-              </button>
-            </div>
-          )}
+          {/* Botón de Salir Rápido */}
+          <button
+            onClick={handleQuickLogout}
+            title="Cerrar sesión e ir a la pantalla de inicio"
+            className="flex items-center justify-center w-8 h-8 rounded-md bg-[#1A2742] hover:bg-[#E11D48]/20 text-[#94A3B8] hover:text-[#E11D48] transition-colors cursor-pointer border border-[#233354] hover:border-[#E11D48]/40"
+          >
+            <LogOut className="w-3.5 h-3.5" />
+          </button>
         </div>
-        
-      </div>
-    </header>
+      </header>
+
+      {/* Modal de Perfil y Ajustes */}
+      <UserProfileModal
+        isOpen={profileOpen}
+        onClose={() => setProfileOpen(false)}
+      />
+
+      {/* Drawer Lateral de Ayuda Contextual por Rol */}
+      <HelpDrawer />
+
+      {/* Motor de Recorrido Interactivo Paso a Paso (Product Tour) */}
+      <ProductTour />
+    </>
   );
 }

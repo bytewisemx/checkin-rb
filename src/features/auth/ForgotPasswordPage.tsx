@@ -33,7 +33,7 @@ export function ForgotPasswordPage() {
       
       <div className="glass w-full max-w-md p-8 rounded-2xl z-10 shadow-xl">
         <Link to="/login" className="inline-flex items-center text-sm text-slate-500 hover:text-rb-navy mb-6 transition-colors">
-          <ArrowLeft className="w-4 h-4 mr-1" /> Volver al Login
+          <ArrowLeft className="w-4 h-4 mr-1" /> Volver al Inicio de Sesión
         </Link>
         
         <div className="flex flex-col items-center mb-6">
