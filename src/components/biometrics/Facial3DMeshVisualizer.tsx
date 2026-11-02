@@ -1,8 +1,12 @@
 import { useEffect, useRef } from 'react';
+import { CameraOff, AlertTriangle, ScanFace } from 'lucide-react';
 
 interface Facial3DMeshVisualizerProps {
   matchScore: number;
   isSuccess?: boolean;
+  faceDetected?: boolean;
+  cameraActive?: boolean;
+  cameraError?: string | null;
   statusText?: string;
   className?: string;
 }
@@ -48,9 +52,9 @@ const FACE_3D_VERTICES: Vertex3D[] = [
   // Nariz - Puente y punta (19-23)
   { x: 0.0, y: -0.48, z: 0.2 },
   { x: 0.0, y: -0.25, z: 0.35 },
-  { x: 0.0, y: -0.05, z: 0.45 }, // Punta nariz (más saliente)
-  { x: -0.14, y: 0.02, z: 0.28 }, // Fosa izq
-  { x: 0.14, y: 0.02, z: 0.28 }, // Fosa der
+  { x: 0.0, y: -0.05, z: 0.45 },
+  { x: -0.14, y: 0.02, z: 0.28 },
+  { x: 0.14, y: 0.02, z: 0.28 },
 
   // Pómulos (24-25)
   { x: -0.58, y: -0.15, z: 0.05 },
@@ -59,24 +63,23 @@ const FACE_3D_VERTICES: Vertex3D[] = [
   // Boca exterior (26-31)
   { x: -0.28, y: 0.28, z: 0.15 },
   { x: -0.12, y: 0.22, z: 0.25 },
-  { x: 0.0, y: 0.24, z: 0.28 }, // Centro labio sup
+  { x: 0.0, y: 0.24, z: 0.28 },
   { x: 0.12, y: 0.22, z: 0.25 },
   { x: 0.28, y: 0.28, z: 0.15 },
-  { x: 0.0, y: 0.42, z: 0.22 }, // Centro labio inf
+  { x: 0.0, y: 0.42, z: 0.22 },
 
   // Mandíbula y barbilla (32-38)
   { x: -0.72, y: -0.3, z: -0.2 },
   { x: -0.68, y: 0.15, z: -0.15 },
   { x: -0.48, y: 0.55, z: -0.05 },
   { x: -0.22, y: 0.78, z: 0.1 },
-  { x: 0.0, y: 0.88, z: 0.2 }, // Barbilla
+  { x: 0.0, y: 0.88, z: 0.2 },
   { x: 0.22, y: 0.78, z: 0.1 },
   { x: 0.48, y: 0.55, z: -0.05 },
   { x: 0.68, y: 0.15, z: -0.15 },
   { x: 0.72, y: -0.3, z: -0.2 },
 ];
 
-// Aristas de la red poligonal 3D
 const FACE_3D_EDGES: [number, number][] = [
   // Frente
   [0, 1], [1, 2], [2, 3], [3, 4],
@@ -112,18 +115,23 @@ const FACE_3D_EDGES: [number, number][] = [
   [36, 37], [37, 38], [38, 39], [39, 4],
   [31, 36], [35, 31], [37, 31],
 
-  // Triangulación cruzada para aspecto de red neuronal / malla poligonal
+  // Triangulación cruzada
   [1, 6], [3, 9], [14, 22], [18, 23], [27, 35], [29, 37],
 ];
 
 export function Facial3DMeshVisualizer({
   matchScore,
   isSuccess = false,
-  statusText = 'Ajustando parámetros vectoriales...',
+  faceDetected = false,
+  cameraActive = false,
+  cameraError = null,
+  statusText = 'Alineando sensor...',
   className = '',
 }: Facial3DMeshVisualizerProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animFrameRef = useRef<number | null>(null);
+
+  const effectiveSuccess = Boolean(isSuccess && matchScore >= 70 && faceDetected);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -141,7 +149,7 @@ export function Facial3DMeshVisualizer({
       const height = canvas.height;
       ctx.clearRect(0, 0, width, height);
 
-      // Fondo cibernético oscuro con cuadrícula de perspectiva sutil
+      // Fondo cibernético
       const bgGrad = ctx.createRadialGradient(
         width / 2,
         height / 2,
@@ -150,10 +158,15 @@ export function Facial3DMeshVisualizer({
         height / 2,
         width * 0.7
       );
-      if (isSuccess || matchScore >= 70) {
+
+      if (effectiveSuccess) {
         bgGrad.addColorStop(0, '#042f2e');
         bgGrad.addColorStop(0.5, '#021817');
         bgGrad.addColorStop(1, '#020b0b');
+      } else if (cameraError) {
+        bgGrad.addColorStop(0, '#2e0404');
+        bgGrad.addColorStop(0.5, '#170202');
+        bgGrad.addColorStop(1, '#0b0202');
       } else {
         bgGrad.addColorStop(0, '#0f172a');
         bgGrad.addColorStop(0.6, '#090d16');
@@ -162,8 +175,12 @@ export function Facial3DMeshVisualizer({
       ctx.fillStyle = bgGrad;
       ctx.fillRect(0, 0, width, height);
 
-      // Dibujar cuadrícula de calibración en el fondo
-      ctx.strokeStyle = isSuccess || matchScore >= 70 ? 'rgba(16, 185, 129, 0.08)' : 'rgba(56, 189, 248, 0.06)';
+      // Cuadrícula de calibración
+      ctx.strokeStyle = effectiveSuccess
+        ? 'rgba(16, 185, 129, 0.08)'
+        : cameraError
+        ? 'rgba(239, 68, 68, 0.08)'
+        : 'rgba(56, 189, 248, 0.06)';
       ctx.lineWidth = 1;
       const gridSize = 32;
       for (let x = 0; x < width; x += gridSize) {
@@ -179,9 +196,20 @@ export function Facial3DMeshVisualizer({
         ctx.stroke();
       }
 
-      // Parámetros de rotación 3D suaves (efecto escaneo que orbita el rostro)
-      const rotY = Math.sin(time * 0.9) * 0.28; // Rotación sobre eje Y (giro izq/der)
-      const rotX = Math.cos(time * 0.7) * 0.12 - 0.05; // Cabeceo arriba/abajo
+      // Si hay error de cámara o no está activa, no animamos la red facial activa
+      if (cameraError || !cameraActive) {
+        animFrameRef.current = requestAnimationFrame(render);
+        return;
+      }
+
+      // Parámetros de rotación 3D (si detecta rostro se estabiliza, si no oscila buscando)
+      const rotY = faceDetected
+        ? Math.sin(time * 0.4) * 0.12
+        : Math.sin(time * 0.9) * 0.32;
+      const rotX = faceDetected
+        ? Math.cos(time * 0.3) * 0.06 - 0.03
+        : Math.cos(time * 0.7) * 0.12 - 0.05;
+
       const scale = Math.min(width, height) * 0.42;
       const cx = width / 2;
       const cy = height / 2 + 10;
@@ -189,19 +217,16 @@ export function Facial3DMeshVisualizer({
 
       // Proyección 3D de los vértices
       const projected = FACE_3D_VERTICES.map((v) => {
-        // Rotación Y
         const cosY = Math.cos(rotY);
         const sinY = Math.sin(rotY);
         const x1 = v.x * cosY + v.z * sinY;
         const z1 = -v.x * sinY + v.z * cosY;
 
-        // Rotación X
         const cosX = Math.cos(rotX);
         const sinX = Math.sin(rotX);
         const y2 = v.y * cosX - z1 * sinX;
         const z2 = v.y * sinX + z1 * cosX;
 
-        // Proyección en perspectiva
         const perspective = fovDistance / (fovDistance + z2);
         const px = cx + x1 * scale * perspective;
         const py = cy + y2 * scale * perspective;
@@ -209,15 +234,24 @@ export function Facial3DMeshVisualizer({
         return { px, py, z: z2, perspective };
       });
 
-      const effectiveSuccess = isSuccess || matchScore >= 70;
-      const primaryColor = effectiveSuccess ? '#10B981' : '#38BDF8';
-      const secondaryColor = effectiveSuccess ? '#34D399' : '#0284C7';
+      const primaryColor = effectiveSuccess
+        ? '#10B981'
+        : faceDetected
+        ? '#38BDF8'
+        : '#64748B'; // Gris tenue si no detecta rostro
+      const secondaryColor = effectiveSuccess
+        ? '#34D399'
+        : faceDetected
+        ? '#0284C7'
+        : '#334155';
       const edgeColor = effectiveSuccess
         ? 'rgba(16, 185, 129, 0.45)'
-        : 'rgba(56, 189, 248, 0.35)';
+        : faceDetected
+        ? 'rgba(56, 189, 248, 0.35)'
+        : 'rgba(100, 116, 139, 0.2)';
 
-      // 1. Dibujar Aristas de la Red 3D
-      ctx.lineWidth = 1.3;
+      // 1. Aristas de la Red 3D
+      ctx.lineWidth = 1.2;
       ctx.strokeStyle = edgeColor;
       FACE_3D_EDGES.forEach(([i, j]) => {
         const p1 = projected[i];
@@ -230,14 +264,13 @@ export function Facial3DMeshVisualizer({
         ctx.stroke();
       });
 
-      // 2. Dibujar Vértices y Nodos de la Red 3D
+      // 2. Vértices y Nodos
       projected.forEach((p, idx) => {
-        const radius = Math.max(1.5, 3.2 * p.perspective);
+        const radius = Math.max(1.4, 3.0 * p.perspective);
 
-        // Halo suave en nodos principales (nariz, ojos, barbilla)
-        if (idx === 21 || idx === 12 || idx === 16 || idx === 36) {
+        if (faceDetected && (idx === 21 || idx === 12 || idx === 16 || idx === 36)) {
           ctx.beginPath();
-          ctx.arc(p.px, p.py, radius * 2.8, 0, Math.PI * 2);
+          ctx.arc(p.px, p.py, radius * 2.5, 0, Math.PI * 2);
           ctx.fillStyle = effectiveSuccess
             ? 'rgba(16, 185, 129, 0.25)'
             : 'rgba(56, 189, 248, 0.2)';
@@ -248,55 +281,47 @@ export function Facial3DMeshVisualizer({
         ctx.arc(p.px, p.py, radius, 0, Math.PI * 2);
         ctx.fillStyle = primaryColor;
         ctx.shadowColor = primaryColor;
-        ctx.shadowBlur = effectiveSuccess ? 12 : 6;
+        ctx.shadowBlur = effectiveSuccess ? 12 : faceDetected ? 6 : 0;
         ctx.fill();
         ctx.shadowBlur = 0;
       });
 
-      // 3. Línea de Escáner Láser que barre la Red 3D verticalmente
-      const scanY = cy + Math.sin(time * 2.2) * (scale * 0.95);
+      // 3. Línea de Escaneo Láser (solo si hay cámara activa)
+      const scanY = cy + Math.sin(time * 2.0) * (scale * 0.95);
       const laserGrad = ctx.createLinearGradient(0, scanY, width, scanY);
       laserGrad.addColorStop(0, 'rgba(0,0,0,0)');
-      laserGrad.addColorStop(0.3, effectiveSuccess ? 'rgba(16, 185, 129, 0.3)' : 'rgba(56, 189, 248, 0.3)');
+      laserGrad.addColorStop(0.3, effectiveSuccess ? 'rgba(16, 185, 129, 0.3)' : 'rgba(56, 189, 248, 0.25)');
       laserGrad.addColorStop(0.5, effectiveSuccess ? '#34D399' : '#38BDF8');
-      laserGrad.addColorStop(0.7, effectiveSuccess ? 'rgba(16, 185, 129, 0.3)' : 'rgba(56, 189, 248, 0.3)');
+      laserGrad.addColorStop(0.7, effectiveSuccess ? 'rgba(16, 185, 129, 0.3)' : 'rgba(56, 189, 248, 0.25)');
       laserGrad.addColorStop(1, 'rgba(0,0,0,0)');
 
       ctx.fillStyle = laserGrad;
       ctx.fillRect(cx - scale * 0.9, scanY - 1.5, scale * 1.8, 3);
 
-      // Resplandor del láser
-      ctx.fillStyle = effectiveSuccess ? 'rgba(16, 185, 129, 0.08)' : 'rgba(56, 189, 248, 0.06)';
-      ctx.fillRect(cx - scale * 0.9, scanY - 14, scale * 1.8, 28);
-
-      // 4. Retícula en las cuatro esquinas (estilo visor HUD biométrico)
+      // 4. Retícula en las esquinas
       const bracketSize = 18;
       const margin = 20;
       ctx.strokeStyle = secondaryColor;
       ctx.lineWidth = 2;
 
-      // Sup-Izq
       ctx.beginPath();
       ctx.moveTo(margin, margin + bracketSize);
       ctx.lineTo(margin, margin);
       ctx.lineTo(margin + bracketSize, margin);
       ctx.stroke();
 
-      // Sup-Der
       ctx.beginPath();
       ctx.moveTo(width - margin - bracketSize, margin);
       ctx.lineTo(width - margin, margin);
       ctx.lineTo(width - margin, margin + bracketSize);
       ctx.stroke();
 
-      // Inf-Izq
       ctx.beginPath();
       ctx.moveTo(margin, height - margin - bracketSize);
       ctx.lineTo(margin, height - margin);
       ctx.lineTo(margin + bracketSize, height - margin);
       ctx.stroke();
 
-      // Inf-Der
       ctx.beginPath();
       ctx.moveTo(width - margin - bracketSize, height - margin);
       ctx.lineTo(width - margin, height - margin);
@@ -313,15 +338,21 @@ export function Facial3DMeshVisualizer({
         cancelAnimationFrame(animFrameRef.current);
       }
     };
-  }, [matchScore, isSuccess]);
-
-  const effectiveSuccess = isSuccess || matchScore >= 70;
+  }, [matchScore, effectiveSuccess, faceDetected, cameraActive, cameraError]);
 
   return (
-    <div className={`relative w-full aspect-4/3 max-w-md bg-slate-950 rounded-2xl overflow-hidden shadow-2xl border-2 ${
-      effectiveSuccess ? 'border-emerald-500/80 shadow-emerald-500/20' : 'border-slate-800'
-    } flex items-center justify-center select-none ${className}`}>
-      {/* Canvas con la simulación 3D de red neuronal de parámetros */}
+    <div
+      className={`relative w-full aspect-4/3 max-w-md bg-slate-950 rounded-2xl overflow-hidden shadow-2xl border-2 ${
+        cameraError
+          ? 'border-rose-500/80 shadow-rose-500/20'
+          : effectiveSuccess
+          ? 'border-emerald-500/80 shadow-emerald-500/20'
+          : faceDetected
+          ? 'border-sky-500/50'
+          : 'border-slate-800'
+      } flex items-center justify-center select-none ${className}`}
+    >
+      {/* Canvas 3D */}
       <canvas
         ref={canvasRef}
         width={480}
@@ -329,51 +360,105 @@ export function Facial3DMeshVisualizer({
         className="w-full h-full object-cover"
       />
 
+      {/* Pantalla de Error si NO hay cámara conectada */}
+      {cameraError && (
+        <div className="absolute inset-0 bg-slate-950/90 backdrop-blur-xs flex flex-col items-center justify-center p-6 text-center space-y-3 z-20 animate-fade-in">
+          <div className="w-12 h-12 rounded-full bg-rose-500/20 border border-rose-500/40 flex items-center justify-center text-rose-400">
+            <CameraOff className="w-6 h-6" />
+          </div>
+          <div>
+            <h4 className="text-sm font-heading font-bold text-white">
+              Cámara Obligatoria No Detectada
+            </h4>
+            <p className="text-xs text-rose-300 mt-1 max-w-xs mx-auto">
+              {cameraError}
+            </p>
+          </div>
+          <div className="text-[11px] text-slate-400 flex items-center space-x-1">
+            <AlertTriangle className="w-3.5 h-3.5 text-amber-400" />
+            <span>El registro biométrico debe ser 100% real. Conecta tu cámara web.</span>
+          </div>
+        </div>
+      )}
+
+      {/* Indicador cuando la cámara está activa pero NO detecta rostro */}
+      {!cameraError && cameraActive && !faceDetected && (
+        <div className="absolute inset-x-4 top-14 flex justify-center pointer-events-none z-10 animate-fade-in">
+          <div className="bg-slate-950/85 border border-slate-700 px-3.5 py-1.5 rounded-full text-slate-300 text-xs font-medium flex items-center space-x-2 shadow-lg backdrop-blur-xs">
+            <ScanFace className="w-4 h-4 text-sky-400 animate-pulse" />
+            <span>Colócate frente a la cámara web...</span>
+          </div>
+        </div>
+      )}
+
       {/* Capa de Telemetría Superior */}
-      <div className="absolute top-3 inset-x-5 flex items-center justify-between pointer-events-none text-[10px] font-mono">
+      <div className="absolute top-3 inset-x-5 flex items-center justify-between pointer-events-none text-[10px] font-mono z-10">
         <div className="flex items-center space-x-1.5 px-2 py-0.5 rounded bg-slate-950/80 backdrop-blur-xs border border-slate-700/80 text-slate-300">
-          <span className={`w-1.5 h-1.5 rounded-full ${effectiveSuccess ? 'bg-emerald-400 animate-ping' : 'bg-sky-400 animate-pulse'}`} />
-          <span className="truncate max-w-[140px]">{statusText || 'RED 3D • 128 FLOATS'}</span>
+          <span
+            className={`w-1.5 h-1.5 rounded-full ${
+              effectiveSuccess
+                ? 'bg-emerald-400 animate-ping'
+                : faceDetected
+                ? 'bg-sky-400 animate-pulse'
+                : 'bg-amber-400'
+            }`}
+          />
+          <span className="truncate max-w-[150px]">{statusText}</span>
         </div>
 
-        <div className={`px-2 py-0.5 rounded font-bold border backdrop-blur-xs ${
-          effectiveSuccess
-            ? 'bg-emerald-950/90 text-emerald-300 border-emerald-500/60'
-            : 'bg-slate-900/90 text-sky-300 border-sky-500/40'
-        }`}>
-          {effectiveSuccess ? 'COINCIDENCIA > 70% ✓' : 'ANALIZANDO MALLA'}
+        <div
+          className={`px-2 py-0.5 rounded font-bold border backdrop-blur-xs ${
+            effectiveSuccess
+              ? 'bg-emerald-950/90 text-emerald-300 border-emerald-500/60'
+              : faceDetected
+              ? 'bg-sky-950/90 text-sky-300 border-sky-500/40'
+              : 'bg-slate-900/90 text-slate-400 border-slate-700'
+          }`}
+        >
+          {effectiveSuccess
+            ? 'VERIFICADO REAL ✓'
+            : faceDetected
+            ? 'ROSTRO DETECTADO'
+            : 'SIN ROSTRO'}
         </div>
       </div>
 
-      {/* Capa de Telemetría Inferior con Vector Flotante */}
-      <div className="absolute bottom-3 inset-x-4 flex items-center justify-between pointer-events-none text-[10px] font-mono">
+      {/* Capa de Telemetría Inferior */}
+      <div className="absolute bottom-3 inset-x-4 flex items-center justify-between pointer-events-none text-[10px] font-mono z-10">
         <div className="bg-slate-950/85 backdrop-blur-xs px-2.5 py-1 rounded-md border border-slate-700/80 text-slate-300">
-          <span className="text-slate-500 mr-1.5">Tensores:</span>
-          <span className={effectiveSuccess ? 'text-emerald-400 font-bold' : 'text-sky-300'}>
-            {matchScore >= 70
-              ? `[0.342, -0.681, 0.490, ...]`
-              : `[${(Math.sin(Date.now() / 300) * 0.5).toFixed(3)}, ${(Math.cos(Date.now() / 400) * 0.7).toFixed(3)}, ...]`
+          <span className="text-slate-500 mr-1.5">Sensor:</span>
+          <span
+            className={
+              effectiveSuccess
+                ? 'text-emerald-400 font-bold'
+                : faceDetected
+                ? 'text-sky-300'
+                : 'text-slate-400'
             }
+          >
+            {faceDetected ? '128 Floats Reales' : 'Esperando Rostro'}
           </span>
         </div>
 
-        <div className={`px-2.5 py-1 rounded-md font-bold text-xs border backdrop-blur-xs transition-all ${
-          effectiveSuccess
-            ? 'bg-emerald-900/90 text-emerald-300 border-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.4)]'
-            : matchScore >= 50
-            ? 'bg-sky-950/90 text-sky-300 border-sky-400'
-            : 'bg-slate-900/90 text-slate-300 border-slate-700'
-        }`}>
-          {matchScore}% Coincidencia
+        <div
+          className={`px-2.5 py-1 rounded-md font-bold text-xs border backdrop-blur-xs transition-all ${
+            effectiveSuccess
+              ? 'bg-emerald-900/90 text-emerald-300 border-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.4)]'
+              : matchScore >= 50
+              ? 'bg-sky-950/90 text-sky-300 border-sky-400'
+              : 'bg-slate-900/90 text-slate-400 border-slate-700'
+          }`}
+        >
+          {faceDetected ? `${matchScore}% Coincidencia Real` : '0% (Sin Rostro)'}
         </div>
       </div>
 
-      {/* Cartel flotante central cuando supera el 70% */}
+      {/* Cartel flotante central cuando la coincidencia real supera el 70% */}
       {effectiveSuccess && (
-        <div className="absolute inset-0 bg-emerald-950/20 backdrop-blur-[2px] flex items-center justify-center pointer-events-none animate-fade-in">
+        <div className="absolute inset-0 bg-emerald-950/25 backdrop-blur-[2px] flex items-center justify-center pointer-events-none animate-fade-in z-20">
           <div className="bg-slate-950/95 border-2 border-emerald-400 px-4 py-2.5 rounded-xl shadow-[0_0_30px_rgba(16,185,129,0.5)] flex items-center space-x-2 text-emerald-400 font-heading font-black text-sm tracking-wide animate-scale-up">
             <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping" />
-            <span>¡Parámetros Validados ({matchScore}%)! Ingresando...</span>
+            <span>¡Rostro Real Verificado ({matchScore}% &ge; 70%)! Ingresando...</span>
           </div>
         </div>
       )}
