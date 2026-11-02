@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
-import { RefreshCw, Search, HelpCircle, User, LogOut, ShieldAlert, Sliders, Sun, Moon } from 'lucide-react';
+import { RefreshCw, HelpCircle, User, LogOut, Sliders, Sun, Moon } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useCheckinStore } from '../../store/useCheckinStore';
 import { useGamificationStore } from '../../store/useGamificationStore';
@@ -10,6 +10,7 @@ import { normalizeRole, getEffectiveModules } from '../../services/rbac';
 import { RankMedal } from './RankMedal';
 import { UserProfileModal } from './UserProfileModal';
 import { NotificationBell } from './NotificationBell';
+import { GlobalSearchBar } from './GlobalSearchBar';
 import { HelpDrawer } from '../help/HelpDrawer';
 import { ProductTour } from '../help/ProductTour';
 
@@ -28,7 +29,6 @@ export function GlobalHeader() {
 
   const normalizedRole = normalizeRole(user?.role);
   const effectiveModules = getEffectiveUserModules(user?.id) || getEffectiveModules(user);
-  const hideTasksAndProjectsUI = normalizedRole === 'RH' || (!effectiveModules.tasks && !effectiveModules.clients);
 
   const gamification = useMemo(() => {
     return calculateGamification({
@@ -77,27 +77,12 @@ export function GlobalHeader() {
           </button>
         </div>
 
-        {/* Centro: Si es RH o tiene módulos tasks/clients deshabilitados, no renderiza buscador de proyectos/tareas */}
-        <div className="flex-1 flex justify-center max-w-2xl">
-          {hideTasksAndProjectsUI ? (
-            <div className="flex items-center space-x-2 bg-[#1A2742] border border-[#233354] text-[#38BDF8] px-3.5 py-1.5 rounded-md text-xs font-medium">
-              <ShieldAlert className="w-4 h-4 text-[#38BDF8] shrink-0" />
-              <span className="truncate">
-                {normalizedRole === 'RH'
-                  ? 'PERFIL RH RESTRINGIDO • Solo Lectura de Asistencia y Horas (Sin acceso a Tareas ni Clientes)'
-                  : 'MODO ASISTENCIA PURA • Módulo de Tareas deshabilitado para tu cuenta por TI'}
-              </span>
-            </div>
-          ) : (
-            <div className="relative w-full">
-              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-[#94A3B8]" />
-              <input
-                type="text"
-                placeholder="Buscar proyectos, tareas o personas..."
-                className="w-full bg-[#1A2742] text-[#F8FAFC] placeholder:text-[#64748B] text-xs rounded-md py-1.5 pl-9 pr-3.5 border border-[#233354] focus:border-[#38BDF8] transition-all"
-              />
-            </div>
-          )}
+        {/* Centro: Buscador Universal y Accesos Directos (Proyectos, Clientes, Fecha de Asistencia) */}
+        <div className="flex-1 flex justify-center max-w-2xl px-2">
+          <GlobalSearchBar
+            onOpenProfile={() => setProfileOpen(true)}
+            onOpenHelp={toggleHelpDrawer}
+          />
         </div>
 
         {/* Lado Derecho (Iconos limpios sin recuadros) */}
