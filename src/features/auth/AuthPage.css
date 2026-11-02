@@ -36,16 +36,17 @@
   display: flex;
   max-width: 860px;
   width: 92%;
-  border-radius: 6px;
+  border-radius: 16px;
   overflow: hidden;
+  isolation: isolate;
   position: absolute;
   opacity: 0;
   pointer-events: none;
   transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
-  background: var(--bg-surface);
-  border: 1px solid var(--border-subtle);
+  background: #FFFFFF;
+  border: 1px solid rgba(255, 255, 255, 0.12);
   transform: translateY(80px) scale(0.92);
-  box-shadow: 0 30px 70px -15px rgba(0, 0, 0, 0.7);
+  box-shadow: 0 25px 65px -15px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(0, 0, 0, 0.06);
 }
 
 .auth-modal-title {
@@ -102,11 +103,11 @@
 
 .auth-modal-right {
   flex: 1.15;
-  background: var(--bg-surface-elevated);
+  background: #00121C;
   position: relative;
   display: flex;
   overflow: hidden;
-  border-left: 1px solid var(--border-subtle);
+  border-left: 1px solid #E2E8F0;
 }
 
 .auth-modal.is-open {
@@ -247,30 +248,6 @@
 
 .auth-input-block:focus-within .auth-input-label {
   color: var(--accent-sky);
-}
-
-.auth-icon-button {
-  outline: 0;
-  position: absolute;
-  right: 14px;
-  top: 14px;
-  width: 32px;
-  height: 32px;
-  border-radius: 6px;
-  border: 1px solid var(--border-subtle);
-  background: var(--bg-surface-elevated);
-  color: var(--text-secondary);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  z-index: 10;
-  transition: all 0.2s ease;
-}
-
-.auth-icon-button:hover {
-  background: var(--border-subtle);
-  color: var(--text-primary);
 }
 
 /* Indicador Flotante sin encuadre exagerado */

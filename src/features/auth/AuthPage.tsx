@@ -6,7 +6,7 @@ import {
   loginWithGoogle, 
   isFirebaseConfigured 
 } from '../../services/firebase';
-import { AlertCircle, LogIn, ChevronDown, Lock } from 'lucide-react';
+import { AlertCircle, LogIn, ChevronDown, Lock, X } from 'lucide-react';
 import { AuthMinimalistHills } from './AuthMinimalistHills';
 import { AuthModalSideIllustration } from './AuthModalSideIllustration';
 import './AuthPage.css';
@@ -20,6 +20,7 @@ export function AuthPage() {
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [isOpened, setIsOpened] = useState(false);
+  const [showDemoProfiles, setShowDemoProfiles] = useState(false);
 
   const firebaseReady = isFirebaseConfigured();
 
@@ -239,57 +240,69 @@ export function AuthPage() {
                 />
               </div>
               
-              {/* Accesos Rápidos de Prueba de los 4 Niveles RBAC */}
-              <div className="mb-4 pt-2.5 border-t border-slate-100 space-y-1.5 text-[11px]">
-                <span className="font-bold text-slate-400 text-[10px] uppercase tracking-wider block">
-                  Perfiles RBAC de prueba rápida (Contraseña: admin123):
-                </span>
-                <div className="grid grid-cols-2 gap-1.5">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setEmail('ti.root@russellbedford.mx');
-                      setPassword('admin123');
-                    }}
-                    className="inline-flex items-center justify-center px-2 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-amber-300 text-[10px] font-bold border border-slate-700 transition-all cursor-pointer shadow-2xs active:scale-95"
-                    title="TI (Root): Audita todo el sistema y emite links para Supervisores"
-                  >
-                    <span>👑 TI (Root Admin)</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setEmail('supervisor.prueba@russellbedford.mx');
-                      setPassword('admin123');
-                    }}
-                    className="inline-flex items-center justify-center px-2 py-1.5 rounded-lg bg-cyan-50 hover:bg-cyan-100 text-[#0D5C75] text-[10px] font-bold border border-cyan-200 transition-all cursor-pointer shadow-2xs active:scale-95"
-                    title="Supervisor: Invita a su equipo, asigna tareas y recibe notificaciones"
-                  >
-                    <span>🛡️ Supervisor</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setEmail('colaborador.prueba@russellbedford.mx');
-                      setPassword('admin123');
-                    }}
-                    className="inline-flex items-center justify-center px-2 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-800 text-[10px] font-bold border border-blue-200 transition-all cursor-pointer shadow-2xs active:scale-95"
-                    title="Empleado / Operativo: Visualiza sus tareas asignadas y registra tiempo"
-                  >
-                    <span>👤 Empleado</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setEmail('rh.prueba@russellbedford.mx');
-                      setPassword('admin123');
-                    }}
-                    className="inline-flex items-center justify-center px-2 py-1.5 rounded-lg bg-teal-50 hover:bg-teal-100 text-teal-800 text-[10px] font-bold border border-teal-200 transition-all cursor-pointer shadow-2xs active:scale-95"
-                    title="RH (Restringido): Solo métricas de personal y horas; 403 en Tareas y Clientes"
-                  >
-                    <span>📊 RH (Restringido)</span>
-                  </button>
-                </div>
+              {/* Accesos Rápidos de Prueba de los 4 Niveles RBAC (Ocultos por defecto con botón sutil) */}
+              <div className="mb-3 pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setShowDemoProfiles(!showDemoProfiles)}
+                  className="inline-flex items-center space-x-1.5 text-[11px] font-semibold text-slate-400 hover:text-[#0D5C75] transition-colors cursor-pointer select-none py-1"
+                >
+                  <span>{showDemoProfiles ? '▾ Ocultar perfiles de prueba' : '▸ Perfiles de prueba rápida'}</span>
+                </button>
+
+                {showDemoProfiles && (
+                  <div className="mt-2 space-y-1.5 animate-fade-in">
+                    <span className="font-medium text-slate-400 text-[10px] block">
+                      Contraseña: <code className="font-mono text-slate-600 font-semibold">admin123</code>
+                    </span>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEmail('ti.root@russellbedford.mx');
+                          setPassword('admin123');
+                        }}
+                        className="inline-flex items-center justify-center px-2 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-amber-300 text-[10px] font-bold border border-slate-700 transition-all cursor-pointer shadow-2xs active:scale-95"
+                        title="TI (Root): Audita todo el sistema y emite links para Supervisores"
+                      >
+                        <span>👑 TI (Root Admin)</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEmail('supervisor.prueba@russellbedford.mx');
+                          setPassword('admin123');
+                        }}
+                        className="inline-flex items-center justify-center px-2 py-1.5 rounded-lg bg-cyan-50 hover:bg-cyan-100 text-[#0D5C75] text-[10px] font-bold border border-cyan-200 transition-all cursor-pointer shadow-2xs active:scale-95"
+                        title="Supervisor: Invita a su equipo, asigna tareas y recibe notificaciones"
+                      >
+                        <span>🛡️ Supervisor</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEmail('colaborador.prueba@russellbedford.mx');
+                          setPassword('admin123');
+                        }}
+                        className="inline-flex items-center justify-center px-2 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-800 text-[10px] font-bold border border-blue-200 transition-all cursor-pointer shadow-2xs active:scale-95"
+                        title="Empleado / Operativo: Visualiza sus tareas asignadas y registra tiempo"
+                      >
+                        <span>👤 Empleado</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEmail('rh.prueba@russellbedford.mx');
+                          setPassword('admin123');
+                        }}
+                        className="inline-flex items-center justify-center px-2 py-1.5 rounded-lg bg-teal-50 hover:bg-teal-100 text-teal-800 text-[10px] font-bold border border-teal-200 transition-all cursor-pointer shadow-2xs active:scale-95"
+                        title="RH (Restringido): Solo métricas de personal y horas; 403 en Tareas y Clientes"
+                      >
+                        <span>📊 RH (Restringido)</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="auth-modal-buttons">
@@ -300,21 +313,26 @@ export function AuthPage() {
               </div>
             </form>
             
-            <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-center space-x-1.5 text-slate-500 text-[11px] text-center">
-              <Lock className="w-3.5 h-3.5 text-[#0D5C75] shrink-0" />
-              <span>Acceso privado por lista blanca corporativa • Registro exclusivo con invitación de Supervisor</span>
+            <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-center space-x-1.5 text-slate-400 text-[10px]">
+              <Lock className="w-3 h-3 text-slate-400 shrink-0" />
+              <span>Acceso no público</span>
             </div>
           </div>
 
           <div className="auth-modal-right">
             <AuthModalSideIllustration />
+            
+            {/* Tachita flotante blanca sin recuadros */}
+            <button
+              type="button"
+              onClick={() => setIsOpened(false)}
+              title="Cerrar ventana"
+              className="absolute top-4 right-4 p-1.5 text-white/90 hover:text-white transition-all cursor-pointer z-30 rounded-full hover:bg-white/10"
+              aria-label="Cerrar"
+            >
+              <X className="w-5 h-5 stroke-[2.2]" />
+            </button>
           </div>
-
-          <button type="button" className="auth-icon-button close-button" onClick={() => setIsOpened(false)} title="Cerrar ventana">
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 50 50">
-              <path d="M 25 3 C 12.86158 3 3 12.86158 3 25 C 3 37.13842 12.86158 47 25 47 C 37.13842 47 47 37.13842 47 25 C 47 12.86158 37.13842 3 25 3 z M 25 5 C 36.05754 5 45 13.94246 45 25 C 45 36.05754 36.05754 45 25 45 C 13.94246 45 5 36.05754 5 25 C 5 13.94246 13.94246 5 25 5 z M 16.990234 15.990234 A 1.0001 1.0001 0 0 0 16.292969 17.707031 L 23.585938 25 L 16.292969 32.292969 A 1.0001 1.0001 0 1 0 17.707031 33.707031 L 25 26.414062 L 32.292969 33.707031 A 1.0001 1.0001 0 1 0 33.707031 32.292969 L 26.414062 25 L 33.707031 17.707031 A 1.0001 1.0001 0 0 0 32.980469 15.990234 A 1.0001 1.0001 0 0 0 32.292969 16.292969 L 25 23.585938 L 17.707031 16.292969 A 1.0001 1.0001 0 0 0 16.990234 15.990234 z"></path>
-            </svg>
-          </button>
         </div>
 
         <button type="button" className="auth-modal-button" onClick={() => setIsOpened(true)}>
