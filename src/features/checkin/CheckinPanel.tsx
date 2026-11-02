@@ -313,26 +313,25 @@ export function CheckinPanel() {
 
         <div className="flex items-center space-x-4">
           {requiresFacialBiometrics ? (
-            <button
-              onClick={() => setIsEnrollmentModalOpen(true)}
+            <div
               title={
                 hasEnrolledVector
-                  ? 'Reconocimiento facial activo (vector calibrado). Clic para recalibrar'
-                  : 'Reconocimiento facial inactivo / pendiente de calibración. Clic para calibrar'
+                  ? 'Reconocimiento facial activo (vector calibrado)'
+                  : 'Reconocimiento facial inactivo / no calibrado'
               }
               aria-label={
                 hasEnrolledVector
                   ? 'Reconocimiento facial activo'
                   : 'Reconocimiento facial inactivo'
               }
-              className={`p-1.5 transition-colors cursor-pointer rounded-md ${
+              className={`p-1.5 rounded-md transition-colors ${
                 hasEnrolledVector
-                  ? 'text-emerald-500 hover:text-emerald-600 dark:text-emerald-400 dark:hover:text-emerald-300'
-                  : 'text-rose-500 hover:text-rose-600 dark:text-rose-500 dark:hover:text-rose-400'
+                  ? 'text-emerald-500 dark:text-emerald-400'
+                  : 'text-rose-500 dark:text-rose-500'
               }`}
             >
               <ScanFace className="w-5 h-5" />
-            </button>
+            </div>
           ) : (
             <span
               title="Exento de verificación facial"
