@@ -317,27 +317,29 @@ export function CheckinPanel() {
               onClick={() => setIsEnrollmentModalOpen(true)}
               title={
                 hasEnrolledVector
-                  ? 'Vector facial activo (128 floats, 0 fotos). Clic para recalibrar'
-                  : 'Registrar vector facial obligatorio'
+                  ? 'Reconocimiento facial activo (vector calibrado). Clic para recalibrar'
+                  : 'Reconocimiento facial inactivo / pendiente de calibración. Clic para calibrar'
               }
-              className="flex items-center space-x-1.5 text-xs font-heading font-semibold text-blue-700 hover:text-blue-800 dark:text-[#38BDF8] dark:hover:text-sky-300 transition-colors cursor-pointer"
+              aria-label={
+                hasEnrolledVector
+                  ? 'Reconocimiento facial activo'
+                  : 'Reconocimiento facial inactivo'
+              }
+              className={`p-1.5 transition-colors cursor-pointer rounded-md ${
+                hasEnrolledVector
+                  ? 'text-emerald-500 hover:text-emerald-600 dark:text-emerald-400 dark:hover:text-emerald-300'
+                  : 'text-rose-500 hover:text-rose-600 dark:text-rose-500 dark:hover:text-rose-400'
+              }`}
             >
-              {hasEnrolledVector ? (
-                <>
-                  <ShieldCheck className="w-4 h-4 text-blue-700 dark:text-[#38BDF8]" />
-                  <span className="hidden sm:inline">Vector Facial Activo</span>
-                </>
-              ) : (
-                <>
-                  <ScanFace className="w-4 h-4 text-blue-700 dark:text-[#38BDF8]" />
-                  <span>Calibrar Vector Facial</span>
-                </>
-              )}
+              <ScanFace className="w-5 h-5" />
             </button>
           ) : (
-            <span className="flex items-center space-x-1.5 text-xs font-heading font-medium text-slate-500 dark:text-[#94A3B8]">
-              <ShieldCheck className="w-4 h-4 text-slate-400 dark:text-[#64748B]" />
-              <span>Exento de Verificación Facial</span>
+            <span
+              title="Exento de verificación facial"
+              aria-label="Exento de verificación facial"
+              className="p-1.5 text-slate-400 dark:text-slate-500"
+            >
+              <ScanFace className="w-5 h-5 opacity-60" />
             </span>
           )}
 

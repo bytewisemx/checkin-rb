@@ -109,11 +109,11 @@ export function NotificationBell() {
 
   return (
     <div className="relative" ref={dropdownRef}>
-      {/* Botón Campana en el Header */}
+      {/* Botón Campana en el Header (Limpio sin recuadro) */}
       <button
         onClick={() => setIsOpen(!isOpen)}
         title="Bandeja de notificaciones en tiempo real"
-        className="relative w-8 h-8 rounded-md bg-[#1A2742] border border-[#233354] flex items-center justify-center text-[#94A3B8] hover:text-[#F8FAFC] hover:border-[#38BDF8] transition-colors cursor-pointer"
+        className="relative p-1.5 text-slate-400 hover:text-slate-800 dark:hover:text-white transition-colors cursor-pointer rounded-md"
         aria-label="Notificaciones"
       >
         <Bell className="w-4 h-4" />

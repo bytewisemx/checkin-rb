@@ -58,42 +58,23 @@ export function GlobalHeader() {
     addToast('Sesión cerrada. Regresando a pantalla de inicio.', 'info');
   };
 
-  const getRoleBadgeStyle = () => {
-    switch (normalizedRole) {
-      case 'TI':
-        return 'bg-[#1E40AF]/20 text-[#38BDF8] border-[#1E40AF]/50';
-      case 'Supervisor':
-        return 'bg-[#0F172A] text-[#38BDF8] border-[#233354]';
-      case 'RH':
-        return 'bg-[#1A2742] text-[#F59E0B] border-[#F59E0B]/40';
-      default:
-        return 'bg-[#1A2742] text-[#F8FAFC] border-[#233354]';
-    }
-  };
-
   return (
     <>
       <header className="bg-[#131D31] text-[#F8FAFC] border-b border-[#233354] h-14 flex items-center justify-between px-4 sticky top-0 z-40">
-        {/* Lado Izquierdo: Botón de Recargar + Indicador de Rol RBAC */}
-        <div className="flex items-center space-x-2.5 w-1/4">
+        {/* Lado Izquierdo: Botón de Recargar Limpio (Sin recuadro) */}
+        <div className="flex items-center w-1/4">
           <button
             onClick={handleReload}
             title="Recargar página"
-            className="flex items-center justify-center w-8 h-8 rounded-md bg-[#1A2742] hover:bg-[#233354] text-[#94A3B8] hover:text-[#F8FAFC] transition-colors cursor-pointer border border-[#233354] group"
+            className="p-1.5 text-[#94A3B8] hover:text-[#F8FAFC] transition-colors cursor-pointer group rounded-md"
             aria-label="Recargar"
           >
             <RefreshCw
-              className={`w-3.5 h-3.5 transition-transform duration-500 ${
+              className={`w-4 h-4 transition-transform duration-500 ${
                 isReloading ? 'animate-spin' : 'group-hover:rotate-180'
               }`}
             />
           </button>
-
-          <span
-            className={`text-[10px] font-heading font-bold uppercase tracking-wider px-2 py-0.5 rounded-md border hidden sm:inline-flex items-center space-x-1 ${getRoleBadgeStyle()}`}
-          >
-            <span>ROL: {normalizedRole}</span>
-          </span>
         </div>
 
         {/* Centro: Si es RH o tiene módulos tasks/clients deshabilitados, no renderiza buscador de proyectos/tareas */}
@@ -119,37 +100,38 @@ export function GlobalHeader() {
           )}
         </div>
 
-        {/* Lado Derecho */}
-        <div className="flex items-center justify-end space-x-2 w-1/4">
+        {/* Lado Derecho (Iconos limpios sin recuadros) */}
+        <div className="flex items-center justify-end space-x-3 sm:space-x-3.5 w-1/4">
           {normalizedRole === 'TI' && (
             <button
               onClick={() => navigate('/admin/users-permissions')}
-              className="hidden xl:inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-md bg-[#1E40AF] hover:bg-[#1D4ED8] text-white border border-[#1E40AF] text-[11px] font-heading font-semibold cursor-pointer transition-colors shadow-xs"
+              className="hidden xl:inline-flex items-center space-x-1 px-2 py-1 text-blue-600 hover:text-blue-700 dark:text-sky-400 dark:hover:text-sky-300 text-xs font-heading font-semibold cursor-pointer transition-colors"
               title="Abrir matriz de módulos por usuario (/admin/users-permissions)"
             >
-              <Sliders className="w-3.5 h-3.5 text-[#38BDF8]" />
+              <Sliders className="w-3.5 h-3.5" />
               <span>Permisos</span>
             </button>
           )}
 
-          {/* Botón de Tonalidad Rápido (Claro / Oscuro) */}
+          {/* Botón de Tonalidad Rápido (Claro / Oscuro) - Limpio */}
           <button
             onClick={toggleTheme}
-            className="w-8 h-8 rounded-md bg-[#1A2742] border border-[#233354] flex items-center justify-center text-[#94A3B8] hover:text-[#F8FAFC] hover:border-[#38BDF8] transition-colors cursor-pointer"
+            className="p-1.5 text-slate-400 hover:text-slate-800 dark:hover:text-white transition-colors cursor-pointer rounded-md"
             title={theme === 'dark' ? 'Cambiar a Tonalidad Clara' : 'Cambiar a Tonalidad Oscura'}
             aria-label="Cambiar tema claro u oscuro"
           >
             {theme === 'dark' ? (
               <Sun className="w-4 h-4 text-amber-400 hover:text-amber-300 transition-transform hover:rotate-45" />
             ) : (
-              <Moon className="w-4 h-4 text-slate-700 hover:text-blue-600 transition-transform hover:-rotate-12" />
+              <Moon className="w-4 h-4 text-slate-600 hover:text-blue-600 transition-transform hover:-rotate-12" />
             )}
           </button>
 
+          {/* Botón de Ayuda - Limpio */}
           <button
             id="btn-help"
             onClick={toggleHelpDrawer}
-            className="w-8 h-8 rounded-md bg-[#1A2742] border border-[#233354] flex items-center justify-center text-[#94A3B8] hover:text-[#F8FAFC] hover:border-[#38BDF8] transition-colors cursor-pointer"
+            className="p-1.5 text-slate-400 hover:text-slate-800 dark:hover:text-white transition-colors cursor-pointer rounded-md"
             title="Ayuda y Guías Interactivas"
             aria-label="Abrir centro de ayuda"
           >
@@ -159,39 +141,36 @@ export function GlobalHeader() {
           {/* Bandeja de Notificaciones de Tareas (oculta para RH o si user.modules.tasks === false) */}
           {normalizedRole !== 'RH' && effectiveModules.tasks && <NotificationBell />}
 
-          {/* Pastilla de Perfil */}
+          {/* Pastilla de Perfil - Abierta y sin cajita tosca */}
           <button
             id="nav-settings"
             onClick={() => setProfileOpen(true)}
             title={`Rol: ${normalizedRole} • Rango: ${gamification.rank.title}. Haz clic para ver perfil y ajustes.`}
-            className="group flex items-center bg-[#1A2742] rounded-md p-1 pl-2 border border-[#233354] hover:border-[#38BDF8] transition-all h-8 cursor-pointer select-none"
+            className="group flex items-center space-x-2 text-slate-700 hover:text-slate-900 dark:text-[#F8FAFC] dark:hover:text-white transition-colors cursor-pointer select-none px-1 py-1"
           >
-            <div className="mr-1.5 flex items-center">
-              <RankMedal tier={gamification.rank.tier} size="sm" />
-            </div>
+            <RankMedal tier={gamification.rank.tier} size="sm" />
 
-            <span className="text-xs font-medium text-[#F8FAFC] hidden lg:inline-block mr-2 max-w-[120px] truncate">
+            <span className="text-xs font-semibold text-slate-900 dark:text-[#F8FAFC] hidden lg:inline-block max-w-[120px] truncate">
               {user?.name} {user?.lastName || ''}
             </span>
 
-            <div
-              className="w-6 h-6 rounded-md overflow-hidden bg-[#0B111E] border border-[#233354] flex items-center justify-center transition-transform group-hover:scale-105"
-            >
+            <div className="w-6 h-6 rounded-full overflow-hidden bg-slate-200 dark:bg-slate-700 flex items-center justify-center shrink-0">
               {user?.profileImage ? (
                 <img src={user.profileImage} alt="Profile" className="w-full h-full object-cover" />
               ) : (
-                <User className="w-3.5 h-3.5 text-[#94A3B8]" />
+                <User className="w-3.5 h-3.5 text-slate-500 dark:text-[#94A3B8]" />
               )}
             </div>
           </button>
 
-          {/* Botón de Salir Rápido */}
+          {/* Botón de Salir Rápido - Limpio */}
           <button
             onClick={handleQuickLogout}
             title="Cerrar sesión e ir a la pantalla de inicio"
-            className="flex items-center justify-center w-8 h-8 rounded-md bg-[#1A2742] hover:bg-[#E11D48]/20 text-[#94A3B8] hover:text-[#E11D48] transition-colors cursor-pointer border border-[#233354] hover:border-[#E11D48]/40"
+            className="p-1.5 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 transition-colors cursor-pointer rounded-md"
+            aria-label="Cerrar sesión"
           >
-            <LogOut className="w-3.5 h-3.5" />
+            <LogOut className="w-4 h-4" />
           </button>
         </div>
       </header>
