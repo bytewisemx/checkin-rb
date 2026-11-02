@@ -23,6 +23,7 @@ import { useNavigate } from 'react-router-dom';
 import { useCheckinStore, type CheckinRecord } from '../../store/useCheckinStore';
 import { useRayonerStore } from '../../store/useRayonerStore';
 import { normalizeRole } from '../../services/rbac';
+import type { TaskNode } from '../../types/rayoner';
 import {
   AttendanceDateDetailModal,
   type AttendanceDetailData,
@@ -70,7 +71,7 @@ export function GlobalSearchBar({
     addToast,
   } = useCheckinStore();
 
-  const { clients, projects, tasks, teamMembers } = useRayonerStore();
+  const { clients, projects, tasks, teamMembers, assignments } = useRayonerStore();
 
   const [query, setQuery] = useState('');
   const [isOpen, setIsOpen] = useState(false);
@@ -80,13 +81,12 @@ export function GlobalSearchBar({
 
   const normalizedRole = normalizeRole(user?.role);
 
-  // Atajo global de teclado (Ctrl + K o Cmd + K)
+  // Atajo global de teclado (Ctrl + K o Cmd + K) enfoca el buscador sin abrir resultados hasta teclear
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault();
-        setIsOpen(true);
-        setTimeout(() => inputRef.current?.focus(), 50);
+        inputRef.current?.focus();
       } else if (e.key === 'Escape') {
         setIsOpen(false);
       }
@@ -124,11 +124,227 @@ export function GlobalSearchBar({
     }
   };
 
-  // 1. Filtrado de Proyectos
+  // =========================================================================
+  // CONTROL DE PERMISOS ESTRICTO (RBAC) POR ROL
+  // =========================================================================
+
+  // Helper para verificar si una tarea le pertenece estrictamente al empleado actual
+  const isTaskAssignedToCurrentUser = (t: TaskNode): boolean => {
+    if (!user) return false;
+    // 1. Asignación directa por ID de usuario
+    if (t.assigned_to === user.id) return true;
+    // 2. Asignación por nombre de usuario
+    if (t.assigned_to && user.name && t.assigned_to.toLowerCase() === user.name.toLowerCase()) return true;
+    // 3. Mapeo específico de la cuenta demo de Colaborador Prueba ('usr-ana')
+    if (
+      user.id === 'usr-ana' &&
+      (t.assigned_to === 'usr-ana' ||
+        t.assigned_to === 'Ana Gómez' ||
+        t.assigned_to === 'Colaborador Prueba')
+    ) {
+      return true;
+    }
+    // 4. Asignaciones registradas en tabla assignments
+    if (
+      assignments.some(
+        (a) =>
+          a.taskId === t.id &&
+          (a.userId === user.id || a.userName?.toLowerCase() === user.name?.toLowerCase())
+      )
+    ) {
+      return true;
+    }
+    return false;
+  };
+
+  // 1. Tareas autorizadas estrictamente según el perfil
+  const allowedTasks = useMemo(() => {
+    if (!user) return [];
+
+    // TI: auditoría global completa
+    if (normalizedRole === 'TI') {
+      return tasks;
+    }
+
+    // RH: acceso 403 / prohibido en tareas
+    if (normalizedRole === 'RH') {
+      return [];
+    }
+
+    // Empleado: ÚNICA Y EXCLUSIVAMENTE sus propias tareas asignadas
+    if (normalizedRole === 'Empleado') {
+      return tasks.filter(isTaskAssignedToCurrentUser);
+    }
+
+    // Supervisor: tareas de su equipo, creadas por él o de proyectos donde es líder
+    if (normalizedRole === 'Supervisor') {
+      const supervisedMemberIds = new Set(
+        teamMembers.filter((m) => m.supervisorId === user.id).map((m) => m.id)
+      );
+      mockEmployeesData
+        .filter(
+          (emp) =>
+            emp.supervisor_id === user.id ||
+            emp.team === user.team
+        )
+        .forEach((emp) => supervisedMemberIds.add(emp.id));
+
+      const myLeadProjectIds = new Set(
+        projects
+          .filter((p) => p.leadUserId === user.id || p.leadUserName === user.name)
+          .map((p) => p.id)
+      );
+
+      return tasks.filter((t) => {
+        if (t.created_by === user.id) return true;
+        if (t.assigned_to && supervisedMemberIds.has(t.assigned_to)) return true;
+        if (t.projectId && myLeadProjectIds.has(t.projectId)) return true;
+        if (isTaskAssignedToCurrentUser(t)) return true;
+        return false;
+      });
+    }
+
+    return [];
+  }, [tasks, assignments, user, normalizedRole, teamMembers, mockEmployeesData, projects]);
+
+  // 2. Personas / Colaboradores autorizados estrictamente según el perfil
+  const allowedPeople = useMemo(() => {
+    if (!user) return [];
+
+    // EMPLEADO: ESTRICTAMENTE PROHIBIDO ver o buscar otros colaboradores
+    if (normalizedRole === 'Empleado') {
+      return [];
+    }
+
+    // RH y TI: Directorio general del personal
+    if (normalizedRole === 'RH' || normalizedRole === 'TI') {
+      const allPeople: SearchPersonItem[] = teamMembers.map((m) => ({
+        id: m.id,
+        name: m.name,
+        email: m.email,
+        team: m.team,
+        role: m.role || 'Empleado',
+      }));
+
+      mockEmployeesData.forEach((emp) => {
+        if (!allPeople.some((p) => p.id === emp.id || p.email.toLowerCase() === emp.email.toLowerCase())) {
+          allPeople.push({
+            id: emp.id,
+            name: emp.name,
+            email: emp.email,
+            team: emp.team,
+            role: emp.role || 'Empleado',
+          });
+        }
+      });
+      return allPeople;
+    }
+
+    // SUPERVISOR: ÚNICAMENTE los colaboradores que tiene a su cargo
+    if (normalizedRole === 'Supervisor') {
+      const myTeam: SearchPersonItem[] = [];
+
+      teamMembers.forEach((m) => {
+        if (m.supervisorId === user.id) {
+          myTeam.push({
+            id: m.id,
+            name: m.name,
+            email: m.email,
+            team: m.team,
+            role: m.role || 'Empleado',
+          });
+        }
+      });
+
+      mockEmployeesData.forEach((emp) => {
+        if (
+          emp.supervisor_id === user.id ||
+          emp.team === user.team
+        ) {
+          if (!myTeam.some((p) => p.id === emp.id || p.email.toLowerCase() === emp.email.toLowerCase())) {
+            myTeam.push({
+              id: emp.id,
+              name: emp.name,
+              email: emp.email,
+              team: emp.team,
+              role: emp.role || 'Empleado',
+            });
+          }
+        }
+      });
+
+      return myTeam;
+    }
+
+    return [];
+  }, [normalizedRole, user, teamMembers, mockEmployeesData]);
+
+  // 3. Proyectos autorizados estrictamente según el perfil
+  const allowedProjects = useMemo(() => {
+    if (!user) return [];
+
+    // RH: acceso 403 / prohibido en proyectos
+    if (normalizedRole === 'RH') {
+      return [];
+    }
+
+    // TI: ve todos los proyectos
+    if (normalizedRole === 'TI') {
+      return projects;
+    }
+
+    // Supervisor: proyectos bajo su supervisión
+    if (normalizedRole === 'Supervisor') {
+      return projects.filter((p) => p.leadUserId === user.id || p.leadUserName === user.name);
+    }
+
+    // Empleado: ÚNICA Y EXCLUSIVAMENTE proyectos donde tiene tareas asignadas
+    if (normalizedRole === 'Empleado') {
+      const myProjectIds = new Set(
+        allowedTasks.map((t) => t.projectId).filter(Boolean)
+      );
+      return projects.filter((p) => myProjectIds.has(p.id));
+    }
+
+    return [];
+  }, [normalizedRole, user, projects, allowedTasks]);
+
+  // 4. Clientes autorizados estrictamente según el perfil
+  const allowedClients = useMemo(() => {
+    if (!user) return [];
+
+    // Empleado y RH: NO tienen acceso al catálogo de clientes
+    if (normalizedRole === 'Empleado' || normalizedRole === 'RH') {
+      return [];
+    }
+
+    // TI: todos los clientes
+    if (normalizedRole === 'TI') {
+      return clients;
+    }
+
+    // Supervisor: clientes vinculados a proyectos que lidera
+    if (normalizedRole === 'Supervisor') {
+      const supervisedClientIds = new Set(
+        projects
+          .filter((p) => p.leadUserId === user.id || p.leadUserName === user.name)
+          .map((p) => p.clientId)
+      );
+      return clients.filter((c) => supervisedClientIds.has(c.id));
+    }
+
+    return [];
+  }, [normalizedRole, user, clients, projects]);
+
+  // =========================================================================
+  // FILTRADO ESTRICTO AL TECLEAR (Vacío al dar clic si no se ha tecleado nada)
+  // =========================================================================
+
+  // 1. Filtrado de Proyectos (solo si hay texto tecleado)
   const filteredProjects = useMemo(() => {
-    if (!query.trim()) return projects.slice(0, 4);
+    if (!query.trim() || allowedProjects.length === 0) return [];
     const q = query.toLowerCase();
-    return projects.filter((p) => {
+    return allowedProjects.filter((p) => {
       const clientName = clients.find((c) => c.id === p.clientId)?.name.toLowerCase() || '';
       return (
         p.name.toLowerCase().includes(q) ||
@@ -137,66 +353,48 @@ export function GlobalSearchBar({
         clientName.includes(q)
       );
     });
-  }, [projects, clients, query]);
+  }, [allowedProjects, clients, query]);
 
-  // 2. Filtrado de Clientes
+  // 2. Filtrado de Clientes (solo si hay texto tecleado)
   const filteredClients = useMemo(() => {
-    if (!query.trim()) return clients.slice(0, 4);
+    if (!query.trim() || allowedClients.length === 0) return [];
     const q = query.toLowerCase();
-    return clients.filter(
+    return allowedClients.filter(
       (c) => c.name.toLowerCase().includes(q) || (c.taxId && c.taxId.toLowerCase().includes(q))
     );
-  }, [clients, query]);
+  }, [allowedClients, query]);
 
-  // 3. Filtrado de Tareas
+  // 3. Filtrado de Tareas (solo si hay texto tecleado)
   const filteredTasks = useMemo(() => {
-    if (!query.trim()) return tasks.slice(0, 4);
+    if (!query.trim() || allowedTasks.length === 0) return [];
     const q = query.toLowerCase();
-    return tasks.filter(
+    return allowedTasks.filter(
       (t) =>
         t.name.toLowerCase().includes(q) ||
         t.id.toLowerCase().includes(q) ||
         (t.description && t.description.toLowerCase().includes(q)) ||
         (t.extraordinaryCategory && t.extraordinaryCategory.toLowerCase().includes(q))
     );
-  }, [tasks, query]);
+  }, [allowedTasks, query]);
 
-  // 4. Filtrado de Personas / Colaboradores
+  // 4. Filtrado de Personas / Colaboradores (solo si hay texto tecleado)
   const filteredPeople = useMemo(() => {
-    const allPeople: SearchPersonItem[] = teamMembers.map((m) => ({
-      id: m.id,
-      name: m.name,
-      email: m.email,
-      team: m.team,
-      role: m.role || 'Empleado',
-    }));
-
-    mockEmployeesData.forEach((emp) => {
-      if (!allPeople.some((p) => p.id === emp.id || p.email.toLowerCase() === emp.email.toLowerCase())) {
-        allPeople.push({
-          id: emp.id,
-          name: emp.name,
-          email: emp.email,
-          team: emp.team,
-          role: emp.role || 'Empleado',
-        });
-      }
-    });
-
-    if (!query.trim()) return allPeople.slice(0, 5);
+    if (!query.trim() || allowedPeople.length === 0) return [];
     const q = query.toLowerCase();
-    return allPeople.filter(
+    return allowedPeople.filter(
       (p) =>
         p.name.toLowerCase().includes(q) ||
         p.email.toLowerCase().includes(q) ||
         (p.team && p.team.toLowerCase().includes(q)) ||
         (p.role && p.role.toLowerCase().includes(q))
     );
-  }, [teamMembers, mockEmployeesData, query]);
+  }, [allowedPeople, query]);
 
-  // 5. Filtrado de Asistencias por Fecha
+  // 5. Filtrado de Asistencias por Fecha (solo si hay texto tecleado)
   const filteredAttendanceDates = useMemo(() => {
     const q = query.trim().toLowerCase();
+    if (!q) return [];
+
     const dateMap = new Map<string, CheckinRecord>();
 
     // Registros del historial personal
@@ -238,8 +436,8 @@ export function GlobalSearchBar({
 
     allDates.sort((a, b) => b.date.localeCompare(a.date));
 
-    // Si no hay búsqueda o busca palabras genéricas de asistencia
-    if (!q || q === 'asistencia' || q === 'asistencias' || q === 'fecha' || q === 'fechas') {
+    // Si busca palabras genéricas de asistencia
+    if (q === 'asistencia' || q === 'asistencias' || q === 'fecha' || q === 'fechas') {
       return allDates.slice(0, 6);
     }
 
@@ -265,8 +463,10 @@ export function GlobalSearchBar({
     );
   }, [history, activeCheckin, query]);
 
-  // 6. Accesos Directos del Sistema
+  // 6. Accesos Directos del Sistema (solo si hay texto tecleado que coincida)
   const shortcuts = useMemo(() => {
+    if (!query.trim()) return [];
+
     const list = [
       {
         id: 'sc-checkin',
@@ -276,16 +476,6 @@ export function GlobalSearchBar({
         action: () => {
           navigate('/');
           addToast('Navegando a Registro de Asistencia', 'info');
-        },
-      },
-      {
-        id: 'sc-tasks',
-        title: 'Mis Tareas Asignadas (Kanban)',
-        description: 'Ver tablero de tareas activas, en revisión y finalizadas',
-        icon: CheckSquare,
-        action: () => {
-          navigate('/tasks');
-          addToast('Abriendo tablero de tareas', 'info');
         },
       },
       {
@@ -331,6 +521,21 @@ export function GlobalSearchBar({
       },
     ];
 
+    // Acceso a Tareas solo si el rol no es RH
+    if (normalizedRole !== 'RH') {
+      list.push({
+        id: 'sc-tasks',
+        title: 'Mis Tareas Asignadas (Kanban)',
+        description: 'Ver tablero de tareas activas, en revisión y finalizadas',
+        icon: CheckSquare,
+        action: () => {
+          navigate('/tasks');
+          addToast('Abriendo tablero de tareas', 'info');
+        },
+      });
+    }
+
+    // Acceso a matriz de permisos solo para TI
     if (normalizedRole === 'TI') {
       list.push({
         id: 'sc-permissions',
@@ -344,6 +549,7 @@ export function GlobalSearchBar({
       });
     }
 
+    // Acceso al árbol de clientes solo para Supervisor y TI
     if (normalizedRole === 'Supervisor' || normalizedRole === 'TI') {
       list.push({
         id: 'sc-tree',
@@ -356,8 +562,6 @@ export function GlobalSearchBar({
         },
       });
     }
-
-    if (!query.trim()) return list;
 
     const q = query.toLowerCase();
     return list.filter(
@@ -373,9 +577,9 @@ export function GlobalSearchBar({
 
   // Manejador al seleccionar una fecha para ver asistencia
   const handleSelectDateAttendance = (isoDate: string, record?: CheckinRecord | null) => {
-    // Buscar colaboradores para esta fecha si es Supervisor o RH
     let employeeRecords: AttendanceDetailData['employeeRecords'];
 
+    // Solo Supervisores, RH o TI pueden ver los registros de colaboradores en una fecha
     if (normalizedRole === 'Supervisor' || normalizedRole === 'RH' || normalizedRole === 'TI') {
       employeeRecords = [];
       mockEmployeesData.forEach((emp) => {
@@ -422,6 +626,9 @@ export function GlobalSearchBar({
     shortcuts: shortcuts.length,
   };
 
+  // REGLA ESTRICTA: El dropdown SOLO debe aparecer si se ha tecleado algo Y hay coincidencias reales
+  const shouldShowDropdown = isOpen && query.trim().length > 0 && counts.all > 0;
+
   return (
     <>
       <div ref={containerRef} className="relative w-full max-w-2xl">
@@ -434,10 +641,21 @@ export function GlobalSearchBar({
             type="text"
             value={query}
             onChange={(e) => {
-              setQuery(e.target.value);
-              if (!isOpen) setIsOpen(true);
+              const val = e.target.value;
+              setQuery(val);
+              // Solo se abre si se ha escrito al menos un carácter
+              if (val.trim().length > 0) {
+                setIsOpen(true);
+              } else {
+                setIsOpen(false);
+              }
             }}
-            onFocus={() => setIsOpen(true)}
+            onFocus={() => {
+              // Estricto: al dar clic con input vacío NO abre nada
+              if (query.trim().length > 0) {
+                setIsOpen(true);
+              }
+            }}
             placeholder="Buscar proyectos, clientes, tareas o fecha de asistencia..."
             className="w-full bg-[#1A2742] text-[#F8FAFC] placeholder:text-[#64748B] text-xs rounded-md py-2 pl-9 pr-20 border border-[#233354] focus:border-[#38BDF8] focus:bg-[#131D31] focus:outline-none transition-all shadow-inner"
             aria-label="Buscar accesos directos, proyectos, clientes o fecha"
@@ -449,6 +667,7 @@ export function GlobalSearchBar({
                 type="button"
                 onClick={() => {
                   setQuery('');
+                  setIsOpen(false);
                   inputRef.current?.focus();
                 }}
                 className="p-1 text-[#94A3B8] hover:text-white transition-colors cursor-pointer rounded-sm"
@@ -464,10 +683,10 @@ export function GlobalSearchBar({
           </div>
         </div>
 
-        {/* Dropdown Flotante de Resultados */}
-        {isOpen && (
+        {/* Dropdown Flotante de Resultados: ESTRICTAMENTE visible solo con texto tecleado y coincidencias autorizadas */}
+        {shouldShowDropdown && (
           <div className="absolute top-full left-0 right-0 mt-1.5 bg-[#131D31] text-[#F8FAFC] border border-[#233354] rounded-lg shadow-2xl z-50 overflow-hidden animate-fade-in flex flex-col max-h-[75vh]">
-            {/* Pestañas de Filtro Superior */}
+            {/* Pestañas de Filtro Superior - Solo las categorías permitidas con coincidencias */}
             <div className="flex items-center space-x-1 p-2 border-b border-[#233354] bg-[#0F172A]/90 overflow-x-auto text-[11px] font-heading font-semibold scrollbar-thin">
               <button
                 type="button"
@@ -481,83 +700,99 @@ export function GlobalSearchBar({
                 Todos ({counts.all})
               </button>
 
-              <button
-                type="button"
-                onClick={() => setActiveCategory('attendance')}
-                className={`flex items-center space-x-1 px-2.5 py-1 rounded-md transition-colors shrink-0 cursor-pointer ${
-                  activeCategory === 'attendance'
-                    ? 'bg-[#1E40AF] text-white shadow-xs'
-                    : 'text-[#94A3B8] hover:text-white hover:bg-[#1A2742]'
-                }`}
-              >
-                <Calendar className="w-3 h-3 text-[#38BDF8]" />
-                <span>Asistencia ({counts.attendance})</span>
-              </button>
+              {counts.attendance > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setActiveCategory('attendance')}
+                  className={`flex items-center space-x-1 px-2.5 py-1 rounded-md transition-colors shrink-0 cursor-pointer ${
+                    activeCategory === 'attendance'
+                      ? 'bg-[#1E40AF] text-white shadow-xs'
+                      : 'text-[#94A3B8] hover:text-white hover:bg-[#1A2742]'
+                  }`}
+                >
+                  <Calendar className="w-3 h-3 text-[#38BDF8]" />
+                  <span>Asistencia ({counts.attendance})</span>
+                </button>
+              )}
 
-              <button
-                type="button"
-                onClick={() => setActiveCategory('projects')}
-                className={`flex items-center space-x-1 px-2.5 py-1 rounded-md transition-colors shrink-0 cursor-pointer ${
-                  activeCategory === 'projects'
-                    ? 'bg-[#1E40AF] text-white shadow-xs'
-                    : 'text-[#94A3B8] hover:text-white hover:bg-[#1A2742]'
-                }`}
-              >
-                <FolderKanban className="w-3 h-3 text-amber-400" />
-                <span>Proyectos ({counts.projects})</span>
-              </button>
+              {/* Proyectos: solo si el rol tiene acceso */}
+              {normalizedRole !== 'RH' && counts.projects > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setActiveCategory('projects')}
+                  className={`flex items-center space-x-1 px-2.5 py-1 rounded-md transition-colors shrink-0 cursor-pointer ${
+                    activeCategory === 'projects'
+                      ? 'bg-[#1E40AF] text-white shadow-xs'
+                      : 'text-[#94A3B8] hover:text-white hover:bg-[#1A2742]'
+                  }`}
+                >
+                  <FolderKanban className="w-3 h-3 text-amber-400" />
+                  <span>Proyectos ({counts.projects})</span>
+                </button>
+              )}
 
-              <button
-                type="button"
-                onClick={() => setActiveCategory('clients')}
-                className={`flex items-center space-x-1 px-2.5 py-1 rounded-md transition-colors shrink-0 cursor-pointer ${
-                  activeCategory === 'clients'
-                    ? 'bg-[#1E40AF] text-white shadow-xs'
-                    : 'text-[#94A3B8] hover:text-white hover:bg-[#1A2742]'
-                }`}
-              >
-                <Building2 className="w-3 h-3 text-emerald-400" />
-                <span>Clientes ({counts.clients})</span>
-              </button>
+              {/* Clientes: solo para Supervisor y TI */}
+              {normalizedRole !== 'Empleado' && normalizedRole !== 'RH' && counts.clients > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setActiveCategory('clients')}
+                  className={`flex items-center space-x-1 px-2.5 py-1 rounded-md transition-colors shrink-0 cursor-pointer ${
+                    activeCategory === 'clients'
+                      ? 'bg-[#1E40AF] text-white shadow-xs'
+                      : 'text-[#94A3B8] hover:text-white hover:bg-[#1A2742]'
+                  }`}
+                >
+                  <Building2 className="w-3 h-3 text-emerald-400" />
+                  <span>Clientes ({counts.clients})</span>
+                </button>
+              )}
 
-              <button
-                type="button"
-                onClick={() => setActiveCategory('tasks')}
-                className={`flex items-center space-x-1 px-2.5 py-1 rounded-md transition-colors shrink-0 cursor-pointer ${
-                  activeCategory === 'tasks'
-                    ? 'bg-[#1E40AF] text-white shadow-xs'
-                    : 'text-[#94A3B8] hover:text-white hover:bg-[#1A2742]'
-                }`}
-              >
-                <CheckSquare className="w-3 h-3 text-purple-400" />
-                <span>Tareas ({counts.tasks})</span>
-              </button>
+              {/* Tareas: solo si el rol no es RH */}
+              {normalizedRole !== 'RH' && counts.tasks > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setActiveCategory('tasks')}
+                  className={`flex items-center space-x-1 px-2.5 py-1 rounded-md transition-colors shrink-0 cursor-pointer ${
+                    activeCategory === 'tasks'
+                      ? 'bg-[#1E40AF] text-white shadow-xs'
+                      : 'text-[#94A3B8] hover:text-white hover:bg-[#1A2742]'
+                  }`}
+                >
+                  <CheckSquare className="w-3 h-3 text-purple-400" />
+                  <span>Tareas ({counts.tasks})</span>
+                </button>
+              )}
 
-              <button
-                type="button"
-                onClick={() => setActiveCategory('people')}
-                className={`flex items-center space-x-1 px-2.5 py-1 rounded-md transition-colors shrink-0 cursor-pointer ${
-                  activeCategory === 'people'
-                    ? 'bg-[#1E40AF] text-white shadow-xs'
-                    : 'text-[#94A3B8] hover:text-white hover:bg-[#1A2742]'
-                }`}
-              >
-                <Users className="w-3 h-3 text-sky-400" />
-                <span>Equipo ({counts.people})</span>
-              </button>
+              {/* Equipo: estrictamente oculto para Empleado */}
+              {normalizedRole !== 'Empleado' && counts.people > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setActiveCategory('people')}
+                  className={`flex items-center space-x-1 px-2.5 py-1 rounded-md transition-colors shrink-0 cursor-pointer ${
+                    activeCategory === 'people'
+                      ? 'bg-[#1E40AF] text-white shadow-xs'
+                      : 'text-[#94A3B8] hover:text-white hover:bg-[#1A2742]'
+                  }`}
+                >
+                  <Users className="w-3 h-3 text-sky-400" />
+                  <span>Equipo ({counts.people})</span>
+                </button>
+              )}
 
-              <button
-                type="button"
-                onClick={() => setActiveCategory('shortcuts')}
-                className={`flex items-center space-x-1 px-2.5 py-1 rounded-md transition-colors shrink-0 cursor-pointer ${
-                  activeCategory === 'shortcuts'
-                    ? 'bg-[#1E40AF] text-white shadow-xs'
-                    : 'text-[#94A3B8] hover:text-white hover:bg-[#1A2742]'
-                }`}
-              >
-                <Zap className="w-3 h-3 text-yellow-400" />
-                <span>Accesos ({counts.shortcuts})</span>
-              </button>
+              {counts.shortcuts > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setActiveCategory('shortcuts')}
+                  className={`flex items-center space-x-1 px-2.5 py-1 rounded-md transition-colors shrink-0 cursor-pointer ${
+                    activeCategory === 'shortcuts'
+                      ? 'bg-[#1E40AF] text-white shadow-xs'
+                      : 'text-[#94A3B8] hover:text-white hover:bg-[#1A2742]'
+                  }`}
+                >
+                  <Zap className="w-3 h-3 text-yellow-400" />
+                  <span>Accesos ({counts.shortcuts})</span>
+                </button>
+              )}
             </div>
 
             {/* Contenedor scrolleable de resultados */}
@@ -649,8 +884,9 @@ export function GlobalSearchBar({
                   </div>
                 )}
 
-              {/* SECCIÓN 2: PROYECTOS */}
-              {(activeCategory === 'all' || activeCategory === 'projects') &&
+              {/* SECCIÓN 2: PROYECTOS AUTORIZADOS */}
+              {normalizedRole !== 'RH' &&
+                (activeCategory === 'all' || activeCategory === 'projects') &&
                 filteredProjects.length > 0 && (
                   <div>
                     <div className="px-1 mb-1.5 text-[10px] font-heading font-bold uppercase tracking-wider text-[#94A3B8]">
@@ -693,8 +929,10 @@ export function GlobalSearchBar({
                   </div>
                 )}
 
-              {/* SECCIÓN 3: CLIENTES */}
-              {(activeCategory === 'all' || activeCategory === 'clients') &&
+              {/* SECCIÓN 3: CLIENTES CORPORATIVOS (Solo Supervisor y TI) */}
+              {normalizedRole !== 'Empleado' &&
+                normalizedRole !== 'RH' &&
+                (activeCategory === 'all' || activeCategory === 'clients') &&
                 filteredClients.length > 0 && (
                   <div>
                     <div className="px-1 mb-1.5 text-[10px] font-heading font-bold uppercase tracking-wider text-[#94A3B8]">
@@ -732,12 +970,16 @@ export function GlobalSearchBar({
                   </div>
                 )}
 
-              {/* SECCIÓN 4: TAREAS */}
-              {(activeCategory === 'all' || activeCategory === 'tasks') &&
+              {/* SECCIÓN 4: TAREAS AUTORIZADAS (Para Empleado: SOLO sus propias tareas asignadas) */}
+              {normalizedRole !== 'RH' &&
+                (activeCategory === 'all' || activeCategory === 'tasks') &&
                 filteredTasks.length > 0 && (
                   <div>
-                    <div className="px-1 mb-1.5 text-[10px] font-heading font-bold uppercase tracking-wider text-[#94A3B8]">
-                      Tareas
+                    <div className="flex items-center justify-between px-1 mb-1.5 text-[10px] font-heading font-bold uppercase tracking-wider text-[#94A3B8]">
+                      <span>{normalizedRole === 'Empleado' ? 'Mis Tareas Asignadas' : 'Tareas'}</span>
+                      {normalizedRole === 'Empleado' && (
+                        <span className="text-[10px] text-[#38BDF8]">Solo asignadas a ti</span>
+                      )}
                     </div>
                     <div className="space-y-1">
                       {filteredTasks.map((t) => (
@@ -768,12 +1010,13 @@ export function GlobalSearchBar({
                   </div>
                 )}
 
-              {/* SECCIÓN 5: EQUIPO / PERSONAS */}
-              {(activeCategory === 'all' || activeCategory === 'people') &&
+              {/* SECCIÓN 5: EQUIPO / COLABORADORES (Estrictamente bloqueado para Empleado) */}
+              {normalizedRole !== 'Empleado' &&
+                (activeCategory === 'all' || activeCategory === 'people') &&
                 filteredPeople.length > 0 && (
                   <div>
                     <div className="px-1 mb-1.5 text-[10px] font-heading font-bold uppercase tracking-wider text-[#94A3B8]">
-                      Colaboradores y Equipo
+                      {normalizedRole === 'Supervisor' ? 'Mi Equipo a Cargo' : 'Colaboradores y Personal'}
                     </div>
                     <div className="space-y-1">
                       {filteredPeople.map((p) => (
@@ -840,21 +1083,6 @@ export function GlobalSearchBar({
                     </div>
                   </div>
                 )}
-
-              {/* ESTADO SIN RESULTADOS */}
-              {counts.all === 0 && (
-                <div className="text-center py-8 space-y-2">
-                  <div className="w-8 h-8 rounded-full bg-slate-800 flex items-center justify-center mx-auto text-slate-400">
-                    <Search className="w-4 h-4" />
-                  </div>
-                  <h4 className="text-xs font-semibold text-slate-300">
-                    No se encontraron coincidencias para &quot;{query}&quot;
-                  </h4>
-                  <p className="text-[11px] text-[#94A3B8] max-w-xs mx-auto">
-                    Intenta buscar por fecha (ej. 2026-10-16 o &quot;ayer&quot;), nombre de cliente, proyecto, colaborador o atajos como &quot;perfil&quot;.
-                  </p>
-                </div>
-              )}
             </div>
 
             {/* Pie del Dropdown */}
@@ -870,10 +1098,10 @@ export function GlobalSearchBar({
                   <kbd className="px-1 py-0.5 bg-[#1A2742] rounded text-[10px] font-mono border border-[#233354] text-slate-300">
                     Ctrl K
                   </kbd>{' '}
-                  abrir
+                  buscar
                 </span>
               </div>
-              <span className="text-[#38BDF8] font-medium">Búsqueda Universal Activa</span>
+              <span className="text-[#38BDF8] font-medium">Filtro de seguridad activo ({normalizedRole})</span>
             </div>
           </div>
         )}
