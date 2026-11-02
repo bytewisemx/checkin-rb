@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useCheckinStore } from '../../store/useCheckinStore';
 import { useNavigate, Link } from 'react-router-dom';
 import { 
@@ -6,57 +6,123 @@ import {
   loginWithGoogle, 
   isFirebaseConfigured 
 } from '../../services/firebase';
-import { AlertCircle, LogIn, ChevronDown, Lock, X } from 'lucide-react';
-import { AuthMinimalistHills } from './AuthMinimalistHills';
-import { AuthModalSideIllustration } from './AuthModalSideIllustration';
+import { AlertCircle, Lock, ArrowDown, ChevronUp } from 'lucide-react';
+import gsap from 'gsap';
+import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import './AuthPage.css';
+
+// Registrar ScrollTrigger con GSAP
+gsap.registerPlugin(ScrollTrigger);
+
+// 100 cajas para cubrir 100vh exactos (1.2vh con margin-bottom -0.2vh = 1.0vh por caja)
+const BOX_COUNT = 100;
+const BOX_ARRAY = Array.from({ length: BOX_COUNT }, (_, i) => i);
 
 export function AuthPage() {
   const { login, loginWithFirebaseUser, addToast } = useCheckinStore();
   const navigate = useNavigate();
+
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
-  const [isOpened, setIsOpened] = useState(false);
   const [showDemoProfiles, setShowDemoProfiles] = useState(false);
+
+  const triggerRef = useRef<HTMLDivElement>(null);
+  const introRef = useRef<HTMLDivElement>(null);
+  const formRef = useRef<HTMLDivElement>(null);
+  const backdropRef = useRef<HTMLDivElement>(null);
 
   const firebaseReady = isFirebaseConfigured();
 
+  // Animación de GSAP con ScrollTrigger para la transición de hoja
   useEffect(() => {
-    const handleScroll = () => {
-      if (window.scrollY > window.innerHeight / 3 && !isOpened) {
-        setIsOpened(true);
-      }
-    };
+    const triggerEl = triggerRef.current;
+    if (!triggerEl) return;
 
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        setIsOpened(false);
-      }
-    };
+    const ctx = gsap.context(() => {
+      const tl = gsap.timeline({
+        scrollTrigger: {
+          trigger: triggerEl,
+          scrub: 0.5,
+          pin: true,
+          start: 'top top',
+          end: '+=150%'
+        }
+      });
 
-    window.addEventListener('scroll', handleScroll);
-    window.addEventListener('keydown', handleKeyDown);
+      // 1. Transición de las 100 cajas volteándose hacia la derecha
+      tl.to('.box', {
+        force3D: true,
+        duration: 1,
+        xPercent: 100,
+        ease: 'power1.inOut',
+        stagger: { amount: 1 }
+      })
+      .to('.box', { 
+        ease: 'power1.out', 
+        duration: 1, 
+        rotation: '45deg', 
+        stagger: { amount: 1 } 
+      }, 0)
+      .to('.box', { 
+        ease: 'power1.in', 
+        duration: 1, 
+        rotation: '0deg', 
+        stagger: { amount: 1 } 
+      }, 1);
+
+      // 2. Desvanecer suavemente el panel de bienvenida de la derecha al scrollear
+      if (introRef.current) {
+        tl.to(introRef.current, {
+          autoAlpha: 0,
+          y: -25,
+          duration: 0.7,
+          ease: 'power1.out'
+        }, 0.2);
+      }
+
+      // 3. Revelar el formulario de acceso en la mitad izquierda
+      if (formRef.current) {
+        tl.fromTo(formRef.current,
+          { autoAlpha: 0, scale: 0.96, y: 15 },
+          { autoAlpha: 1, scale: 1, y: 0, duration: 0.8, ease: 'power2.out' },
+          0.35
+        );
+      }
+
+      // 4. Panel artístico corporativo visible al asentarse las cajas en el lado derecho
+      if (backdropRef.current) {
+        tl.fromTo(backdropRef.current,
+          { autoAlpha: 0 },
+          { autoAlpha: 1, duration: 0.8, ease: 'power2.out' },
+          1.2
+        );
+      }
+    }, triggerRef);
 
     return () => {
-      window.removeEventListener('scroll', handleScroll);
-      window.removeEventListener('keydown', handleKeyDown);
+      ctx.revert();
     };
-  }, [isOpened]);
+  }, []);
 
-  // Manejar bloqueo de scroll
-  useEffect(() => {
-    if (isOpened) {
-      document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = 'initial';
-    }
-    return () => {
-      document.body.style.overflow = 'initial';
-    };
-  }, [isOpened]);
+  // Función para avanzar suavemente al formulario mediante clic
+  const handleScrollToForm = () => {
+    const scrollTarget = window.innerHeight * 1.5;
+    window.scrollTo({
+      top: scrollTarget,
+      behavior: 'smooth'
+    });
+  };
+
+  // Función para regresar suavemente a la portada inicial
+  const handleScrollToTop = () => {
+    window.scrollTo({
+      top: 0,
+      behavior: 'smooth'
+    });
+  };
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -91,7 +157,7 @@ export function AuthPage() {
           navigate('/');
           return;
         } else {
-          // Si falló en Firebase, verificar si es demo local
+          // Fallback a demo local si no hubo éxito en Firebase
           const localSuccess = login(email, password);
           if (localSuccess) {
             navigate('/');
@@ -132,7 +198,6 @@ export function AuthPage() {
           setErrorMsg(res.error || 'No se pudo iniciar con Google.');
         }
       } else {
-        // Simulación guiada si aún no están las variables en .env
         setErrorMsg(
           'Para habilitar Google Sign-In con cuentas reales, agrega tus credenciales de Firebase en el archivo .env (ver .env.example).'
         );
@@ -146,44 +211,36 @@ export function AuthPage() {
   };
 
   return (
-    <div className="auth-body">
-      {/* Indicador Flotante sin ningún encuadre ni fondo: Animación pura de deslizar */}
-      {!isOpened && (
-        <div 
-          className="auth-scroll-down" 
-          onClick={() => setIsOpened(true)}
-          role="button"
-          tabIndex={0}
-          title="Desliza hacia abajo o haz clic para ingresar"
-        >
-          <span className="auth-scroll-tag">RUSSELL BEDFORD</span>
-          <span className="auth-scroll-text">DESLIZA HACIA ABAJO</span>
-          
-          {/* Animación fluida de deslizamiento */}
-          <div className="auth-scroll-animation">
-            <div className="auth-scroll-mouse">
-              <div className="auth-scroll-wheel"></div>
+    <div className="auth-page-root">
+      {/* Contenedor fijado durante el scroll */}
+      <section className="trigger" ref={triggerRef}>
+
+        {/* 1. MITAD IZQUIERDA: FORMULARIO DE ACCESO (REVELADO AL PASAR LA HOJA) */}
+        <div className="auth-login-panel">
+          <div className="auth-login-card" ref={formRef}>
+            <div className="flex items-center justify-between mb-2">
+              <div className="inline-flex items-center space-x-2 text-xs font-bold text-[#0D5C75]">
+                <svg className="w-4 h-4 fill-current" viewBox="0 0 24 24">
+                  <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
+                </svg>
+                <span>RUSSELL BEDFORD</span>
+              </div>
+              <button
+                type="button"
+                onClick={handleScrollToTop}
+                title="Volver a la portada"
+                className="text-[11px] font-semibold text-slate-400 hover:text-[#0D5C75] inline-flex items-center space-x-1 cursor-pointer transition-colors"
+              >
+                <ChevronUp className="w-3.5 h-3.5" />
+                <span>Volver</span>
+              </button>
             </div>
-            <div className="auth-scroll-arrows">
-              <ChevronDown className="auth-arrow-icon auth-arrow-1" />
-              <ChevronDown className="auth-arrow-icon auth-arrow-2" />
+
+            <div className="auth-card-header">
+              <h1 className="auth-card-title">¡Bienvenido!</h1>
+              <p className="auth-card-subtitle">Inicia sesión con tu cuenta para acceder a la plataforma.</p>
             </div>
-          </div>
-        </div>
-      )}
-      
-      {/* Paisaje Minimalista de Colinas en Azul y Blanco */}
-      <div className="auth-container">
-        <AuthMinimalistHills />
-      </div>
-      
-      {/* Modal de Inicio de Sesión */}
-      <div className={`auth-modal ${isOpened ? 'is-open' : ''}`}>
-        <div className="auth-modal-container">
-          <div className="auth-modal-left">
-            <h1 className="auth-modal-title">¡Bienvenido!</h1>
-            <p className="auth-modal-desc">Inicia sesión con tu cuenta para acceder a la plataforma.</p>
-            
+
             {errorMsg && (
               <div className="mb-4 p-3 bg-rose-50 border border-rose-200 text-rose-700 rounded-xl text-xs font-semibold flex items-start space-x-2">
                 <AlertCircle className="w-4 h-4 shrink-0 text-rose-600 mt-0.5" />
@@ -191,7 +248,7 @@ export function AuthPage() {
               </div>
             )}
 
-            {/* Botón de Inicio Rápido con Google */}
+            {/* Botón de Inicio con Google */}
             <button
               type="button"
               onClick={handleGoogleSignIn}
@@ -214,7 +271,7 @@ export function AuthPage() {
             </div>
 
             <form onSubmit={handleLogin}>
-              <div className="auth-input-block">
+              <div className="auth-input-group">
                 <label htmlFor="email" className="auth-input-label">Correo Electrónico</label>
                 <input 
                   type="email" 
@@ -223,11 +280,12 @@ export function AuthPage() {
                   placeholder="ejemplo@russellbedford.mx"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
+                  className="auth-input-field"
                   required
                 />
               </div>
 
-              <div className="auth-input-block">
+              <div className="auth-input-group">
                 <label htmlFor="password" className="auth-input-label">Contraseña</label>
                 <input 
                   type="password" 
@@ -236,12 +294,13 @@ export function AuthPage() {
                   placeholder="Tu contraseña"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
+                  className="auth-input-field"
                   required
                 />
               </div>
-              
+
               {/* Accesos Rápidos de Prueba de los 4 Niveles RBAC (Ocultos por defecto con botón sutil) */}
-              <div className="mb-3 pt-2 border-t border-slate-100">
+              <div className="mb-4 pt-1 border-t border-slate-100">
                 <button
                   type="button"
                   onClick={() => setShowDemoProfiles(!showDemoProfiles)}
@@ -262,8 +321,8 @@ export function AuthPage() {
                           setEmail('ti.root@russellbedford.mx');
                           setPassword('admin123');
                         }}
-                        className="inline-flex items-center justify-center px-2 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-amber-300 text-[10px] font-bold border border-slate-700 transition-all cursor-pointer shadow-2xs active:scale-95"
-                        title="TI (Root): Audita todo el sistema y emite links para Supervisores"
+                        className="inline-flex items-center justify-center px-2 py-1.5 rounded-lg bg-[#001A29] hover:bg-[#002538] text-amber-300 text-[10px] font-bold border border-slate-700 transition-all cursor-pointer shadow-2xs active:scale-95"
+                        title="TI (Root): Audita todo el sistema"
                       >
                         <span>👑 TI (Root Admin)</span>
                       </button>
@@ -274,7 +333,7 @@ export function AuthPage() {
                           setPassword('admin123');
                         }}
                         className="inline-flex items-center justify-center px-2 py-1.5 rounded-lg bg-cyan-50 hover:bg-cyan-100 text-[#0D5C75] text-[10px] font-bold border border-cyan-200 transition-all cursor-pointer shadow-2xs active:scale-95"
-                        title="Supervisor: Invita a su equipo, asigna tareas y recibe notificaciones"
+                        title="Supervisor: Invita a su equipo y asigna tareas"
                       >
                         <span>🛡️ Supervisor</span>
                       </button>
@@ -285,7 +344,7 @@ export function AuthPage() {
                           setPassword('admin123');
                         }}
                         className="inline-flex items-center justify-center px-2 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-800 text-[10px] font-bold border border-blue-200 transition-all cursor-pointer shadow-2xs active:scale-95"
-                        title="Empleado / Operativo: Visualiza sus tareas asignadas y registra tiempo"
+                        title="Empleado / Operativo: Visualiza sus tareas y registra asistencia"
                       >
                         <span>👤 Empleado</span>
                       </button>
@@ -296,7 +355,7 @@ export function AuthPage() {
                           setPassword('admin123');
                         }}
                         className="inline-flex items-center justify-center px-2 py-1.5 rounded-lg bg-teal-50 hover:bg-teal-100 text-teal-800 text-[10px] font-bold border border-teal-200 transition-all cursor-pointer shadow-2xs active:scale-95"
-                        title="RH (Restringido): Solo métricas de personal y horas; 403 en Tareas y Clientes"
+                        title="RH (Restringido): Métricas de personal y horas"
                       >
                         <span>📊 RH (Restringido)</span>
                       </button>
@@ -305,41 +364,113 @@ export function AuthPage() {
                 )}
               </div>
 
-              <div className="auth-modal-buttons">
-                <Link to="/forgot-password">¿Olvidaste tu contraseña?</Link>
-                <button type="submit" className="auth-input-button" disabled={isLoading}>
+              <div className="flex items-center justify-between mb-4">
+                <Link to="/forgot-password" className="text-xs text-[#0D5C75] hover:underline font-medium">
+                  ¿Olvidaste tu contraseña?
+                </Link>
+                <button type="submit" className="auth-submit-btn !w-auto !py-2 !px-5" disabled={isLoading}>
                   {isLoading ? 'Iniciando...' : 'Iniciar Sesión'}
                 </button>
               </div>
             </form>
-            
-            <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-center space-x-1.5 text-slate-400 text-[10px]">
+
+            <div className="mt-2 pt-3 border-t border-slate-100 flex items-center justify-center space-x-1.5 text-slate-400 text-[10px]">
               <Lock className="w-3 h-3 text-slate-400 shrink-0" />
               <span>Acceso no público</span>
             </div>
           </div>
+        </div>
 
-          <div className="auth-modal-right">
-            <AuthModalSideIllustration />
-            
-            {/* Tachita flotante blanca sin recuadros */}
-            <button
-              type="button"
-              onClick={() => setIsOpened(false)}
-              title="Cerrar ventana"
-              className="absolute top-4 right-4 p-1.5 text-white/90 hover:text-white transition-all cursor-pointer z-30 rounded-full hover:bg-white/10"
-              aria-label="Cerrar"
-            >
-              <X className="w-5 h-5 stroke-[2.2]" />
-            </button>
+        {/* 2. MITAD DERECHA INICIAL: TEXTO "RUSSELL BEDFORD - DESLICE PARA CONTINUAR" */}
+        <div 
+          className="auth-intro-panel" 
+          ref={introRef}
+          onClick={handleScrollToForm}
+          role="button"
+          tabIndex={0}
+          title="Haz clic o desliza hacia abajo para continuar"
+        >
+          <div className="auth-intro-content">
+            <div className="auth-brand-badge">
+              <span className="w-2 h-2 rounded-full bg-[#00B5B8] animate-pulse"></span>
+              <span>Plataforma Corporativa</span>
+            </div>
+
+            {/* Palomita Azul 3D */}
+            <div className="mb-4">
+              <svg className="w-16 h-16 drop-shadow-md" viewBox="0 0 64 64" fill="none">
+                <defs>
+                  <linearGradient id="checkmarkGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                    <stop offset="0%" stopColor="#00E5FF" />
+                    <stop offset="50%" stopColor="#0D5C75" />
+                    <stop offset="100%" stopColor="#002538" />
+                  </linearGradient>
+                  <filter id="shadow3d" x="-20%" y="-20%" width="140%" height="140%">
+                    <feDropShadow dx="2" dy="4" stdDeviation="4" floodColor="#002538" floodOpacity="0.25" />
+                  </filter>
+                </defs>
+                <circle cx="32" cy="32" r="30" fill="#F0F9FF" stroke="#BAE6FD" strokeWidth="2" />
+                <path 
+                  d="M18 33L27 42L46 22" 
+                  stroke="url(#checkmarkGrad)" 
+                  strokeWidth="6" 
+                  strokeLinecap="round" 
+                  strokeLinejoin="round" 
+                  filter="url(#shadow3d)"
+                />
+              </svg>
+            </div>
+
+            <h1 className="auth-intro-title">
+              Russell<br />Bedford
+            </h1>
+
+            <div className="auth-intro-action">
+              <span>Deslice para continuar</span>
+              <ArrowDown className="w-5 h-5 auth-scroll-arrow text-[#0D5C75]" />
+            </div>
+
+            <p className="auth-intro-desc">
+              Control integral de asistencia, gestión inteligente de tareas y registro biométrico seguro.
+            </p>
+
+            <div className="auth-scroll-prompt">
+              <div className="auth-mouse-pill">
+                <div className="auth-mouse-wheel"></div>
+              </div>
+            </div>
           </div>
         </div>
 
-        <button type="button" className="auth-modal-button" onClick={() => setIsOpened(true)}>
-          <LogIn className="w-4 h-4 text-[#0D5C75]" />
-          <span>Acceder a Russell Bedford Checkin</span>
-        </button>
-      </div>
+        {/* 3. CAPA DE 100 CAJAS (HOJA QUE SE VOLTEA CON SCROLLTRIGGER) */}
+        <div className="auth-boxes-layer" aria-hidden="true">
+          {BOX_ARRAY.map((i) => (
+            <div key={i} className="box" />
+          ))}
+        </div>
+
+        {/* 4. MITAD DERECHA POSTERIOR: ARTE CORPORATIVO REVELADO AL VOLTEAR LA HOJA */}
+        <div className="auth-right-backdrop" ref={backdropRef}>
+          <div className="auth-backdrop-decoration"></div>
+          <div className="auth-backdrop-brand">
+            <svg className="w-16 h-16 mx-auto mb-4 drop-shadow-lg" viewBox="0 0 64 64" fill="none">
+              <circle cx="32" cy="32" r="30" fill="rgba(255,255,255,0.08)" stroke="rgba(255,255,255,0.2)" strokeWidth="1.5" />
+              <path 
+                d="M18 33L27 42L46 22" 
+                stroke="#00E5FF" 
+                strokeWidth="5" 
+                strokeLinecap="round" 
+                strokeLinejoin="round" 
+              />
+            </svg>
+            <h2 className="auth-backdrop-title">Russell Bedford</h2>
+            <p className="auth-backdrop-tagline">
+              Sistema corporativo de control de tiempo, presencia y productividad.
+            </p>
+          </div>
+        </div>
+
+      </section>
     </div>
   );
 }

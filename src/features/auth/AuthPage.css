@@ -1,387 +1,385 @@
-.auth-body {
-  font-family: "Sora", sans-serif;
-  color: var(--text-primary);
-  overflow-x: hidden;
-  margin: 0;
-  padding: 0;
-  background-color: var(--bg-main);
+/* ==========================================================================
+   RUSSELL BEDFORD - ANIMACIÓN DE TRANSICIÓN DE HOJA AL SCROLL
+   Fondo Blanco y Tonalidades Azules Corporativas
+   ========================================================================== */
+
+:root {
+  --rb-white: #FFFFFF;
+  --rb-surface-subtle: #F8FAFC;
+  --rb-border: #E2E8F0;
+  --rb-border-focus: #0D5C75;
+  --rb-blue-navy: #001A29;
+  --rb-blue-primary: #00283E;
+  --rb-blue-accent: #0D5C75;
+  --rb-blue-bright: #00B5B8;
+  --rb-text-main: #0F172A;
+  --rb-text-muted: #64748B;
 }
 
-/* Contenedor de scroll con el fondo oscuro y elegante */
-.auth-container {
-  height: 200vh;
-  position: relative;
-  background: linear-gradient(180deg, #0B111E 0%, #0F172A 40%, #131D31 75%, #1A2742 100%);
-}
-
-.auth-modal {
-  position: fixed;
-  left: 0;
-  bottom: 0;
+/* Contenedor Principal de ScrollTrigger */
+.auth-page-root {
   width: 100%;
-  height: 72px;
-  background: rgba(11, 17, 30, 0.85);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  min-height: 100vh;
+  background-color: var(--rb-white);
+  overflow-x: hidden;
+  font-family: "Sora", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+/* Sección Trigger fijada (Pin) en Pantalla Completa durante el Scroll */
+.trigger {
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  background: var(--rb-white);
+  position: relative;
+  display: flex;
+}
+
+/* ==========================================================================
+   LAS 100 TIRAS DE HOJA (BOXES) - Efecto de volteado 3D
+   ========================================================================== */
+.auth-boxes-layer {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 50vw;
+  height: 100vh;
+  z-index: 15;
+  pointer-events: none;
+  overflow: visible;
+  display: flex;
+  flex-direction: column;
+}
+
+.box {
+  height: 1.2vh;
+  width: 50vw;
+  margin-bottom: -0.2vh;
+  background: linear-gradient(90deg, #001A29 0%, #00283E 50%, #0A3D5B 100%);
+  display: block;
+  transform-origin: center center;
+  box-shadow: 0 1px 3px rgba(0, 20, 32, 0.15);
+  will-change: transform;
+}
+
+/* ==========================================================================
+   MITAD DERECHA INICIAL - "RUSSELL BEDFORD - DESLICE PARA CONTINUAR"
+   ========================================================================== */
+.auth-intro-panel {
+  position: absolute;
+  right: 0;
+  top: 0;
+  width: 50vw;
+  height: 100vh;
+  z-index: 10;
+  background: var(--rb-white);
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
-  z-index: 100;
-  border-top: 1px solid var(--border-subtle);
-}
-
-.auth-modal-container {
-  display: flex;
-  max-width: 860px;
-  width: 92%;
-  border-radius: 16px;
-  overflow: hidden;
-  isolation: isolate;
-  position: absolute;
-  opacity: 0;
-  pointer-events: none;
-  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
-  background: #FFFFFF;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  transform: translateY(80px) scale(0.92);
-  box-shadow: 0 25px 65px -15px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(0, 0, 0, 0.06);
-}
-
-.auth-modal-title {
-  font-size: 26px;
-  margin: 0;
-  font-family: "Sora", sans-serif;
-  font-weight: 700;
-  color: var(--text-primary);
-  letter-spacing: -0.5px;
-}
-
-.auth-modal-desc {
-  margin: 6px 0 24px 0;
-  font-size: 13px;
-  color: var(--text-secondary);
-  font-weight: 400;
-}
-
-.auth-modal-left {
-  padding: 44px 36px 32px;
-  background: var(--bg-surface);
-  flex: 1.35;
-  transition: all 0.5s cubic-bezier(0.16, 1, 0.3, 1);
-  transform: translateY(40px);
-  opacity: 0;
-  overflow-y: auto;
-  max-height: 85vh;
-  color: var(--text-primary);
-}
-
-.auth-modal-button {
-  color: var(--text-primary);
-  font-family: "Sora", sans-serif;
-  font-size: 14px;
-  font-weight: 600;
+  padding: 3rem 2.5rem;
+  box-sizing: border-box;
+  text-align: center;
   cursor: pointer;
-  border: 1px solid var(--border-subtle);
-  outline: 0;
-  padding: 10px 28px;
-  border-radius: 6px;
-  background: var(--primary-royal);
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3);
-  transition: all 0.2s ease;
+  user-select: none;
+  transition: opacity 0.3s ease;
+}
+
+.auth-intro-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  max-width: 480px;
+}
+
+/* Título de Marca */
+.auth-brand-badge {
   display: inline-flex;
   align-items: center;
   gap: 8px;
+  padding: 6px 14px;
+  border-radius: 9999px;
+  background: #F0F9FF;
+  border: 1px solid #BAE6FD;
+  color: #0369A1;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  margin-bottom: 24px;
 }
 
-.auth-modal-button:hover {
-  background: var(--primary-hover);
-  transform: translateY(-1px);
-  border-color: var(--accent-sky);
+.auth-intro-title {
+  font-size: clamp(32px, 4vw, 54px);
+  font-weight: 900;
+  color: #002538;
+  letter-spacing: -0.03em;
+  line-height: 1.08;
+  margin: 0 0 14px 0;
+  text-transform: uppercase;
 }
 
-.auth-modal-right {
-  flex: 1.15;
-  background: #00121C;
+.auth-intro-action {
+  font-size: clamp(16px, 2vw, 22px);
+  font-weight: 800;
+  color: #0D5C75;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin: 0 0 28px 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.auth-intro-desc {
+  font-size: 13px;
+  color: #64748B;
+  font-weight: 400;
+  line-height: 1.6;
+  max-width: 380px;
+  margin: 0 0 32px 0;
+}
+
+/* Animación de Deslizamiento del Mouse / Flecha */
+.auth-scroll-prompt {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  color: #0D5C75;
+}
+
+.auth-mouse-pill {
+  width: 24px;
+  height: 38px;
+  border: 2px solid #0D5C75;
+  border-radius: 14px;
   position: relative;
   display: flex;
-  overflow: hidden;
-  border-left: 1px solid #E2E8F0;
+  justify-content: center;
 }
 
-.auth-modal.is-open {
-  height: 100%;
-  background: rgba(11, 17, 30, 0.92);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
+.auth-mouse-wheel {
+  width: 3px;
+  height: 7px;
+  background-color: #0D5C75;
+  border-radius: 2px;
+  position: absolute;
+  top: 6px;
+  animation: mouseWheelSlide 1.8s infinite cubic-bezier(0.65, 0, 0.35, 1);
 }
 
-.auth-modal.is-open .auth-modal-button {
-  opacity: 0;
-  pointer-events: none;
-  transform: scale(0.8);
+@keyframes mouseWheelSlide {
+  0% {
+    opacity: 0;
+    transform: translateY(0);
+  }
+  30% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(14px);
+  }
 }
 
-.auth-modal.is-open .auth-modal-container {
-  opacity: 1;
-  transition-duration: 0.5s;
-  pointer-events: auto;
-  transform: translateY(0) scale(1);
+.auth-scroll-arrow {
+  animation: bounceDown 1.8s infinite ease-in-out;
 }
 
-.auth-modal.is-open .auth-modal-left {
-  transform: translateY(0);
-  opacity: 1;
-  transition-delay: 0.08s;
+@keyframes bounceDown {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(6px);
+  }
 }
 
-.auth-modal-buttons {
+/* ==========================================================================
+   MITAD IZQUIERDA - FORMULARIO DE ACCESO (REVELADO AL SCROLLEAR)
+   ========================================================================== */
+.auth-login-panel {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 50vw;
+  height: 100vh;
+  z-index: 5;
+  background: var(--rb-white);
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  margin-top: 12px;
+  justify-content: center;
+  padding: 2.5rem 2rem;
+  box-sizing: border-box;
+  overflow-y: auto;
 }
 
-.auth-modal-buttons a {
-  color: var(--accent-sky);
+.auth-login-card {
+  width: 100%;
+  max-width: 440px;
+  display: flex;
+  flex-direction: column;
+}
+
+.auth-card-header {
+  margin-bottom: 22px;
+}
+
+.auth-card-title {
+  font-size: 28px;
+  font-weight: 800;
+  color: #002538;
+  letter-spacing: -0.03em;
+  margin: 0 0 6px 0;
+}
+
+.auth-card-subtitle {
   font-size: 13px;
-  font-weight: 500;
-  text-decoration: none;
-  transition: color 0.2s;
+  color: #64748B;
+  margin: 0;
+  line-height: 1.5;
 }
 
-.auth-modal-buttons a:hover {
-  color: var(--text-primary);
-  text-decoration: underline;
-}
-
-.auth-sign-up {
-  margin: 28px 0 0;
-  font-size: 13px;
-  text-align: center;
-  color: var(--text-secondary);
-  font-weight: 500;
-}
-
-.auth-sign-up a {
-  color: var(--accent-sky);
-  font-weight: 600;
-  text-decoration: none;
-  margin-left: 4px;
-}
-
-.auth-sign-up a:hover {
-  color: var(--text-primary);
-  text-decoration: underline;
-}
-
-.auth-input-button {
-  padding: 10px 22px;
-  outline: none;
-  border: 1px solid var(--primary-royal);
-  color: #FFFFFF;
-  border-radius: 6px;
-  background: var(--primary-royal);
-  font-family: "Sora", sans-serif;
-  font-size: 13px;
-  font-weight: 600;
-  transition: all 0.2s ease;
-  cursor: pointer;
-}
-
-.auth-input-button:hover {
-  background: var(--primary-hover);
-  border-color: var(--accent-sky);
-  transform: translateY(-1px);
-}
-
-.auth-input-button:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-  transform: none;
+/* Inputs de Correo y Contraseña */
+.auth-input-group {
+  margin-bottom: 16px;
+  display: flex;
+  flex-direction: column;
 }
 
 .auth-input-label {
   font-size: 11px;
-  text-transform: uppercase;
-  font-family: "Sora", sans-serif;
-  font-weight: 600;
-  letter-spacing: 0.8px;
-  color: var(--accent-sky);
-  margin-bottom: 2px;
-  transition: color 0.2s;
-}
-
-.auth-input-block {
-  display: flex;
-  flex-direction: column;
-  padding: 8px 12px 6px;
-  border: 1px solid var(--border-subtle);
-  border-radius: 6px;
-  margin-bottom: 14px;
-  transition: all 0.2s ease;
-  background: var(--bg-surface-elevated);
-}
-
-.auth-input-block input {
-  outline: 0;
-  border: 0;
-  padding: 4px 0 2px;
-  font-size: 13px;
-  font-family: "Sora", sans-serif;
-  font-weight: 500;
-  color: var(--text-primary);
-  background: transparent;
-}
-
-.auth-input-block input::placeholder {
-  color: var(--text-muted);
-  font-weight: 400;
-  opacity: 1;
-}
-
-.auth-input-block:focus-within {
-  border-color: var(--accent-sky);
-  box-shadow: 0 0 0 1px var(--accent-sky);
-}
-
-.auth-input-block:focus-within .auth-input-label {
-  color: var(--accent-sky);
-}
-
-/* Indicador Flotante sin encuadre exagerado */
-.auth-scroll-down {
-  position: fixed;
-  top: 50%;
-  left: 50%;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  text-align: center;
-  transform: translate(-50%, -50%);
-  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-  pointer-events: auto;
-  z-index: 20;
-  cursor: pointer;
-  background: transparent !important;
-  border: none !important;
-  box-shadow: none !important;
-  padding: 0;
-  outline: none;
-}
-
-.auth-scroll-down:hover {
-  transform: translate(-50%, -52%);
-}
-
-.auth-scroll-tag {
-  font-size: 11px;
-  font-family: "Sora", sans-serif;
   font-weight: 700;
-  letter-spacing: 3px;
+  color: #002538;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
-  color: var(--accent-sky);
   margin-bottom: 6px;
-  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.8);
 }
 
-.auth-scroll-text {
-  font-size: 24px;
-  font-family: "Sora", sans-serif;
+.auth-input-field {
+  width: 100%;
+  padding: 11px 14px;
+  background: #FFFFFF;
+  border: 1px solid #CBD5E1;
+  border-radius: 10px;
+  font-size: 13px;
+  color: #0F172A;
+  outline: none;
+  transition: all 0.2s ease;
+  box-sizing: border-box;
+}
+
+.auth-input-field:focus {
+  border-color: #0D5C75;
+  box-shadow: 0 0 0 3px rgba(13, 92, 117, 0.12);
+}
+
+/* Botón Principal de Iniciar Sesión */
+.auth-submit-btn {
+  width: 100%;
+  padding: 12px 18px;
+  background: #002538;
+  color: #FFFFFF;
+  border: none;
+  border-radius: 10px;
+  font-size: 13px;
   font-weight: 700;
-  letter-spacing: 2px;
-  color: var(--text-primary);
-  text-shadow: 0 3px 18px rgba(0, 0, 0, 0.9);
-  margin-bottom: 14px;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 12px rgba(0, 37, 56, 0.2);
 }
 
-.auth-scroll-animation {
+.auth-submit-btn:hover:not(:disabled) {
+  background: #0D5C75;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(13, 92, 117, 0.3);
+}
+
+.auth-submit-btn:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+/* ==========================================================================
+   MITAD DERECHA POSTERIOR - ARTE CORPORATIVO AL COMPLETAR EL DESPLIEGUE
+   ========================================================================== */
+.auth-right-backdrop {
+  position: absolute;
+  right: 0;
+  top: 0;
+  width: 50vw;
+  height: 100vh;
+  z-index: 2;
+  background: linear-gradient(135deg, #00121C 0%, #002538 50%, #0D5C75 100%);
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 6px;
-}
-
-.auth-scroll-mouse {
-  width: 22px;
-  height: 36px;
-  border: 1.5px solid var(--text-primary);
-  border-radius: 11px;
-  display: flex;
   justify-content: center;
-  padding-top: 5px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.6);
-  backdrop-filter: blur(2px);
+  padding: 3rem;
+  box-sizing: border-box;
+  color: #FFFFFF;
+  text-align: center;
+  overflow: hidden;
 }
 
-.auth-scroll-wheel {
-  width: 3px;
-  height: 6px;
-  background: var(--accent-sky);
-  border-radius: 2px;
-  animation: wheelScroll 1.8s ease-in-out infinite;
+.auth-backdrop-decoration {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.35;
+  background-image: 
+    radial-gradient(circle at 20% 30%, rgba(0, 181, 184, 0.25) 0%, transparent 40%),
+    radial-gradient(circle at 80% 70%, rgba(13, 92, 117, 0.35) 0%, transparent 50%);
 }
 
-@keyframes wheelScroll {
-  0% {
-    transform: translateY(0);
-    opacity: 1;
+.auth-backdrop-brand {
+  position: relative;
+  z-index: 2;
+  max-width: 420px;
+}
+
+.auth-backdrop-title {
+  font-size: 32px;
+  font-weight: 900;
+  letter-spacing: -0.02em;
+  color: #FFFFFF;
+  margin: 18px 0 10px 0;
+  text-transform: uppercase;
+}
+
+.auth-backdrop-tagline {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.75);
+  font-weight: 400;
+  line-height: 1.6;
+}
+
+/* ==========================================================================
+   RESPONSIVIDAD Y PANTALLAS MÓVILES
+   ========================================================================== */
+@media (max-width: 900px) {
+  .trigger {
+    height: auto;
+    min-height: 100vh;
+    flex-direction: column;
   }
-  60% {
-    transform: translateY(10px);
-    opacity: 0.15;
-  }
-  100% {
-    transform: translateY(0);
-    opacity: 1;
-  }
-}
 
-.auth-scroll-arrows {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  margin-top: 2px;
-}
-
-.auth-arrow-icon {
-  width: 18px;
-  height: 18px;
-  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.8));
-}
-
-.auth-arrow-1 {
-  color: var(--accent-sky);
-  animation: arrowPulse 1.8s ease-in-out infinite;
-}
-
-.auth-arrow-2 {
-  color: var(--text-primary);
-  margin-top: -10px;
-  animation: arrowPulse 1.8s ease-in-out 0.25s infinite;
-}
-
-@keyframes arrowPulse {
-  0%, 100% {
-    transform: translateY(0);
-    opacity: 0.35;
-  }
-  50% {
-    transform: translateY(5px);
-    opacity: 1;
-  }
-}
-
-@media(max-width: 820px) {
-  .auth-modal-container {
-    width: 94%;
-    max-height: 90vh;
-  }
-  .auth-modal-right {
+  .auth-boxes-layer {
     display: none;
   }
-  .auth-modal-left {
-    padding: 28px 20px 24px;
+
+  .auth-intro-panel,
+  .auth-login-panel,
+  .auth-right-backdrop {
+    position: relative;
+    width: 100vw;
+    height: auto;
+    min-height: 100vh;
+  }
+
+  .auth-right-backdrop {
+    display: none;
   }
 }
