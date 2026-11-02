@@ -124,6 +124,8 @@ interface CheckinState {
   isAuthenticated: boolean;
   activeCheckin: CheckinRecord | null;
   history: CheckinRecord[];
+  userActiveCheckins: Record<string, CheckinRecord>;
+  userHistories: Record<string, CheckinRecord[]>;
 
   mockEmployeesData: MockEmployee[];
   userPermissionsDirectory: Record<string, ManagedUserPermissionEntry>;
@@ -396,6 +398,8 @@ export const useCheckinStore = create<CheckinState>()(
       isAuthenticated: false,
       activeCheckin: null,
       history: [],
+      userActiveCheckins: {},
+      userHistories: {},
       mockEmployeesData: initialMockEmployees,
       userPermissionsDirectory: initialPermissionsDirectory,
       toasts: [],
@@ -567,6 +571,8 @@ export const useCheckinStore = create<CheckinState>()(
           lowerEmail === 'ti.root@russellbedford.mx'
         ) {
           const dir = userPermissionsDirectory['ti-root-01'];
+          const userActive = get().userActiveCheckins?.['ti-root-01'] || null;
+          const userHist = get().userHistories?.['ti-root-01'] || [];
           set({
             user: {
               id: 'ti-root-01',
@@ -586,6 +592,8 @@ export const useCheckinStore = create<CheckinState>()(
               biometricThreshold: DEFAULT_BIOMETRIC_THRESHOLD,
             },
             isAuthenticated: true,
+            activeCheckin: userActive,
+            history: userHist,
           });
           return true;
         }
@@ -599,6 +607,8 @@ export const useCheckinStore = create<CheckinState>()(
           lowerEmail === 'rh.prueba@russellbedford.mx'
         ) {
           const dir = userPermissionsDirectory['rh-01'];
+          const userActive = get().userActiveCheckins?.['rh-01'] || null;
+          const userHist = get().userHistories?.['rh-01'] || [];
           set({
             user: {
               id: 'rh-01',
@@ -618,6 +628,8 @@ export const useCheckinStore = create<CheckinState>()(
               biometricThreshold: DEFAULT_BIOMETRIC_THRESHOLD,
             },
             isAuthenticated: true,
+            activeCheckin: userActive,
+            history: userHist,
           });
           return true;
         }
@@ -627,6 +639,8 @@ export const useCheckinStore = create<CheckinState>()(
           const isSilva = lowerEmail.includes('silva');
           const supId = isSilva ? 'sup-1' : 'admin-99';
           const dir = userPermissionsDirectory[supId];
+          const userActive = get().userActiveCheckins?.[supId] || null;
+          const userHist = get().userHistories?.[supId] || [];
           set({
             user: {
               id: supId,
@@ -651,6 +665,8 @@ export const useCheckinStore = create<CheckinState>()(
               biometricThreshold: DEFAULT_BIOMETRIC_THRESHOLD,
             },
             isAuthenticated: true,
+            activeCheckin: userActive,
+            history: userHist,
           });
           return true;
         }
@@ -664,6 +680,8 @@ export const useCheckinStore = create<CheckinState>()(
           lowerEmail === 'demo@russellbedford.mx'
         ) {
           const dir = userPermissionsDirectory['usr-ana'];
+          const anaActive = get().userActiveCheckins?.['usr-ana'] || null;
+          const anaHist = get().userHistories?.['usr-ana'] || generateMockHistory(15);
           set({
             user: {
               id: 'usr-ana',
@@ -686,8 +704,8 @@ export const useCheckinStore = create<CheckinState>()(
               biometricThreshold: DEFAULT_BIOMETRIC_THRESHOLD,
             },
             isAuthenticated: true,
-            history: generateMockHistory(15),
-            activeCheckin: null,
+            history: anaHist,
+            activeCheckin: anaActive,
           });
           return true;
         }
@@ -716,6 +734,8 @@ export const useCheckinStore = create<CheckinState>()(
         const activeToday = existingEmp.history.find(
           (h) => h.date === getPastDateStr(0) && !h.checkOutTimeMs
         );
+        const empActive = get().userActiveCheckins?.[existingEmp.id] || activeToday || null;
+        const empHist = get().userHistories?.[existingEmp.id] || [...existingEmp.history];
 
         set({
           user: {
@@ -738,15 +758,38 @@ export const useCheckinStore = create<CheckinState>()(
             biometricThreshold: DEFAULT_BIOMETRIC_THRESHOLD,
           },
           isAuthenticated: true,
-          history: [...existingEmp.history],
-          activeCheckin: activeToday || null,
+          history: empHist,
+          activeCheckin: empActive,
         });
 
         return true;
       },
 
       logout: () => {
-        set({ user: null, isAuthenticated: false, activeCheckin: null, history: [] });
+        const currentUser = get().user;
+        const currentActive = get().activeCheckin;
+        const currentHistory = get().history;
+
+        const nextUserActiveCheckins = { ...get().userActiveCheckins };
+        const nextUserHistories = { ...get().userHistories };
+
+        if (currentUser) {
+          if (currentActive) {
+            nextUserActiveCheckins[currentUser.id] = currentActive;
+          }
+          if (currentHistory && currentHistory.length > 0) {
+            nextUserHistories[currentUser.id] = currentHistory;
+          }
+        }
+
+        set({
+          user: null,
+          isAuthenticated: false,
+          activeCheckin: null,
+          history: [],
+          userActiveCheckins: nextUserActiveCheckins,
+          userHistories: nextUserHistories,
+        });
       },
 
       loginWithFirebaseUser: (fbUser, invitationData) => {
@@ -791,6 +834,9 @@ export const useCheckinStore = create<CheckinState>()(
           biometrics: existingDir?.biometrics || null,
         };
 
+        const fbActive = get().userActiveCheckins?.[fbUser.uid] || null;
+        const fbHist = get().userHistories?.[fbUser.uid] || [];
+
         set({
           mockEmployeesData: [
             ...mockEmployeesData.filter((e) => e.id !== fbUser.uid && e.email !== userEmail),
@@ -831,8 +877,8 @@ export const useCheckinStore = create<CheckinState>()(
             biometricThreshold: DEFAULT_BIOMETRIC_THRESHOLD,
           },
           isAuthenticated: true,
-          history: [],
-          activeCheckin: null,
+          history: fbHist,
+          activeCheckin: fbActive,
         });
       },
 
@@ -1021,8 +1067,19 @@ export const useCheckinStore = create<CheckinState>()(
             : emp
         );
 
+        const nextUserActiveCheckins = {
+          ...get().userActiveCheckins,
+          [user.id]: newRecord,
+        };
+        const nextUserHistories = {
+          ...get().userHistories,
+          [user.id]: [newRecord, ...history],
+        };
+
         set({
           activeCheckin: newRecord,
+          userActiveCheckins: nextUserActiveCheckins,
+          userHistories: nextUserHistories,
           history: [newRecord, ...history],
           mockEmployeesData: updatedMockData,
         });
@@ -1054,8 +1111,14 @@ export const useCheckinStore = create<CheckinState>()(
             : emp
         );
 
+        const nextUserActiveCheckins = {
+          ...get().userActiveCheckins,
+          [user.id]: updatedRecord,
+        };
+
         set({
           activeCheckin: updatedRecord,
+          userActiveCheckins: nextUserActiveCheckins,
           history: history.map((r) => (r.id === updatedRecord.id ? updatedRecord : r)),
           mockEmployeesData: updatedMockData,
         });
@@ -1085,8 +1148,14 @@ export const useCheckinStore = create<CheckinState>()(
             : emp
         );
 
+        const nextUserActiveCheckins = {
+          ...get().userActiveCheckins,
+          [user.id]: updatedRecord,
+        };
+
         set({
           activeCheckin: updatedRecord,
+          userActiveCheckins: nextUserActiveCheckins,
           history: history.map((r) => (r.id === updatedRecord.id ? updatedRecord : r)),
           mockEmployeesData: updatedMockData,
         });
@@ -1130,9 +1199,20 @@ export const useCheckinStore = create<CheckinState>()(
           return emp;
         });
 
+        const nextUserActiveCheckins = { ...get().userActiveCheckins };
+        delete nextUserActiveCheckins[user.id];
+
+        const updatedHistory = history.map((r) => (r.id === updatedRecord.id ? updatedRecord : r));
+        const nextUserHistories = {
+          ...get().userHistories,
+          [user.id]: updatedHistory,
+        };
+
         set({
           activeCheckin: null,
-          history: history.map((r) => (r.id === updatedRecord.id ? updatedRecord : r)),
+          userActiveCheckins: nextUserActiveCheckins,
+          userHistories: nextUserHistories,
+          history: updatedHistory,
           mockEmployeesData: updatedMockData,
         });
       },
@@ -1169,6 +1249,8 @@ export const useCheckinStore = create<CheckinState>()(
           user: cleanUser,
           isAuthenticated: state.isAuthenticated,
           activeCheckin: state.activeCheckin,
+          userActiveCheckins: state.userActiveCheckins || {},
+          userHistories: state.userHistories || {},
           history: state.history,
           theme: state.theme || 'dark',
         };

@@ -43,6 +43,7 @@ export function CheckinPanel() {
     projects,
     clients,
     teamMembers,
+    activeWorkers,
     startWorkerTimer,
     stopWorkerTimer,
     recordDayAllocations,
@@ -73,9 +74,20 @@ export function CheckinPanel() {
     distance?: number;
   } | null>(null);
 
-  const [activeTaskId, setActiveTaskId] = useState<string | null>(() => {
-    return localStorage.getItem('rb_active_task_id') || null;
-  });
+  const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
+
+  // Sincronizar y restaurar la tarea activa interna de este usuario
+  useEffect(() => {
+    if (!user) return;
+    const myWorker = activeWorkers.find((w) => w.userId === user.id);
+    if (myWorker) {
+      setActiveTaskId(myWorker.taskId);
+      localStorage.setItem(`rb_active_task_id_${user.id}`, myWorker.taskId);
+    } else {
+      const stored = localStorage.getItem(`rb_active_task_id_${user.id}`);
+      setActiveTaskId(stored || null);
+    }
+  }, [user?.id, activeWorkers]);
 
   const currentMember = useMemo(() => {
     if (!user) return teamMembers[0] || null;
@@ -208,8 +220,9 @@ export function CheckinPanel() {
       setIsLocating(false);
 
       if (selectedTaskId && hasTasksModule) {
+        const currentUserId = user?.id || currentMember?.id || 'usr-ana';
         setActiveTaskId(selectedTaskId);
-        localStorage.setItem('rb_active_task_id', selectedTaskId);
+        localStorage.setItem(`rb_active_task_id_${currentUserId}`, selectedTaskId);
 
         const chosenTask = tasks.find((t) => t.id === selectedTaskId);
         const chosenProject = projects.find((p) => p.id === chosenTask?.projectId);
@@ -228,8 +241,9 @@ export function CheckinPanel() {
 
         addToast(`Jornada iniciada. Trabajando en: ${chosenTask?.name}`, 'success');
       } else {
+        const currentUserId = user?.id || currentMember?.id || 'usr-ana';
         setActiveTaskId(null);
-        localStorage.removeItem('rb_active_task_id');
+        localStorage.removeItem(`rb_active_task_id_${currentUserId}`);
         addToast('Entrada de asistencia registrada correctamente.', 'success');
       }
     };
@@ -273,7 +287,7 @@ export function CheckinPanel() {
     await endCheckin();
 
     setActiveTaskId(null);
-    localStorage.removeItem('rb_active_task_id');
+    localStorage.removeItem(`rb_active_task_id_${userId}`);
     setIsEndDayModalOpen(false);
     addToast('Jornada finalizada y horas imputadas correctamente al supervisor', 'success');
   };
@@ -284,7 +298,7 @@ export function CheckinPanel() {
     await endCheckin();
 
     setActiveTaskId(null);
-    localStorage.removeItem('rb_active_task_id');
+    localStorage.removeItem(`rb_active_task_id_${userId}`);
     setIsEndDayModalOpen(false);
     addToast('Salida de jornada registrada correctamente.', 'info');
   };
