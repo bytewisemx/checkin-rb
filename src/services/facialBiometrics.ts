@@ -71,25 +71,37 @@ export interface DetectionResult {
 export async function detectSingleFaceDescriptor(
   input: HTMLVideoElement | HTMLImageElement | HTMLCanvasElement
 ): Promise<DetectionResult | null> {
-  await loadFaceApiModels();
+  if (input instanceof HTMLVideoElement) {
+    if (input.readyState < 2 || input.paused || input.ended || input.videoWidth === 0) {
+      return null;
+    }
+  }
 
-  const options = new faceapi.TinyFaceDetectorOptions({
-    inputSize: 320,
-    scoreThreshold: 0.42, // Tolerancia flexible de detección frente a variaciones de luz
-  });
+  const modelsOk = await loadFaceApiModels();
+  if (!modelsOk) return null;
 
-  const result = await faceapi
-    .detectSingleFace(input, options)
-    .withFaceLandmarks(true)
-    .withFaceDescriptor();
+  try {
+    const options = new faceapi.TinyFaceDetectorOptions({
+      inputSize: 320,
+      scoreThreshold: 0.38, // Umbral equilibrado y preciso de detección
+    });
 
-  if (!result) return null;
+    const result = await faceapi
+      .detectSingleFace(input, options)
+      .withFaceLandmarks(true)
+      .withFaceDescriptor();
 
-  return {
-    descriptor: result.descriptor,
-    detection: result.detection,
-    landmarks: result.landmarks,
-  };
+    if (!result) return null;
+
+    return {
+      descriptor: result.descriptor,
+      detection: result.detection,
+      landmarks: result.landmarks,
+    };
+  } catch (err) {
+    console.error('Error en detectSingleFaceDescriptor:', err);
+    return null;
+  }
 }
 
 /**

@@ -1,12 +1,13 @@
 import { useState, useEffect, useRef } from 'react';
 import {
-  ScanFace,
+  Camera,
   CheckCircle2,
   X,
   Sparkles,
   ShieldCheck,
-  Activity,
-  AlertTriangle,
+  RefreshCw,
+  CameraOff,
+  AlertCircle,
 } from 'lucide-react';
 import {
   loadFaceApiModels,
@@ -14,7 +15,6 @@ import {
   DEFAULT_BIOMETRIC_THRESHOLD,
 } from '../../services/facialBiometrics';
 import { useCheckinStore } from '../../store/useCheckinStore';
-import { Facial3DMeshVisualizer } from '../../components/biometrics/Facial3DMeshVisualizer';
 
 interface FacialEnrollmentModalProps {
   isOpen: boolean;
@@ -36,69 +36,34 @@ export function FacialEnrollmentModal({
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
 
+  const [isLoadingModels, setIsLoadingModels] = useState(true);
   const [cameraActive, setCameraActive] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [faceDetected, setFaceDetected] = useState(false);
-  const [matchScore, setMatchScore] = useState<number>(0);
+  const [livePreviewVector, setLivePreviewVector] = useState<number[]>([]);
+  const [detectionQuality, setDetectionQuality] = useState(0);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [isEnrolled, setIsEnrolled] = useState(false);
-  const [statusMessage, setStatusMessage] = useState('Iniciando cámara y extractor vectorial...');
 
-  const intervalIdRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const consecutiveFramesRef = useRef(0);
-  const autoAcceptTriggeredRef = useRef(false);
-
-  // Auto-aceptar y guardar el vector REAL cuando la coincidencia/calidad del rostro real supera 70%
-  const triggerAutoAcceptEnrollment = async (descriptorArray: number[], finalScore: number) => {
-    if (autoAcceptTriggeredRef.current) return;
-    autoAcceptTriggeredRef.current = true;
-
-    if (intervalIdRef.current) clearInterval(intervalIdRef.current);
-    setIsProcessing(true);
-    setIsEnrolled(true);
-    setStatusMessage(`¡Rostro real calibrado (${finalScore}% ≥ 70%)! Guardando automáticamente...`);
-
-    try {
-      await enrollBiometrics(descriptorArray, endpointTarget, DEFAULT_BIOMETRIC_THRESHOLD);
-
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach((track) => track.stop());
-        streamRef.current = null;
-      }
-
-      setTimeout(() => {
-        addToast('Vector biométrico real (128 floats) registrado con éxito.', 'success');
-        onEnrollmentComplete(descriptorArray);
-      }, 700);
-    } catch (err) {
-      console.error('Error al guardar vector real:', err);
-      addToast('Ocurrió un error al persistir los parámetros biométricos.', 'error');
-      setIsProcessing(false);
-    }
-  };
-
+  // Iniciar cámara física y modelos
   useEffect(() => {
     if (!isOpen) return;
 
-    autoAcceptTriggeredRef.current = false;
-    consecutiveFramesRef.current = 0;
-    setIsEnrolled(false);
-    setIsProcessing(false);
-    setFaceDetected(false);
+    let intervalId: ReturnType<typeof setInterval> | null = null;
+    setIsLoadingModels(true);
     setCameraActive(false);
     setCameraError(null);
-    setMatchScore(0);
-    setStatusMessage('Iniciando cámara web frontal...');
+    setFaceDetected(false);
+    setLivePreviewVector([]);
+    setDetectionQuality(0);
 
     async function init() {
-      // 1. Cargar modelos de IA facial
       const modelsOk = await loadFaceApiModels();
+      setIsLoadingModels(false);
       if (!modelsOk) {
         setCameraError('No se pudieron inicializar los modelos de IA facial.');
         return;
       }
 
-      // 2. Solicitar cámara física real
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
           video: {
@@ -114,100 +79,112 @@ export function FacialEnrollmentModal({
           videoRef.current.srcObject = stream;
           await videoRef.current.play();
           setCameraActive(true);
-          setStatusMessage('Cámara activa. Enfoca tu rostro de frente para calibrar...');
         }
+
+        // Bucle de detección en vivo 100% REAL sobre los frames
+        intervalId = setInterval(async () => {
+          if (!videoRef.current || videoRef.current.paused || videoRef.current.ended) return;
+          try {
+            const res = await detectSingleFaceDescriptor(videoRef.current);
+            if (res) {
+              setFaceDetected(true);
+              const quality = Math.min(100, Math.round(res.detection.score * 100));
+              setDetectionQuality(quality);
+              setLivePreviewVector(
+                Array.from(res.descriptor)
+                  .slice(0, 4)
+                  .map((n) => Number(n.toFixed(3)))
+              );
+            } else {
+              setFaceDetected(false);
+              setDetectionQuality(0);
+            }
+          } catch {
+            setFaceDetected(false);
+            setDetectionQuality(0);
+          }
+        }, 200);
       } catch (err) {
         console.error('Error al acceder a la cámara:', err);
         setCameraActive(false);
         setCameraError(
           'No se detectó cámara web activa o se denegaron los permisos. Conecta tu cámara para calibrar tu vector real.'
         );
-        setStatusMessage('Cámara no disponible.');
-        return;
       }
-
-      // 3. Bucle de Detección 100% REAL sobre los fotogramas del sensor
-      intervalIdRef.current = setInterval(async () => {
-        if (autoAcceptTriggeredRef.current) return;
-        if (!videoRef.current || videoRef.current.paused || videoRef.current.ended) return;
-
-        try {
-          const res = await detectSingleFaceDescriptor(videoRef.current);
-
-          // Si NO hay rostro frente al lente de la cámara
-          if (!res) {
-            setFaceDetected(false);
-            setMatchScore(0);
-            consecutiveFramesRef.current = 0;
-            setStatusMessage('Buscando rostro en cámara... Por favor mírala de frente');
-            return;
-          }
-
-          // Si HAY rostro real frente a la cámara
-          setFaceDetected(true);
-          const descriptorArray = Array.from(res.descriptor).map((v) =>
-            Number(v.toFixed(6))
-          );
-
-          // Calidad real de detección del rostro (0 - 100)
-          const qualityScore = Math.min(100, Math.round(res.detection.score * 100));
-          setMatchScore(qualityScore);
-
-          // REGLA: Si la calidad del rostro real supera el 70%, validar 2 frames consecutivos y auto-guardar
-          if (qualityScore >= 70) {
-            consecutiveFramesRef.current += 1;
-            setStatusMessage(`Rostro real detectado (${qualityScore}%). Calibrando vector 128D...`);
-
-            if (consecutiveFramesRef.current >= 2) {
-              triggerAutoAcceptEnrollment(descriptorArray, qualityScore);
-              return;
-            }
-          } else {
-            consecutiveFramesRef.current = 0;
-            setStatusMessage(`Rostro detectado con calidad parcial (${qualityScore}% < 70%). Mantén la mirada fija.`);
-          }
-        } catch (err) {
-          console.error('Error al detectar rostro para enrolamiento:', err);
-        }
-      }, 200);
     }
 
     init();
 
     return () => {
-      if (intervalIdRef.current) clearInterval(intervalIdRef.current);
+      if (intervalId) clearInterval(intervalId);
       if (streamRef.current) {
         streamRef.current.getTracks().forEach((track) => track.stop());
         streamRef.current = null;
       }
     };
-  }, [isOpen, endpointTarget]);
+  }, [isOpen]);
+
+  const handleCaptureAndEnroll = async () => {
+    if (!videoRef.current || isProcessing) return;
+
+    setIsProcessing(true);
+    try {
+      const result = await detectSingleFaceDescriptor(videoRef.current);
+
+      if (!result) {
+        addToast(
+          'No se detectó un rostro visible. Centra tu rostro frente a la cámara e inténtalo de nuevo.',
+          'error'
+        );
+        setIsProcessing(false);
+        return;
+      }
+
+      // PRIVACIDAD ESTRICTA: Extraemos únicamente los 128 floats reales (faceDescriptor).
+      // Jamás se guardan fotos ni base64.
+      const descriptorArray = Array.from(result.descriptor).map((v) =>
+        Number(v.toFixed(6))
+      );
+
+      await enrollBiometrics(descriptorArray, endpointTarget, DEFAULT_BIOMETRIC_THRESHOLD);
+
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((track) => track.stop());
+        streamRef.current = null;
+      }
+
+      addToast('Vector facial calibrado con éxito.', 'success');
+      onEnrollmentComplete(descriptorArray);
+    } catch (err) {
+      console.error('Error al enrolar vector facial:', err);
+      addToast('Ocurrió un error al extraer el vector biométrico.', 'error');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
 
   if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-[150] flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-4 animate-fade-in">
       <div className="bg-[#131D31] text-[#F8FAFC] rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden border border-[#233354] flex flex-col max-h-[94vh]">
-        {/* Elemento de video real que procesa los frames en background */}
-        <video ref={videoRef} autoPlay playsInline muted className="hidden" />
-
-        {/* Cabecera Sobria */}
+        {/* Cabecera */}
         <div className="px-6 py-4 bg-[#0F172A] border-b border-[#233354] flex items-center justify-between">
           <div className="flex items-center space-x-2.5">
             <div className="w-9 h-9 rounded-xl bg-blue-500/10 text-[#38BDF8] flex items-center justify-center border border-blue-500/20">
-              <ScanFace className="w-5 h-5" />
+              <Camera className="w-5 h-5" />
             </div>
             <div>
               <h3 className="font-heading font-bold text-sm text-white flex items-center space-x-1.5">
                 <span>
                   {mode === 'recalibrate'
-                    ? 'Actualizar / Calibrar Vector Facial Real'
-                    : 'Calibración de Vector Biométrico Real'}
+                    ? 'Actualizar / Calibrar Vector Facial'
+                    : 'Calibración de Vector Biométrico'}
                 </span>
                 <Sparkles className="w-3.5 h-3.5 text-amber-400" />
               </h3>
               <p className="text-[11px] text-[#94A3B8]">
-                Captura sobre cámara activa • Cero imágenes guardadas (0 fotos)
+                Modelo <code>face_recognition_v1</code> • Solo parámetros numéricos (0 imágenes)
               </p>
             </div>
           </div>
@@ -221,85 +198,85 @@ export function FacialEnrollmentModal({
           </button>
         </div>
 
-        {/* Contenido Visual: Red 3D con Datos Reales */}
+        {/* Contenido Visual: Video en vivo con encuadre de rostro */}
         <div className="p-5 overflow-y-auto flex flex-col items-center space-y-4">
-          <Facial3DMeshVisualizer
-            matchScore={matchScore}
-            isSuccess={isEnrolled}
-            faceDetected={faceDetected}
-            cameraActive={cameraActive}
-            cameraError={cameraError}
-            statusText={statusMessage}
-          />
-
-          {/* Barra de Progreso y Estatus Real */}
-          <div className="w-full max-w-md space-y-2">
-            <div className="flex items-center justify-between text-xs gap-2">
-              <span className="font-medium text-slate-300 truncate">
-                {statusMessage}
-              </span>
-              <span
-                className={`font-mono font-bold text-xs shrink-0 ${
-                  matchScore >= 70 && faceDetected
-                    ? 'text-emerald-400 font-extrabold'
-                    : 'text-[#38BDF8]'
-                }`}
-              >
-                {faceDetected ? `${matchScore}% / 70%` : '0%'}
-              </span>
-            </div>
-
-            <div className="w-full bg-[#0F172A] h-2 rounded-full overflow-hidden border border-[#233354]">
-              <div
-                className={`h-full rounded-full transition-all duration-200 ${
-                  matchScore >= 70 && faceDetected
-                    ? 'bg-emerald-500 shadow-[0_0_12px_#10B981]'
-                    : faceDetected
-                    ? 'bg-gradient-to-r from-blue-600 to-[#38BDF8]'
-                    : 'bg-slate-700'
-                }`}
-                style={{
-                  width: `${faceDetected ? Math.min(100, Math.max(matchScore, 5)) : 0}%`,
-                }}
-              />
-            </div>
-
-            <div className="flex items-center justify-between text-[11px] text-[#94A3B8] pt-1">
-              <span className="flex items-center space-x-1">
-                <Activity className="w-3 h-3 text-[#38BDF8]" />
-                <span>
-                  {cameraError
-                    ? 'Cámara requerida sin excepción'
-                    : 'Auto-aceptación al superar el 70% con rostro real'}
-                </span>
-              </span>
-
-              {isEnrolled && (
-                <span className="text-emerald-400 font-semibold flex items-center space-x-1">
-                  <CheckCircle2 className="w-3.5 h-3.5" />
-                  <span>Calibración aceptada</span>
-                </span>
-              )}
-            </div>
-
-            {/* Aviso si no hay rostro */}
-            {!cameraError && cameraActive && !faceDetected && (
-              <div className="flex items-center space-x-1.5 p-2 rounded-md bg-amber-500/10 border border-amber-500/20 text-amber-300 text-[11px]">
-                <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
-                <span>Rostro no detectado por la cámara. Por favor colócate de frente para calibrar.</span>
+          <div className="relative w-full aspect-4/3 max-w-md bg-slate-950 rounded-2xl overflow-hidden shadow-2xl border-2 border-[#233354] flex items-center justify-center">
+            {cameraError ? (
+              <div className="p-6 text-center text-rose-400 space-y-3">
+                <CameraOff className="w-10 h-10 mx-auto text-rose-400" />
+                <p className="text-xs font-semibold">{cameraError}</p>
               </div>
+            ) : isLoadingModels ? (
+              <div className="flex flex-col items-center text-slate-400 space-y-3">
+                <RefreshCw className="w-8 h-8 animate-spin text-[#38BDF8]" />
+                <span className="text-xs font-semibold">Inicializando detector facial 128D...</span>
+              </div>
+            ) : (
+              <>
+                {/* Video de la cámara en vivo reflejado en espejo */}
+                <video
+                  ref={videoRef}
+                  autoPlay
+                  playsInline
+                  muted
+                  className="w-full h-full object-cover scale-x-[-1]"
+                />
+
+                {/* Óvalo Guía Facial */}
+                <div
+                  className={`absolute inset-0 flex items-center justify-center pointer-events-none transition-all duration-300 ${
+                    faceDetected ? 'opacity-95' : 'opacity-60'
+                  }`}
+                >
+                  <div
+                    className={`w-44 h-60 rounded-[50%] border-2 transition-all duration-300 flex flex-col items-center justify-center ${
+                      faceDetected
+                        ? 'border-emerald-400 bg-emerald-500/10 shadow-[0_0_25px_rgba(16,185,129,0.35)]'
+                        : 'border-white/70 border-dashed'
+                    }`}
+                  >
+                    {faceDetected && (
+                      <span className="text-[11px] font-black text-emerald-400 bg-slate-950/85 px-2.5 py-1 rounded-full border border-emerald-400/50">
+                        Rostro Visible ({detectionQuality}%) ✓
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Vista previa en vivo del vector matemático extraído de 128 floats */}
+                {faceDetected && livePreviewVector.length > 0 && (
+                  <div className="absolute bottom-2.5 inset-x-3 bg-slate-950/85 backdrop-blur-xs border border-emerald-500/30 rounded-lg px-2.5 py-1 text-[10px] font-mono text-emerald-300 flex items-center justify-between pointer-events-none">
+                    <span>faceDescriptor[128]:</span>
+                    <span>[{livePreviewVector.join(', ')}, ...]</span>
+                  </div>
+                )}
+
+                {/* Retícula en las esquinas */}
+                <div className="absolute top-3 left-3 w-4 h-4 border-t-2 border-l-2 border-[#38BDF8] pointer-events-none" />
+                <div className="absolute top-3 right-3 w-4 h-4 border-t-2 border-r-2 border-[#38BDF8] pointer-events-none" />
+                <div className="absolute bottom-3 left-3 w-4 h-4 border-b-2 border-l-2 border-[#38BDF8] pointer-events-none" />
+                <div className="absolute bottom-3 right-3 w-4 h-4 border-b-2 border-r-2 border-[#38BDF8] pointer-events-none" />
+              </>
             )}
           </div>
 
-          {/* Aviso de Privacidad Estricta */}
+          {/* Aviso si la cámara no detecta cara */}
+          {!cameraError && cameraActive && !faceDetected && (
+            <div className="w-full flex items-center space-x-1.5 p-2 rounded-md bg-amber-500/10 border border-amber-500/20 text-amber-300 text-[11px]">
+              <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+              <span>Colócate de frente para que la cámara pueda capturar tu rostro real.</span>
+            </div>
+          )}
+
+          {/* Aviso de Privacidad: Cero Imágenes */}
           <div className="w-full bg-[#0F172A] border border-[#233354] rounded-xl p-3 flex items-start space-x-2 text-[11px] text-[#94A3B8]">
             <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
             <span>
-              <strong className="text-white">Privacidad sin imágenes:</strong> No se guarda ninguna foto ni base64. El sistema solo extrae y almacena el descriptor matemático <code>faceDescriptor</code> (128 floats reales) vía <code>PUT /api/users/{endpointTarget === 'me' ? 'me' : ':id'}/biometrics</code>.
+              <strong className="text-white">Privacidad sin imágenes:</strong> No se guarda ninguna foto ni base64. Solo se almacena el descriptor numérico <code>faceDescriptor</code> (128 floats reales) vía <code>PUT /api/users/{endpointTarget === 'me' ? 'me' : ':id'}/biometrics</code>.
             </span>
           </div>
 
-          {/* Botones de acción */}
+          {/* Botones */}
           <div className="w-full pt-1 flex items-center justify-between">
             <button
               type="button"
@@ -311,31 +288,25 @@ export function FacialEnrollmentModal({
 
             <button
               type="button"
-              disabled={isProcessing || !faceDetected || matchScore < 50}
-              onClick={async () => {
-                if (!videoRef.current || isProcessing) return;
-                try {
-                  const res = await detectSingleFaceDescriptor(videoRef.current);
-                  if (res) {
-                    const desc = Array.from(res.descriptor).map((v) => Number(v.toFixed(6)));
-                    triggerAutoAcceptEnrollment(desc, Math.round(res.detection.score * 100));
-                  } else {
-                    addToast('No se detectó un rostro real frente a la cámara.', 'error');
-                  }
-                } catch {
-                  addToast('Error al extraer el vector biométrico.', 'error');
-                }
-              }}
+              disabled={!faceDetected || isProcessing || Boolean(cameraError)}
+              onClick={handleCaptureAndEnroll}
               className="flex items-center space-x-2 px-5 py-2.5 bg-[#1E40AF] hover:bg-[#1D4ED8] disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-heading font-semibold rounded-xl shadow-md transition-all cursor-pointer"
             >
-              <CheckCircle2 className="w-4 h-4" />
-              <span>
-                {isProcessing
-                  ? 'Guardando Parámetros...'
-                  : mode === 'recalibrate'
-                  ? 'Guardar Calibración Real'
-                  : 'Guardar Vector Real'}
-              </span>
+              {isProcessing ? (
+                <>
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                  <span>Guardando Vector 128D...</span>
+                </>
+              ) : (
+                <>
+                  <CheckCircle2 className="w-4 h-4" />
+                  <span>
+                    {mode === 'recalibrate'
+                      ? 'Sobrescribir Vector Facial'
+                      : 'Guardar Vector Facial'}
+                  </span>
+                </>
+              )}
             </button>
           </div>
         </div>
