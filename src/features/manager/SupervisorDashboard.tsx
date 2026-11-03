@@ -10,10 +10,6 @@ import {
   AlertTriangle,
   Play,
   DollarSign,
-  KeyRound,
-  Copy,
-  Check,
-  Lock,
   MailCheck,
   Bell,
   CheckCircle2,
@@ -39,9 +35,6 @@ export function SupervisorDashboard({ initialTab }: SupervisorDashboardProps = {
     projects,
     tasks,
     taskActualHours,
-    getSupervisorCode,
-    getTeamMembersBySupervisor,
-    corporateMasterKeys,
   } = useRayonerStore();
   const { user, getEffectiveUserModules, addToast } = useCheckinStore();
   const { getNotificationsForRecipient, markAsRead } = useNotificationStore();
@@ -52,16 +45,10 @@ export function SupervisorDashboard({ initialTab }: SupervisorDashboardProps = {
   const forcedFacialByTI = effectiveModules.facialCheckIn;
   const showPersonalCheckInTab = forcedFacialByTI || effectiveModules.checkIn;
 
-  const teamMembers = getTeamMembersBySupervisor(user?.id, user?.role);
   const supervisorNotifications = getNotificationsForRecipient(user?.id, user?.role);
   const unreadCompletedAlerts = supervisorNotifications.filter(
     (n) => !n.read && n.type === 'task_completed'
   );
-
-  const [copiedCode, setCopiedCode] = useState(false);
-  const [copiedMasterKey, setCopiedMasterKey] = useState(false);
-  const supervisorCode = getSupervisorCode(user?.id || '');
-  const masterKey = corporateMasterKeys?.[0] || 'RB-SOCIO-2026';
 
   const defaultTab: SupervisorTab = initialTab
     ? initialTab
@@ -100,23 +87,6 @@ export function SupervisorDashboard({ initialTab }: SupervisorDashboardProps = {
   });
 
   const [selectedProjectIdForReport, setSelectedProjectIdForReport] = useState<string | null>(null);
-
-  const handleCopyCode = () => {
-    navigator.clipboard.writeText(supervisorCode);
-    setCopiedCode(true);
-    addToast(`Código ${supervisorCode} copiado al portapapeles.`, 'success');
-    setTimeout(() => setCopiedCode(false), 2500);
-  };
-
-  const handleCopyMasterKey = () => {
-    navigator.clipboard.writeText(masterKey);
-    setCopiedMasterKey(true);
-    addToast(
-      `Clave Maestra Corporativa ${masterKey} copiada. Compártela únicamente con socios directores.`,
-      'info'
-    );
-    setTimeout(() => setCopiedMasterKey(false), 2500);
-  };
 
   // Métricas de Alerta en Vivo
   const projectsInAlert = projects.filter((p) => {
@@ -259,98 +229,6 @@ export function SupervisorDashboard({ initialTab }: SupervisorDashboardProps = {
           </button>
         </div>
       )}
-
-      {/* Banner de Vinculación y Seguridad de Socios */}
-      <div className="bg-[#131D31] text-[#F8FAFC] rounded-md p-4 md:p-5 border border-[#233354] space-y-4 shadow-sm">
-        {/* Fila 1: Código de Supervisor para Colaboradores */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div className="flex items-start sm:items-center space-x-3.5">
-            <div className="w-10 h-10 rounded-md bg-[#1A2742] flex items-center justify-center shrink-0 border border-[#233354] text-[#38BDF8]">
-              <KeyRound className="w-5 h-5" />
-            </div>
-            <div>
-              <div className="flex items-center space-x-2">
-                <span className="text-[10px] font-heading font-bold uppercase tracking-wider bg-[#0F172A] text-[#38BDF8] border border-[#233354] px-2 py-0.5 rounded-sm">
-                  CÓDIGO DE SUPERVISOR
-                </span>
-                <span className="text-xs text-[#94A3B8] font-medium hidden sm:inline">
-                  {teamMembers.length} Colaboradores vinculados
-                </span>
-              </div>
-              <h3 className="text-sm font-heading font-bold text-[#F8FAFC] mt-0.5">
-                Código de Asignación para Nuevos Colaboradores
-              </h3>
-              <p className="text-xs text-[#94A3B8] max-w-xl mt-0.5">
-                Comparte este código con tus colaboradores para que se vinculen automáticamente a tu supervisión.
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center space-x-2.5 self-start md:self-auto shrink-0 bg-[#1A2742] p-2 rounded-md border border-[#233354]">
-            <div className="px-3 py-1 font-mono text-sm md:text-base font-bold tracking-widest text-[#38BDF8]">
-              {supervisorCode}
-            </div>
-            <button
-              onClick={handleCopyCode}
-              className={`px-3 py-1.5 rounded-md text-xs font-heading font-semibold flex items-center space-x-1.5 transition-colors cursor-pointer ${
-                copiedCode
-                  ? 'bg-[#1E40AF] text-white shadow-xs'
-                  : 'bg-[#1E40AF] hover:bg-[#1D4ED8] text-white'
-              }`}
-            >
-              {copiedCode ? (
-                <>
-                  <Check className="w-3.5 h-3.5 text-white" />
-                  <span>Copiado</span>
-                </>
-              ) : (
-                <>
-                  <Copy className="w-3.5 h-3.5 text-white" />
-                  <span>Copiar Código</span>
-                </>
-              )}
-            </button>
-          </div>
-        </div>
-
-        {/* Fila 2: Clave Maestra Corporativa para Socios y Supervisores */}
-        <div className="pt-3 border-t border-[#233354] flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
-          <div className="flex items-center space-x-2.5 text-[#94A3B8]">
-            <div className="p-1 rounded-md bg-[#1A2742] text-[#F59E0B] border border-[#233354]">
-              <Lock className="w-3.5 h-3.5" />
-            </div>
-            <div>
-              <span className="font-semibold text-[#F8FAFC]">Clave Maestra Corporativa:</span>{' '}
-              <span className="text-[#94A3B8] text-[11px]">
-                Requerida para registrar cuentas de nuevos Socios y Supervisores.
-              </span>
-            </div>
-          </div>
-
-          <div className="flex items-center space-x-2 shrink-0 bg-[#0B111E] px-3 py-1 rounded-md border border-[#233354]">
-            <span className="font-mono font-bold text-[#F59E0B] tracking-wider text-xs">
-              {masterKey}
-            </span>
-            <button
-              onClick={handleCopyMasterKey}
-              className="px-2 py-0.5 bg-[#1A2742] hover:bg-[#233354] text-[#F8FAFC] rounded-sm text-[10px] font-heading font-semibold flex items-center space-x-1 cursor-pointer transition-colors border border-[#233354]"
-              title="Copiar Clave Maestra de Socios"
-            >
-              {copiedMasterKey ? (
-                <>
-                  <Check className="w-3 h-3 text-[#38BDF8]" />
-                  <span className="text-[#38BDF8]">Copiada</span>
-                </>
-              ) : (
-                <>
-                  <Copy className="w-3 h-3 text-[#94A3B8]" />
-                  <span>Copiar</span>
-                </>
-              )}
-            </button>
-          </div>
-        </div>
-      </div>
 
       {/* Notificación en tiempo real cuando un empleado completa una tarea */}
       {effectiveModules.tasks && unreadCompletedAlerts.length > 0 && (

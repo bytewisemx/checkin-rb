@@ -27,6 +27,7 @@ export function AuthPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+  const [showDemoProfiles, setShowDemoProfiles] = useState(false);
 
   const triggerRef = useRef<HTMLDivElement>(null);
   const introRef = useRef<HTMLDivElement>(null);
@@ -298,7 +299,72 @@ export function AuthPage() {
                 />
               </div>
 
-              <div className="flex items-center justify-between mb-4 mt-2">
+              {/* Accesos Rápidos de Prueba de los 4 Niveles RBAC (Ocultos por defecto con botón sutil) */}
+              <div className="mb-4 pt-1 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setShowDemoProfiles(!showDemoProfiles)}
+                  className="inline-flex items-center space-x-1.5 text-[11px] font-semibold text-slate-400 hover:text-[#0D5C75] transition-colors cursor-pointer select-none py-1"
+                >
+                  <span>{showDemoProfiles ? '▾ Ocultar perfiles de prueba' : '▸ Perfiles de prueba rápida'}</span>
+                </button>
+
+                {showDemoProfiles && (
+                  <div className="mt-2 space-y-1.5 animate-fade-in">
+                    <span className="font-medium text-slate-400 text-[10px] block">
+                      Contraseña: <code className="font-mono text-slate-600 font-semibold">admin123</code>
+                    </span>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEmail('ti.root@russellbedford.mx');
+                          setPassword('admin123');
+                        }}
+                        className="inline-flex items-center justify-center px-2 py-1.5 rounded-lg bg-[#001A29] hover:bg-[#002538] text-amber-300 text-[10px] font-bold border border-slate-700 transition-all cursor-pointer shadow-2xs active:scale-95"
+                        title="TI (Root): Audita todo el sistema"
+                      >
+                        <span>👑 TI (Root Admin)</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEmail('supervisor.prueba@russellbedford.mx');
+                          setPassword('admin123');
+                        }}
+                        className="inline-flex items-center justify-center px-2 py-1.5 rounded-lg bg-cyan-50 hover:bg-cyan-100 text-[#0D5C75] text-[10px] font-bold border border-cyan-200 transition-all cursor-pointer shadow-2xs active:scale-95"
+                        title="Supervisor: Invita a su equipo y asigna tareas"
+                      >
+                        <span>🛡️ Supervisor</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEmail('colaborador.prueba@russellbedford.mx');
+                          setPassword('admin123');
+                        }}
+                        className="inline-flex items-center justify-center px-2 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-800 text-[10px] font-bold border border-blue-200 transition-all cursor-pointer shadow-2xs active:scale-95"
+                        title="Empleado / Operativo: Visualiza sus tareas y registra asistencia"
+                      >
+                        <span>👤 Empleado</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEmail('rh.prueba@russellbedford.mx');
+                          setPassword('admin123');
+                        }}
+                        className="inline-flex items-center justify-center px-2 py-1.5 rounded-lg bg-teal-50 hover:bg-teal-100 text-teal-800 text-[10px] font-bold border border-teal-200 transition-all cursor-pointer shadow-2xs active:scale-95"
+                        title="RH (Restringido): Métricas de personal y horas"
+                      >
+                        <span>📊 RH (Restringido)</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex items-center justify-between mb-4">
                 <Link to="/forgot-password" className="text-xs text-[#0D5C75] hover:underline font-medium">
                   ¿Olvidaste tu contraseña?
                 </Link>

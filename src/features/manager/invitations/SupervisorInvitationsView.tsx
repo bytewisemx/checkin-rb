@@ -3,10 +3,11 @@ import {
   Mail, UserPlus, CheckCircle2, Clock, XCircle, 
   Copy, Check, RefreshCw, Trash2, Search, 
   ShieldCheck, AlertTriangle, Send, Sparkles, Building2, 
-  KeyRound, Ban
+  KeyRound, Ban, Lock
 } from 'lucide-react';
 import { useInvitationStore, buildInviteUrl } from '../../../store/useInvitationStore';
 import { useCheckinStore } from '../../../store/useCheckinStore';
+import { useRayonerStore } from '../../../store/useRayonerStore';
 import type { Invitation, InvitationStatus } from '../../../types/invitation';
 
 const TEAMS_LIST = [
@@ -29,6 +30,7 @@ const ROLES_LIST = [
 
 export function SupervisorInvitationsView() {
   const { user, addToast } = useCheckinStore();
+  const { getSupervisorCode, corporateMasterKeys, teamMembers } = useRayonerStore();
   const { 
     invitations, 
     createInvitations, 
@@ -36,6 +38,28 @@ export function SupervisorInvitationsView() {
     resendInvitation, 
     deleteInvitation 
   } = useInvitationStore();
+
+  const [copiedCode, setCopiedCode] = useState(false);
+  const [copiedMasterKey, setCopiedMasterKey] = useState(false);
+  const supervisorCode = getSupervisorCode(user?.id || '');
+  const masterKey = corporateMasterKeys?.[0] || 'RB-SOCIO-2026';
+
+  const handleCopyCode = () => {
+    navigator.clipboard.writeText(supervisorCode);
+    setCopiedCode(true);
+    addToast(`Código ${supervisorCode} copiado al portapapeles.`, 'success');
+    setTimeout(() => setCopiedCode(false), 2500);
+  };
+
+  const handleCopyMasterKey = () => {
+    navigator.clipboard.writeText(masterKey);
+    setCopiedMasterKey(true);
+    addToast(
+      `Clave Maestra Corporativa ${masterKey} copiada. Compártela únicamente con socios directores.`,
+      'info'
+    );
+    setTimeout(() => setCopiedMasterKey(false), 2500);
+  };
 
   // Estados del Formulario de Emisión
   const [emailsInput, setEmailsInput] = useState('');
@@ -256,7 +280,99 @@ export function SupervisorInvitationsView() {
         </div>
       </div>
 
-      {/* 2. Formulario para Emitir Nuevas Invitaciones */}
+      {/* 2. Código de Asignación Directa y Seguridad para Nuevos Colaboradores */}
+      <div className="bg-white dark:bg-[#131D31] text-slate-800 dark:text-[#F8FAFC] rounded-2xl p-5 md:p-6 border border-slate-200 dark:border-[#233354] space-y-4 shadow-xs">
+        {/* Fila 1: Código de Supervisor para Colaboradores */}
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="flex items-start sm:items-center space-x-3.5">
+            <div className="w-10 h-10 rounded-xl bg-blue-50 dark:bg-[#1A2742] flex items-center justify-center shrink-0 border border-blue-200 dark:border-[#233354] text-[#0D5C75] dark:text-[#38BDF8]">
+              <KeyRound className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center space-x-2">
+                <span className="text-[10px] font-heading font-bold uppercase tracking-wider bg-blue-50 dark:bg-[#0F172A] text-blue-700 dark:text-[#38BDF8] border border-blue-200 dark:border-[#233354] px-2 py-0.5 rounded-sm">
+                  CÓDIGO DE SUPERVISOR
+                </span>
+                <span className="text-xs text-slate-500 dark:text-[#94A3B8] font-medium hidden sm:inline">
+                  {teamMembers.length} Colaboradores vinculados
+                </span>
+              </div>
+              <h3 className="text-sm font-heading font-bold text-slate-900 dark:text-[#F8FAFC] mt-0.5">
+                Código de Asignación para Nuevos Colaboradores
+              </h3>
+              <p className="text-xs text-slate-500 dark:text-[#94A3B8] max-w-xl mt-0.5">
+                Comparte este código con tus colaboradores para que se vinculen automáticamente a tu supervisión.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center space-x-2.5 self-start md:self-auto shrink-0 bg-slate-50 dark:bg-[#1A2742] p-2 rounded-xl border border-slate-200 dark:border-[#233354]">
+            <div className="px-3 py-1 font-mono text-sm md:text-base font-bold tracking-widest text-[#0D5C75] dark:text-[#38BDF8]">
+              {supervisorCode}
+            </div>
+            <button
+              onClick={handleCopyCode}
+              className={`px-3 py-1.5 rounded-lg text-xs font-heading font-semibold flex items-center space-x-1.5 transition-colors cursor-pointer ${
+                copiedCode
+                  ? 'bg-emerald-600 text-white shadow-xs'
+                  : 'bg-[#1E40AF] hover:bg-[#1D4ED8] text-white shadow-xs'
+              }`}
+            >
+              {copiedCode ? (
+                <>
+                  <Check className="w-3.5 h-3.5 text-white" />
+                  <span>Copiado</span>
+                </>
+              ) : (
+                <>
+                  <Copy className="w-3.5 h-3.5 text-white" />
+                  <span>Copiar Código</span>
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+
+        {/* Fila 2: Clave Maestra Corporativa para Socios y Supervisores */}
+        <div className="pt-3 border-t border-slate-100 dark:border-[#233354] flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+          <div className="flex items-center space-x-2.5 text-slate-600 dark:text-[#94A3B8]">
+            <div className="p-1 rounded-lg bg-amber-50 dark:bg-[#1A2742] text-amber-600 dark:text-[#F59E0B] border border-amber-200 dark:border-[#233354]">
+              <Lock className="w-3.5 h-3.5" />
+            </div>
+            <div>
+              <span className="font-semibold text-slate-900 dark:text-[#F8FAFC]">Clave Maestra Corporativa:</span>{' '}
+              <span className="text-slate-500 dark:text-[#94A3B8] text-[11px]">
+                Requerida para registrar cuentas de nuevos Socios y Supervisores.
+              </span>
+            </div>
+          </div>
+
+          <div className="flex items-center space-x-2 shrink-0 bg-slate-100 dark:bg-[#0B111E] px-3 py-1 rounded-lg border border-slate-200 dark:border-[#233354]">
+            <span className="font-mono font-bold text-amber-600 dark:text-[#F59E0B] tracking-wider text-xs">
+              {masterKey}
+            </span>
+            <button
+              onClick={handleCopyMasterKey}
+              className="px-2 py-0.5 bg-white dark:bg-[#1A2742] hover:bg-slate-50 dark:hover:bg-[#233354] text-slate-700 dark:text-[#F8FAFC] rounded text-[10px] font-heading font-semibold flex items-center space-x-1 cursor-pointer transition-colors border border-slate-200 dark:border-[#233354]"
+              title="Copiar Clave Maestra de Socios"
+            >
+              {copiedMasterKey ? (
+                <>
+                  <Check className="w-3 h-3 text-emerald-600 dark:text-[#38BDF8]" />
+                  <span className="text-emerald-600 dark:text-[#38BDF8]">Copiada</span>
+                </>
+              ) : (
+                <>
+                  <Copy className="w-3 h-3 text-slate-500 dark:text-[#94A3B8]" />
+                  <span>Copiar</span>
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* 3. Formulario para Emitir Nuevas Invitaciones */}
       <div className="bg-white rounded-2xl shadow-xs border border-slate-200 p-6">
         <div className="flex items-center space-x-2.5 pb-4 border-b border-slate-100 mb-5">
           <div className="w-8 h-8 rounded-xl bg-blue-50 text-[#0D5C75] flex items-center justify-center font-bold">
