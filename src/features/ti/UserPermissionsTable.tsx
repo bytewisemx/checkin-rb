@@ -9,7 +9,10 @@ import {
   ShieldCheck,
   Lock,
   Sparkles,
+  Users,
+  ArrowRight,
 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { useCheckinStore, type ManagedUserPermissionEntry } from '../../store/useCheckinStore';
 import { useRayonerStore } from '../../store/useRayonerStore';
 import {
@@ -20,10 +23,12 @@ import {
 } from '../../services/rbac';
 
 export function UserPermissionsTable() {
+  const navigate = useNavigate();
   const {
     userPermissionsDirectory,
     updateUserModules,
     addToast,
+    login,
   } = useCheckinStore();
   const { teamMembers } = useRayonerStore();
 
@@ -206,6 +211,16 @@ export function UserPermissionsTable() {
     }
   };
 
+  const handleQuickSwitchProfile = (targetEmail: string, roleName: string) => {
+    const success = login(targetEmail, 'admin123');
+    if (success) {
+      addToast(`Sesión cambiada a perfil: ${roleName}`, 'success');
+      navigate('/');
+    } else {
+      addToast('No se pudo cambiar al perfil seleccionado', 'error');
+    }
+  };
+
   return (
     <div className="bg-[#131D31] rounded-md border border-[#233354] shadow-xs overflow-hidden animate-fade-in text-[#F8FAFC]">
       {/* Cabecera de Gestión Granular de Módulos */}
@@ -259,6 +274,78 @@ export function UserPermissionsTable() {
                 ? `Guardar Permisos (${dirtyCount})`
                 : 'Guardar Permisos'}
             </span>
+          </button>
+        </div>
+      </div>
+
+      {/* Apartado de Perfiles RBAC de Prueba Rápida (Asignación y Simulación de Usuarios) */}
+      <div className="p-4 border-b border-[#233354] bg-[#0B111E]/80">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2.5">
+          <div className="flex items-center space-x-2">
+            <Users className="w-4 h-4 text-[#38BDF8]" />
+            <h3 className="text-xs font-heading font-bold text-[#F8FAFC]">
+              Asignar y Probar Perfiles Rápidos RBAC
+            </h3>
+            <span className="text-[10px] text-[#94A3B8]">
+              Simula la sesión con cualquiera de los 4 roles corporativos
+            </span>
+          </div>
+          <span className="text-[10px] font-mono text-[#94A3B8]">
+            Contraseña demo: <code className="text-slate-300 font-semibold">admin123</code>
+          </span>
+        </div>
+
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
+          <button
+            type="button"
+            onClick={() => handleQuickSwitchProfile('ti.root@russellbedford.mx', 'TI (Root Admin)')}
+            className="flex items-center justify-between px-3 py-2 rounded-md bg-[#1A2742] hover:bg-[#233354] text-[#F8FAFC] border border-[#233354] hover:border-amber-400/50 transition-all cursor-pointer group text-left shadow-2xs"
+            title="Iniciar sesión inmediatamente como Administrador TI"
+          >
+            <div className="min-w-0 pr-1">
+              <span className="text-xs font-bold text-amber-300 block truncate">👑 TI (Root Admin)</span>
+              <span className="text-[10px] text-[#94A3B8] block truncate">ti.root@russellbedford.mx</span>
+            </div>
+            <ArrowRight className="w-3.5 h-3.5 text-[#94A3B8] group-hover:text-amber-300 group-hover:translate-x-0.5 transition-all shrink-0" />
+          </button>
+
+          <button
+            type="button"
+            onClick={() => handleQuickSwitchProfile('supervisor.prueba@russellbedford.mx', 'Supervisor')}
+            className="flex items-center justify-between px-3 py-2 rounded-md bg-[#1A2742] hover:bg-[#233354] text-[#F8FAFC] border border-[#233354] hover:border-cyan-400/50 transition-all cursor-pointer group text-left shadow-2xs"
+            title="Iniciar sesión inmediatamente como Supervisor de Equipo"
+          >
+            <div className="min-w-0 pr-1">
+              <span className="text-xs font-bold text-cyan-300 block truncate">🛡️ Supervisor</span>
+              <span className="text-[10px] text-[#94A3B8] block truncate">supervisor.prueba@...</span>
+            </div>
+            <ArrowRight className="w-3.5 h-3.5 text-[#94A3B8] group-hover:text-cyan-300 group-hover:translate-x-0.5 transition-all shrink-0" />
+          </button>
+
+          <button
+            type="button"
+            onClick={() => handleQuickSwitchProfile('colaborador.prueba@russellbedford.mx', 'Empleado')}
+            className="flex items-center justify-between px-3 py-2 rounded-md bg-[#1A2742] hover:bg-[#233354] text-[#F8FAFC] border border-[#233354] hover:border-blue-400/50 transition-all cursor-pointer group text-left shadow-2xs"
+            title="Iniciar sesión inmediatamente como Empleado Operativo"
+          >
+            <div className="min-w-0 pr-1">
+              <span className="text-xs font-bold text-blue-300 block truncate">👤 Empleado</span>
+              <span className="text-[10px] text-[#94A3B8] block truncate">colaborador.prueba@...</span>
+            </div>
+            <ArrowRight className="w-3.5 h-3.5 text-[#94A3B8] group-hover:text-blue-300 group-hover:translate-x-0.5 transition-all shrink-0" />
+          </button>
+
+          <button
+            type="button"
+            onClick={() => handleQuickSwitchProfile('rh.prueba@russellbedford.mx', 'RH (Restringido)')}
+            className="flex items-center justify-between px-3 py-2 rounded-md bg-[#1A2742] hover:bg-[#233354] text-[#F8FAFC] border border-[#233354] hover:border-teal-400/50 transition-all cursor-pointer group text-left shadow-2xs"
+            title="Iniciar sesión inmediatamente como Recursos Humanos"
+          >
+            <div className="min-w-0 pr-1">
+              <span className="text-xs font-bold text-teal-300 block truncate">📊 RH (Restringido)</span>
+              <span className="text-[10px] text-[#94A3B8] block truncate">rh.prueba@...</span>
+            </div>
+            <ArrowRight className="w-3.5 h-3.5 text-[#94A3B8] group-hover:text-teal-300 group-hover:translate-x-0.5 transition-all shrink-0" />
           </button>
         </div>
       </div>
