@@ -634,7 +634,7 @@ export function GlobalSearchBar({
       <div ref={containerRef} className="relative w-full max-w-2xl">
         {/* Barra de Búsqueda Input */}
         <div className="relative w-full group">
-          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-[#94A3B8] group-focus-within:text-[#38BDF8] transition-colors pointer-events-none" />
+          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-[#94A3B8] group-focus-within:text-blue-600 dark:group-focus-within:text-[#38BDF8] transition-colors pointer-events-none" />
 
           <input
             ref={inputRef}
@@ -657,7 +657,7 @@ export function GlobalSearchBar({
               }
             }}
             placeholder="Buscar proyectos, clientes, tareas o fecha de asistencia..."
-            className="w-full bg-[#1A2742] text-[#F8FAFC] placeholder:text-[#64748B] text-xs rounded-md py-2 pl-9 pr-20 border border-[#233354] focus:border-[#38BDF8] focus:bg-[#131D31] focus:outline-none transition-all shadow-inner"
+            className="w-full bg-slate-50 dark:bg-[#1A2742] text-slate-900 dark:text-[#F8FAFC] placeholder:text-slate-400 dark:placeholder:text-[#64748B] text-xs rounded-md py-2 pl-9 pr-20 border border-slate-300 dark:border-[#233354] focus:border-blue-600 dark:focus:border-[#38BDF8] focus:bg-white dark:focus:bg-[#131D31] focus:outline-none transition-all shadow-inner"
             aria-label="Buscar accesos directos, proyectos, clientes o fecha"
           />
 
@@ -670,13 +670,13 @@ export function GlobalSearchBar({
                   setIsOpen(false);
                   inputRef.current?.focus();
                 }}
-                className="p-1 text-[#94A3B8] hover:text-white transition-colors cursor-pointer rounded-sm"
+                className="p-1 text-slate-400 hover:text-slate-700 dark:text-[#94A3B8] dark:hover:text-white transition-colors cursor-pointer rounded-sm"
                 title="Limpiar búsqueda"
               >
                 <X className="w-3.5 h-3.5" />
               </button>
             ) : (
-              <kbd className="hidden sm:inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] font-mono text-[#94A3B8] bg-[#0F172A] border border-[#233354] rounded">
+              <kbd className="hidden sm:inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] font-mono text-slate-500 dark:text-[#94A3B8] bg-slate-100 dark:bg-[#0F172A] border border-slate-200 dark:border-[#233354] rounded">
                 <span className="text-[11px]">⌘</span>K
               </kbd>
             )}
@@ -685,16 +685,16 @@ export function GlobalSearchBar({
 
         {/* Dropdown Flotante de Resultados: ESTRICTAMENTE visible solo con texto tecleado y coincidencias autorizadas */}
         {shouldShowDropdown && (
-          <div className="absolute top-full left-0 right-0 mt-1.5 bg-[#131D31] text-[#F8FAFC] border border-[#233354] rounded-lg shadow-2xl z-50 overflow-hidden animate-fade-in flex flex-col max-h-[75vh]">
+          <div className="absolute top-full left-0 right-0 mt-1.5 bg-white dark:bg-[#131D31] text-slate-800 dark:text-[#F8FAFC] border border-slate-200 dark:border-[#233354] rounded-lg shadow-2xl z-50 overflow-hidden animate-fade-in flex flex-col max-h-[75vh]">
             {/* Pestañas de Filtro Superior - Solo las categorías permitidas con coincidencias */}
-            <div className="flex items-center space-x-1 p-2 border-b border-[#233354] bg-[#0F172A]/90 overflow-x-auto text-[11px] font-heading font-semibold scrollbar-thin">
+            <div className="flex items-center space-x-1 p-2 border-b border-slate-200 dark:border-[#233354] bg-slate-50 dark:bg-[#0F172A]/90 overflow-x-auto text-[11px] font-heading font-semibold scrollbar-thin">
               <button
                 type="button"
                 onClick={() => setActiveCategory('all')}
                 className={`px-2.5 py-1 rounded-md transition-colors shrink-0 cursor-pointer ${
                   activeCategory === 'all'
                     ? 'bg-[#1E40AF] text-white shadow-xs'
-                    : 'text-[#94A3B8] hover:text-white hover:bg-[#1A2742]'
+                    : 'text-slate-600 dark:text-[#94A3B8] hover:text-slate-900 dark:hover:text-white hover:bg-slate-200/60 dark:hover:bg-[#1A2742]'
                 }`}
               >
                 Todos ({counts.all})
@@ -707,10 +707,10 @@ export function GlobalSearchBar({
                   className={`flex items-center space-x-1 px-2.5 py-1 rounded-md transition-colors shrink-0 cursor-pointer ${
                     activeCategory === 'attendance'
                       ? 'bg-[#1E40AF] text-white shadow-xs'
-                      : 'text-[#94A3B8] hover:text-white hover:bg-[#1A2742]'
+                      : 'text-slate-600 dark:text-[#94A3B8] hover:text-slate-900 dark:hover:text-white hover:bg-slate-200/60 dark:hover:bg-[#1A2742]'
                   }`}
                 >
-                  <Calendar className="w-3 h-3 text-[#38BDF8]" />
+                  <Calendar className="w-3 h-3 text-blue-600 dark:text-[#38BDF8]" />
                   <span>Asistencia ({counts.attendance})</span>
                 </button>
               )}
@@ -723,10 +723,10 @@ export function GlobalSearchBar({
                   className={`flex items-center space-x-1 px-2.5 py-1 rounded-md transition-colors shrink-0 cursor-pointer ${
                     activeCategory === 'projects'
                       ? 'bg-[#1E40AF] text-white shadow-xs'
-                      : 'text-[#94A3B8] hover:text-white hover:bg-[#1A2742]'
+                      : 'text-slate-600 dark:text-[#94A3B8] hover:text-slate-900 dark:hover:text-white hover:bg-slate-200/60 dark:hover:bg-[#1A2742]'
                   }`}
                 >
-                  <FolderKanban className="w-3 h-3 text-amber-400" />
+                  <FolderKanban className="w-3 h-3 text-amber-500 dark:text-amber-400" />
                   <span>Proyectos ({counts.projects})</span>
                 </button>
               )}
@@ -739,10 +739,10 @@ export function GlobalSearchBar({
                   className={`flex items-center space-x-1 px-2.5 py-1 rounded-md transition-colors shrink-0 cursor-pointer ${
                     activeCategory === 'clients'
                       ? 'bg-[#1E40AF] text-white shadow-xs'
-                      : 'text-[#94A3B8] hover:text-white hover:bg-[#1A2742]'
+                      : 'text-slate-600 dark:text-[#94A3B8] hover:text-slate-900 dark:hover:text-white hover:bg-slate-200/60 dark:hover:bg-[#1A2742]'
                   }`}
                 >
-                  <Building2 className="w-3 h-3 text-emerald-400" />
+                  <Building2 className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
                   <span>Clientes ({counts.clients})</span>
                 </button>
               )}
@@ -755,10 +755,10 @@ export function GlobalSearchBar({
                   className={`flex items-center space-x-1 px-2.5 py-1 rounded-md transition-colors shrink-0 cursor-pointer ${
                     activeCategory === 'tasks'
                       ? 'bg-[#1E40AF] text-white shadow-xs'
-                      : 'text-[#94A3B8] hover:text-white hover:bg-[#1A2742]'
+                      : 'text-slate-600 dark:text-[#94A3B8] hover:text-slate-900 dark:hover:text-white hover:bg-slate-200/60 dark:hover:bg-[#1A2742]'
                   }`}
                 >
-                  <CheckSquare className="w-3 h-3 text-purple-400" />
+                  <CheckSquare className="w-3 h-3 text-purple-600 dark:text-purple-400" />
                   <span>Tareas ({counts.tasks})</span>
                 </button>
               )}
@@ -771,10 +771,10 @@ export function GlobalSearchBar({
                   className={`flex items-center space-x-1 px-2.5 py-1 rounded-md transition-colors shrink-0 cursor-pointer ${
                     activeCategory === 'people'
                       ? 'bg-[#1E40AF] text-white shadow-xs'
-                      : 'text-[#94A3B8] hover:text-white hover:bg-[#1A2742]'
+                      : 'text-slate-600 dark:text-[#94A3B8] hover:text-slate-900 dark:hover:text-white hover:bg-slate-200/60 dark:hover:bg-[#1A2742]'
                   }`}
                 >
-                  <Users className="w-3 h-3 text-sky-400" />
+                  <Users className="w-3 h-3 text-sky-600 dark:text-sky-400" />
                   <span>Equipo ({counts.people})</span>
                 </button>
               )}
@@ -786,10 +786,10 @@ export function GlobalSearchBar({
                   className={`flex items-center space-x-1 px-2.5 py-1 rounded-md transition-colors shrink-0 cursor-pointer ${
                     activeCategory === 'shortcuts'
                       ? 'bg-[#1E40AF] text-white shadow-xs'
-                      : 'text-[#94A3B8] hover:text-white hover:bg-[#1A2742]'
+                      : 'text-slate-600 dark:text-[#94A3B8] hover:text-slate-900 dark:hover:text-white hover:bg-slate-200/60 dark:hover:bg-[#1A2742]'
                   }`}
                 >
-                  <Zap className="w-3 h-3 text-yellow-400" />
+                  <Zap className="w-3 h-3 text-amber-500 dark:text-yellow-400" />
                   <span>Accesos ({counts.shortcuts})</span>
                 </button>
               )}
@@ -799,13 +799,13 @@ export function GlobalSearchBar({
             <div className="p-3 overflow-y-auto space-y-4">
               {/* SELECTOR RÁPIDO DE FECHA PARA ASISTENCIA */}
               {(activeCategory === 'all' || activeCategory === 'attendance') && (
-                <div className="p-2.5 rounded-md bg-[#1A2742]/70 border border-[#233354] space-y-2">
-                  <div className="flex items-center justify-between text-xs font-heading font-semibold text-[#38BDF8]">
+                <div className="p-2.5 rounded-md bg-slate-50 dark:bg-[#1A2742]/70 border border-slate-200 dark:border-[#233354] space-y-2">
+                  <div className="flex items-center justify-between text-xs font-heading font-semibold text-blue-600 dark:text-[#38BDF8]">
                     <div className="flex items-center space-x-1.5">
                       <Clock className="w-3.5 h-3.5" />
                       <span>Consultar Asistencia por Fecha Específica</span>
                     </div>
-                    <span className="text-[10px] text-[#94A3B8]">Día exacto</span>
+                    <span className="text-[10px] text-slate-500 dark:text-[#94A3B8]">Día exacto</span>
                   </div>
 
                   <form onSubmit={handleCustomDateSubmit} className="flex items-center gap-2">
@@ -813,7 +813,7 @@ export function GlobalSearchBar({
                       type="date"
                       value={customDatePicker}
                       onChange={(e) => setCustomDatePicker(e.target.value)}
-                      className="flex-1 bg-[#131D31] text-[#F8FAFC] border border-[#233354] rounded px-2.5 py-1.5 text-xs focus:border-[#38BDF8] focus:outline-none"
+                      className="flex-1 bg-white dark:bg-[#131D31] text-slate-900 dark:text-[#F8FAFC] border border-slate-300 dark:border-[#233354] rounded px-2.5 py-1.5 text-xs focus:border-blue-500 dark:focus:border-[#38BDF8] focus:outline-none"
                     />
                     <button
                       type="submit"
@@ -830,7 +830,7 @@ export function GlobalSearchBar({
               {(activeCategory === 'all' || activeCategory === 'attendance') &&
                 filteredAttendanceDates.length > 0 && (
                   <div>
-                    <div className="flex items-center justify-between px-1 mb-1.5 text-[10px] font-heading font-bold uppercase tracking-wider text-[#94A3B8]">
+                    <div className="flex items-center justify-between px-1 mb-1.5 text-[10px] font-heading font-bold uppercase tracking-wider text-slate-500 dark:text-[#94A3B8]">
                       <span>Registro de Asistencia por Fecha</span>
                       <span>Clic para ver desglose</span>
                     </div>
@@ -840,17 +840,17 @@ export function GlobalSearchBar({
                         <div
                           key={date}
                           onClick={() => handleSelectDateAttendance(date, record)}
-                          className="group flex items-center justify-between p-2 rounded-md hover:bg-[#1A2742] transition-colors cursor-pointer border border-transparent hover:border-[#233354]"
+                          className="group flex items-center justify-between p-2 rounded-md hover:bg-slate-100 dark:hover:bg-[#1A2742] transition-colors cursor-pointer border border-transparent hover:border-slate-200 dark:hover:border-[#233354]"
                         >
                           <div className="flex items-center space-x-2.5">
-                            <div className="p-1.5 rounded bg-blue-600/10 text-[#38BDF8] group-hover:bg-[#1E40AF] group-hover:text-white transition-colors">
+                            <div className="p-1.5 rounded bg-blue-500/10 text-blue-600 dark:text-[#38BDF8] group-hover:bg-[#1E40AF] group-hover:text-white transition-colors">
                               <Calendar className="w-3.5 h-3.5" />
                             </div>
                             <div>
-                              <span className="text-xs font-semibold text-white capitalize block">
+                              <span className="text-xs font-semibold text-slate-900 dark:text-white capitalize block">
                                 {formatted}
                               </span>
-                              <span className="text-[11px] text-[#94A3B8]">
+                              <span className="text-[11px] text-slate-500 dark:text-[#94A3B8]">
                                 {record.checkInTimeMs ? (
                                   <>
                                     Entrada: {new Date(record.checkInTimeMs).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', hour12: true })}
@@ -866,17 +866,17 @@ export function GlobalSearchBar({
 
                           <div className="flex items-center space-x-2">
                             {record.isLate ? (
-                              <span className="inline-flex items-center space-x-1 text-[10px] font-semibold text-rose-400 bg-rose-500/10 px-1.5 py-0.5 rounded">
+                              <span className="inline-flex items-center space-x-1 text-[10px] font-semibold text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-500/10 px-1.5 py-0.5 rounded border border-rose-200 dark:border-rose-500/20">
                                 <AlertTriangle className="w-3 h-3" />
                                 <span>Retardo</span>
                               </span>
                             ) : (
-                              <span className="inline-flex items-center space-x-1 text-[10px] font-semibold text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded">
+                              <span className="inline-flex items-center space-x-1 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-200 dark:border-emerald-500/20">
                                 <CheckCircle2 className="w-3 h-3" />
                                 <span>Puntual</span>
                               </span>
                             )}
-                            <ArrowRight className="w-3.5 h-3.5 text-[#94A3B8] group-hover:text-white transition-colors" />
+                            <ArrowRight className="w-3.5 h-3.5 text-slate-400 group-hover:text-slate-700 dark:text-[#94A3B8] dark:group-hover:text-white transition-colors" />
                           </div>
                         </div>
                       ))}
@@ -889,7 +889,7 @@ export function GlobalSearchBar({
                 (activeCategory === 'all' || activeCategory === 'projects') &&
                 filteredProjects.length > 0 && (
                   <div>
-                    <div className="px-1 mb-1.5 text-[10px] font-heading font-bold uppercase tracking-wider text-[#94A3B8]">
+                    <div className="px-1 mb-1.5 text-[10px] font-heading font-bold uppercase tracking-wider text-slate-500 dark:text-[#94A3B8]">
                       Proyectos
                     </div>
                     <div className="space-y-1">
@@ -903,25 +903,25 @@ export function GlobalSearchBar({
                               addToast(`Proyecto: ${p.name}`, 'info');
                               setIsOpen(false);
                             }}
-                            className="group flex items-center justify-between p-2 rounded-md hover:bg-[#1A2742] transition-colors cursor-pointer border border-transparent hover:border-[#233354]"
+                            className="group flex items-center justify-between p-2 rounded-md hover:bg-slate-100 dark:hover:bg-[#1A2742] transition-colors cursor-pointer border border-transparent hover:border-slate-200 dark:hover:border-[#233354]"
                           >
                             <div className="flex items-center space-x-2.5">
-                              <div className="p-1.5 rounded bg-amber-500/10 text-amber-400 group-hover:bg-amber-600 group-hover:text-white transition-colors">
+                              <div className="p-1.5 rounded bg-amber-500/10 text-amber-600 dark:text-amber-400 group-hover:bg-amber-600 group-hover:text-white transition-colors">
                                 <FolderKanban className="w-3.5 h-3.5" />
                               </div>
                               <div>
                                 <div className="flex items-center space-x-2">
-                                  <span className="text-xs font-semibold text-white block">{p.name}</span>
-                                  <span className="text-[10px] font-mono text-[#94A3B8] bg-[#0F172A] px-1.5 py-0.2 rounded border border-[#233354]">
+                                  <span className="text-xs font-semibold text-slate-900 dark:text-white block">{p.name}</span>
+                                  <span className="text-[10px] font-mono text-slate-600 dark:text-[#94A3B8] bg-slate-100 dark:bg-[#0F172A] px-1.5 py-0.2 rounded border border-slate-200 dark:border-[#233354]">
                                     {p.code}
                                   </span>
                                 </div>
-                                <span className="text-[11px] text-[#94A3B8]">
+                                <span className="text-[11px] text-slate-500 dark:text-[#94A3B8]">
                                   {client ? `Cliente: ${client.name}` : 'Proyecto interno'} • {p.totalBudgetHours || 0}h presupuesto
                                 </span>
                               </div>
                             </div>
-                            <ArrowRight className="w-3.5 h-3.5 text-[#94A3B8] group-hover:text-white transition-colors" />
+                            <ArrowRight className="w-3.5 h-3.5 text-slate-400 group-hover:text-slate-700 dark:text-[#94A3B8] dark:group-hover:text-white transition-colors" />
                           </div>
                         );
                       })}
@@ -935,7 +935,7 @@ export function GlobalSearchBar({
                 (activeCategory === 'all' || activeCategory === 'clients') &&
                 filteredClients.length > 0 && (
                   <div>
-                    <div className="px-1 mb-1.5 text-[10px] font-heading font-bold uppercase tracking-wider text-[#94A3B8]">
+                    <div className="px-1 mb-1.5 text-[10px] font-heading font-bold uppercase tracking-wider text-slate-500 dark:text-[#94A3B8]">
                       Clientes Corporativos
                     </div>
                     <div className="space-y-1">
@@ -949,20 +949,20 @@ export function GlobalSearchBar({
                               addToast(`Cliente: ${c.name}`, 'info');
                               setIsOpen(false);
                             }}
-                            className="group flex items-center justify-between p-2 rounded-md hover:bg-[#1A2742] transition-colors cursor-pointer border border-transparent hover:border-[#233354]"
+                            className="group flex items-center justify-between p-2 rounded-md hover:bg-slate-100 dark:hover:bg-[#1A2742] transition-colors cursor-pointer border border-transparent hover:border-slate-200 dark:hover:border-[#233354]"
                           >
                             <div className="flex items-center space-x-2.5">
-                              <div className="p-1.5 rounded bg-emerald-500/10 text-emerald-400 group-hover:bg-emerald-600 group-hover:text-white transition-colors">
+                              <div className="p-1.5 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 group-hover:bg-emerald-600 group-hover:text-white transition-colors">
                                 <Building2 className="w-3.5 h-3.5" />
                               </div>
                               <div>
-                                <span className="text-xs font-semibold text-white block">{c.name}</span>
-                                <span className="text-[11px] text-[#94A3B8]">
+                                <span className="text-xs font-semibold text-slate-900 dark:text-white block">{c.name}</span>
+                                <span className="text-[11px] text-slate-500 dark:text-[#94A3B8]">
                                   {clientProjectsCount} proyecto(s) vinculados {c.taxId ? `• RFC: ${c.taxId}` : ''}
                                 </span>
                               </div>
                             </div>
-                            <ArrowRight className="w-3.5 h-3.5 text-[#94A3B8] group-hover:text-white transition-colors" />
+                            <ArrowRight className="w-3.5 h-3.5 text-slate-400 group-hover:text-slate-700 dark:text-[#94A3B8] dark:group-hover:text-white transition-colors" />
                           </div>
                         );
                       })}
@@ -975,10 +975,10 @@ export function GlobalSearchBar({
                 (activeCategory === 'all' || activeCategory === 'tasks') &&
                 filteredTasks.length > 0 && (
                   <div>
-                    <div className="flex items-center justify-between px-1 mb-1.5 text-[10px] font-heading font-bold uppercase tracking-wider text-[#94A3B8]">
+                    <div className="flex items-center justify-between px-1 mb-1.5 text-[10px] font-heading font-bold uppercase tracking-wider text-slate-500 dark:text-[#94A3B8]">
                       <span>{normalizedRole === 'Empleado' ? 'Mis Tareas Asignadas' : 'Tareas'}</span>
                       {normalizedRole === 'Empleado' && (
-                        <span className="text-[10px] text-[#38BDF8]">Solo asignadas a ti</span>
+                        <span className="text-[10px] text-blue-600 dark:text-[#38BDF8]">Solo asignadas a ti</span>
                       )}
                     </div>
                     <div className="space-y-1">
@@ -990,20 +990,20 @@ export function GlobalSearchBar({
                             addToast(`Tarea: ${t.name}`, 'info');
                             setIsOpen(false);
                           }}
-                          className="group flex items-center justify-between p-2 rounded-md hover:bg-[#1A2742] transition-colors cursor-pointer border border-transparent hover:border-[#233354]"
+                          className="group flex items-center justify-between p-2 rounded-md hover:bg-slate-100 dark:hover:bg-[#1A2742] transition-colors cursor-pointer border border-transparent hover:border-slate-200 dark:hover:border-[#233354]"
                         >
                           <div className="flex items-center space-x-2.5">
-                            <div className="p-1.5 rounded bg-purple-500/10 text-purple-400 group-hover:bg-purple-600 group-hover:text-white transition-colors">
+                            <div className="p-1.5 rounded bg-purple-500/10 text-purple-600 dark:text-purple-400 group-hover:bg-purple-600 group-hover:text-white transition-colors">
                               <CheckSquare className="w-3.5 h-3.5" />
                             </div>
                             <div>
-                              <span className="text-xs font-semibold text-white block">{t.name}</span>
-                              <span className="text-[11px] text-[#94A3B8]">
+                              <span className="text-xs font-semibold text-slate-900 dark:text-white block">{t.name}</span>
+                              <span className="text-[11px] text-slate-500 dark:text-[#94A3B8]">
                                 {t.plannedHours || 0}h planeadas • Estado: {t.status || 'Pendiente'}
                               </span>
                             </div>
                           </div>
-                          <ArrowRight className="w-3.5 h-3.5 text-[#94A3B8] group-hover:text-white transition-colors" />
+                          <ArrowRight className="w-3.5 h-3.5 text-slate-400 group-hover:text-slate-700 dark:text-[#94A3B8] dark:group-hover:text-white transition-colors" />
                         </div>
                       ))}
                     </div>
@@ -1015,7 +1015,7 @@ export function GlobalSearchBar({
                 (activeCategory === 'all' || activeCategory === 'people') &&
                 filteredPeople.length > 0 && (
                   <div>
-                    <div className="px-1 mb-1.5 text-[10px] font-heading font-bold uppercase tracking-wider text-[#94A3B8]">
+                    <div className="px-1 mb-1.5 text-[10px] font-heading font-bold uppercase tracking-wider text-slate-500 dark:text-[#94A3B8]">
                       {normalizedRole === 'Supervisor' ? 'Mi Equipo a Cargo' : 'Colaboradores y Personal'}
                     </div>
                     <div className="space-y-1">
@@ -1026,20 +1026,20 @@ export function GlobalSearchBar({
                             addToast(`Colaborador: ${p.name} (${p.team})`, 'info');
                             setIsOpen(false);
                           }}
-                          className="group flex items-center justify-between p-2 rounded-md hover:bg-[#1A2742] transition-colors cursor-pointer border border-transparent hover:border-[#233354]"
+                          className="group flex items-center justify-between p-2 rounded-md hover:bg-slate-100 dark:hover:bg-[#1A2742] transition-colors cursor-pointer border border-transparent hover:border-slate-200 dark:hover:border-[#233354]"
                         >
                           <div className="flex items-center space-x-2.5">
-                            <div className="w-7 h-7 rounded-full bg-slate-700 flex items-center justify-center text-xs font-bold text-white uppercase">
+                            <div className="w-7 h-7 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center text-xs font-bold text-slate-700 dark:text-white uppercase">
                               {p.name.charAt(0)}
                             </div>
                             <div>
-                              <span className="text-xs font-semibold text-white block">{p.name}</span>
-                              <span className="text-[11px] text-[#94A3B8]">
+                              <span className="text-xs font-semibold text-slate-900 dark:text-white block">{p.name}</span>
+                              <span className="text-[11px] text-slate-500 dark:text-[#94A3B8]">
                                 {p.email} • {p.team}
                               </span>
                             </div>
                           </div>
-                          <span className="text-[10px] font-semibold text-slate-400 bg-[#0F172A] px-2 py-0.5 rounded border border-[#233354]">
+                          <span className="text-[10px] font-semibold text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-[#0F172A] px-2 py-0.5 rounded border border-slate-200 dark:border-[#233354]">
                             {p.role}
                           </span>
                         </div>
@@ -1052,7 +1052,7 @@ export function GlobalSearchBar({
               {(activeCategory === 'all' || activeCategory === 'shortcuts') &&
                 shortcuts.length > 0 && (
                   <div>
-                    <div className="px-1 mb-1.5 text-[10px] font-heading font-bold uppercase tracking-wider text-[#94A3B8]">
+                    <div className="px-1 mb-1.5 text-[10px] font-heading font-bold uppercase tracking-wider text-slate-500 dark:text-[#94A3B8]">
                       Accesos Rápidos del Sistema
                     </div>
                     <div className="space-y-1">
@@ -1065,18 +1065,18 @@ export function GlobalSearchBar({
                               sc.action();
                               setIsOpen(false);
                             }}
-                            className="group flex items-center justify-between p-2 rounded-md hover:bg-[#1A2742] transition-colors cursor-pointer border border-transparent hover:border-[#233354]"
+                            className="group flex items-center justify-between p-2 rounded-md hover:bg-slate-100 dark:hover:bg-[#1A2742] transition-colors cursor-pointer border border-transparent hover:border-slate-200 dark:hover:border-[#233354]"
                           >
                             <div className="flex items-center space-x-2.5">
-                              <div className="p-1.5 rounded bg-sky-500/10 text-[#38BDF8] group-hover:bg-[#1E40AF] group-hover:text-white transition-colors">
+                              <div className="p-1.5 rounded bg-sky-500/10 text-sky-600 dark:text-[#38BDF8] group-hover:bg-[#1E40AF] group-hover:text-white transition-colors">
                                 <IconComponent className="w-3.5 h-3.5" />
                               </div>
                               <div>
-                                <span className="text-xs font-semibold text-white block">{sc.title}</span>
-                                <span className="text-[11px] text-[#94A3B8]">{sc.description}</span>
+                                <span className="text-xs font-semibold text-slate-900 dark:text-white block">{sc.title}</span>
+                                <span className="text-[11px] text-slate-500 dark:text-[#94A3B8]">{sc.description}</span>
                               </div>
                             </div>
-                            <ArrowRight className="w-3.5 h-3.5 text-[#94A3B8] group-hover:text-white transition-colors" />
+                            <ArrowRight className="w-3.5 h-3.5 text-slate-400 group-hover:text-slate-700 dark:text-[#94A3B8] dark:group-hover:text-white transition-colors" />
                           </div>
                         );
                       })}
@@ -1086,22 +1086,22 @@ export function GlobalSearchBar({
             </div>
 
             {/* Pie del Dropdown */}
-            <div className="px-3 py-2 border-t border-[#233354] bg-[#0F172A]/90 flex items-center justify-between text-[11px] text-[#94A3B8]">
+            <div className="px-3 py-2 border-t border-slate-200 dark:border-[#233354] bg-slate-50 dark:bg-[#0F172A]/90 flex items-center justify-between text-[11px] text-slate-500 dark:text-[#94A3B8]">
               <div className="flex items-center space-x-3">
                 <span>
-                  <kbd className="px-1 py-0.5 bg-[#1A2742] rounded text-[10px] font-mono border border-[#233354] text-slate-300">
+                  <kbd className="px-1 py-0.5 bg-slate-200/80 dark:bg-[#1A2742] rounded text-[10px] font-mono border border-slate-300 dark:border-[#233354] text-slate-700 dark:text-slate-300">
                     Esc
                   </kbd>{' '}
                   cerrar
                 </span>
                 <span>
-                  <kbd className="px-1 py-0.5 bg-[#1A2742] rounded text-[10px] font-mono border border-[#233354] text-slate-300">
+                  <kbd className="px-1 py-0.5 bg-slate-200/80 dark:bg-[#1A2742] rounded text-[10px] font-mono border border-slate-300 dark:border-[#233354] text-slate-700 dark:text-slate-300">
                     Ctrl K
                   </kbd>{' '}
                   buscar
                 </span>
               </div>
-              <span className="text-[#38BDF8] font-medium">Filtro de seguridad activo ({normalizedRole})</span>
+              <span className="text-blue-600 dark:text-[#38BDF8] font-medium">Filtro de seguridad activo ({normalizedRole})</span>
             </div>
           </div>
         )}

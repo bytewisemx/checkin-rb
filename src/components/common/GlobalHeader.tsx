@@ -60,13 +60,13 @@ export function GlobalHeader() {
 
   return (
     <>
-      <header className="bg-[#131D31] text-[#F8FAFC] border-b border-[#233354] h-14 flex items-center justify-between px-4 sticky top-0 z-40">
+      <header className="bg-white dark:bg-[#131D31] text-slate-800 dark:text-[#F8FAFC] border-b border-slate-200 dark:border-[#233354] h-14 flex items-center justify-between px-4 sticky top-0 z-40">
         {/* Lado Izquierdo: Botón de Recargar Limpio (Sin recuadro) */}
         <div className="flex items-center w-1/4">
           <button
             onClick={handleReload}
             title="Recargar página"
-            className="p-1.5 text-[#94A3B8] hover:text-[#F8FAFC] transition-colors cursor-pointer group rounded-md"
+            className="p-1.5 text-slate-500 hover:text-slate-900 dark:text-[#94A3B8] dark:hover:text-[#F8FAFC] transition-colors cursor-pointer group rounded-md"
             aria-label="Recargar"
           >
             <RefreshCw

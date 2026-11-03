@@ -42,10 +42,10 @@ function EmployeeDashboard({ initialTab = 'checkin' }: EmployeeDashboardProps) {
   const unreadTaskAlerts = canAccessTasks ? myNotifications.filter((n) => !n.read).slice(0, 3) : [];
 
   return (
-    <main className="w-full pb-12 px-4 lg:px-8 animate-fade-in bg-[#0B111E] text-[#F8FAFC]">
+    <main className="w-full pb-12 px-4 lg:px-8 animate-fade-in bg-slate-50 dark:bg-[#0B111E] text-slate-800 dark:text-[#F8FAFC]">
       {/* Bandeja en vivo de Notificaciones de Tareas Asignadas */}
       {canAccessTasks && unreadTaskAlerts.length > 0 && (
-        <div className="max-w-[1600px] mx-auto mt-4 bg-[#131D31] text-[#F8FAFC] rounded-md p-3.5 border border-[#233354] flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-sm">
+        <div className="max-w-[1600px] mx-auto mt-4 bg-white dark:bg-[#131D31] text-slate-800 dark:text-[#F8FAFC] rounded-md p-3.5 border border-slate-200 dark:border-[#233354] flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-sm">
           <div className="flex items-start sm:items-center space-x-3">
             <div className="w-8 h-8 rounded-md bg-[#1E40AF]/20 flex items-center justify-center shrink-0 text-[#38BDF8] border border-[#1E40AF]/40">
               <Bell className="w-4 h-4 animate-bounce" />
@@ -156,7 +156,7 @@ function MainLayout({
   const normalizedRole = normalizeRole(user?.role);
 
   return (
-    <div className="min-h-screen bg-[#0B111E] text-[#F8FAFC]">
+    <div className="min-h-screen bg-slate-50 dark:bg-[#0B111E] text-slate-800 dark:text-[#F8FAFC]">
       <GlobalHeader />
 
       {normalizedRole === 'TI' && <TIDashboard initialTab={initialTiTab} />}
