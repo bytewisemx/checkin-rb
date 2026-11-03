@@ -1,10 +1,14 @@
 import { useState, useMemo } from 'react';
 import { 
   Download, Calendar, AlertTriangle, 
-  User, FileText, Filter
+  User, FileText, Filter, FileSpreadsheet, Printer
 } from 'lucide-react';
 import { useRayonerStore } from '../../../store/useRayonerStore';
 import { useCheckinStore } from '../../../store/useCheckinStore';
+import { 
+  exportProjectReportToExcel, 
+  exportProjectReportToPDF 
+} from '../../../services/reportExportService';
 
 interface RayonerTimeReportProps {
   initialProjectId?: string | null;
@@ -87,12 +91,48 @@ export function RayonerTimeReport({ initialProjectId }: RayonerTimeReportProps) 
     addToast('Informe de tiempos exportado exitosamente a CSV', 'success');
   };
 
+  const handleExportPDF = () => {
+    if (!currentProject) return;
+    try {
+      exportProjectReportToPDF({
+        project: currentProject,
+        client: currentClient,
+        tasks: projectTasks,
+        assignments,
+        taskActualHours,
+        userTaskActualHours,
+        generatedBy: 'Supervisor de Auditoría',
+      });
+      addToast('Generando informe corporativo en PDF listo para imprimir', 'info');
+    } catch {
+      addToast('Error al generar el informe en PDF', 'error');
+    }
+  };
+
+  const handleExportExcel = () => {
+    if (!currentProject) return;
+    try {
+      exportProjectReportToExcel({
+        project: currentProject,
+        client: currentClient,
+        tasks: projectTasks,
+        assignments,
+        taskActualHours,
+        userTaskActualHours,
+        generatedBy: 'Supervisor de Auditoría',
+      });
+      addToast('Informe de proyecto exportado a Excel (.xls) con diseño corporativo', 'success');
+    } catch {
+      addToast('Error al exportar a Excel', 'error');
+    }
+  };
+
   return (
     <div className="w-full space-y-6 animate-fade-in">
       
       {/* 1. Selector de Proyecto y Barra de Exportación */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-4 rounded-2xl shadow-sm border border-slate-200">
-        <div className="flex items-center space-x-3">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 bg-white p-4 rounded-2xl shadow-sm border border-slate-200">
+        <div className="flex items-center space-x-3 flex-wrap gap-y-2">
           <Filter className="w-4 h-4 text-slate-400" />
           <span className="text-xs font-bold text-slate-600 uppercase">Proyecto Seleccionado:</span>
           <select
@@ -108,13 +148,35 @@ export function RayonerTimeReport({ initialProjectId }: RayonerTimeReportProps) 
           </select>
         </div>
 
-        <div className="flex items-center space-x-2">
+        <div className="flex items-center space-x-2 flex-wrap gap-y-1">
+          {/* Botón Descargar PDF Corporativo */}
+          <button
+            onClick={handleExportPDF}
+            className="flex items-center px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs"
+            title="Descargar informe oficial en PDF membretado Russell Bedford"
+          >
+            <Printer className="w-3.5 h-3.5 mr-1.5" />
+            Descargar PDF
+          </button>
+
+          {/* Botón Descargar Excel Estilizado */}
+          <button
+            onClick={handleExportExcel}
+            className="flex items-center px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs"
+            title="Descargar libro de cálculo en Excel con formatos y semáforos"
+          >
+            <FileSpreadsheet className="w-3.5 h-3.5 mr-1.5" />
+            Descargar Excel
+          </button>
+
+          {/* Botón CSV */}
           <button
             onClick={handleExportCSV}
-            className="flex items-center px-4 py-2 bg-[#0D5C75] hover:bg-[#0E7490] text-white rounded-xl text-xs font-bold transition-all shadow-sm"
+            className="flex items-center px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold transition-all border border-slate-200"
+            title="Exportar archivo CSV simple"
           >
-            <Download className="w-4 h-4 mr-1.5" />
-            Exportar Informe (CSV)
+            <Download className="w-3.5 h-3.5 mr-1" />
+            CSV
           </button>
         </div>
       </div>
