@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'react';
 import { 
-  X, Briefcase, Building2, User, Clock, 
+  X, Briefcase, Building2, User, 
   DollarSign, Calendar, FileText, Check, 
   Trash2, Sparkles, Hash 
 } from 'lucide-react';
 import { useRayonerStore } from '../../../store/useRayonerStore';
 import { useCheckinStore } from '../../../store/useCheckinStore';
 import type { BudgetType, Project } from '../../../types/rayoner';
+import { TimeInputSexagesimal } from '../../../components/common/TimeInputSexagesimal';
 
 interface RayonerProjectModalProps {
   isOpen: boolean;
@@ -359,18 +360,10 @@ export function RayonerProjectModal({
             <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 pt-2">
               
               <div className="sm:col-span-4">
-                <label className="text-[11px] font-bold text-slate-600 block mb-1 flex items-center">
-                  <Clock className="w-3 h-3 mr-1 text-[#0D5C75]" />
-                  Presupuesto Total (Horas)
-                </label>
-                <input
-                  type="number"
-                  min="1"
-                  step="0.5"
-                  required
-                  value={totalBudgetHours}
-                  onChange={e => setTotalBudgetHours(parseFloat(e.target.value) || 0)}
-                  className="w-full px-3 py-1.5 text-xs bg-white border border-slate-200 rounded-lg font-bold text-slate-800 focus:ring-2 focus:ring-[#0D5C75]/20 focus:border-[#0D5C75] outline-none"
+                <TimeInputSexagesimal
+                  label="Presupuesto Total"
+                  totalHours={totalBudgetHours}
+                  onChange={(newH) => setTotalBudgetHours(newH)}
                 />
               </div>
 

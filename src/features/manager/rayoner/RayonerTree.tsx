@@ -6,6 +6,7 @@ import { useCheckinStore } from '../../../store/useCheckinStore';
 import { RayonerClientModal } from './RayonerClientModal';
 import { RayonerProjectModal } from './RayonerProjectModal';
 import { ProjectExecutiveReportModal } from './ProjectExecutiveReportModal';
+import { formatHoursToSexagesimal } from '../../../utils/timeFormat';
 
 interface RayonerTreeProps {
   onOpenTaskModal: (taskId?: string | null, projectId?: string | null) => void;
@@ -564,7 +565,7 @@ export function RayonerTree({ onOpenTaskModal, onSelectProjectForReport }: Rayon
 
                                 <span className="text-xs text-[#475569] dark:text-[#94A3B8] hidden md:inline shrink-0">
                                   • {clientProjects.length}{' '}
-                                  {clientProjects.length === 1 ? 'proyecto' : 'proyectos'} ({totalActual.toFixed(1)}h / {totalBudget}h)
+                                  {clientProjects.length === 1 ? 'proyecto' : 'proyectos'} ({formatHoursToSexagesimal(totalActual)} / {formatHoursToSexagesimal(totalBudget)})
                                 </span>
                               </div>
 
@@ -655,7 +656,7 @@ export function RayonerTree({ onOpenTaskModal, onSelectProjectForReport }: Rayon
                                                 />
                                               </div>
                                               <span className="text-[#475569] dark:text-[#94A3B8] font-mono">
-                                                {actualH.toFixed(1)}h / {budgetH}h ({percent.toFixed(0)}%)
+                                                {formatHoursToSexagesimal(actualH)} / {formatHoursToSexagesimal(budgetH)} ({percent.toFixed(0)}%)
                                               </span>
                                             </div>
 
@@ -785,7 +786,7 @@ export function RayonerTree({ onOpenTaskModal, onSelectProjectForReport }: Rayon
 
                                                       <div className="flex items-center space-x-4 text-xs shrink-0 pl-2">
                                                         <span className="text-[#475569] dark:text-[#94A3B8] font-mono">
-                                                          {taskActualH.toFixed(1)}h / {task.plannedHours}h ({taskPercent.toFixed(0)}%)
+                                                          {formatHoursToSexagesimal(taskActualH)} / {formatHoursToSexagesimal(task.plannedHours)} ({taskPercent.toFixed(0)}%)
                                                         </span>
 
                                                         <button
@@ -837,7 +838,7 @@ export function RayonerTree({ onOpenTaskModal, onSelectProjectForReport }: Rayon
 
                                                               <div className="flex items-center space-x-4 text-xs text-[#475569] dark:text-[#94A3B8] shrink-0">
                                                                 <span className="font-mono">
-                                                                  {subActualH.toFixed(1)}h / {subtask.plannedHours}h ({subPercent.toFixed(0)}%)
+                                                                  {formatHoursToSexagesimal(subActualH)} / {formatHoursToSexagesimal(subtask.plannedHours)} ({subPercent.toFixed(0)}%)
                                                                 </span>
                                                                 <button
                                                                   type="button"

@@ -6,7 +6,6 @@ import {
   Shield,
   MapPin,
   DollarSign,
-  Clock,
   AlertTriangle,
   Lock,
   Unlock,
@@ -19,6 +18,8 @@ import L from 'leaflet';
 import { useRayonerStore } from '../../../store/useRayonerStore';
 import { useCheckinStore } from '../../../store/useCheckinStore';
 import type { TaskAssignment, BudgetType, TaskPriority } from '../../../types/rayoner';
+import { TimeInputSexagesimal } from '../../../components/common/TimeInputSexagesimal';
+import { formatHoursToSexagesimal } from '../../../utils/timeFormat';
 
 delete (L.Icon.Default.prototype as unknown as Record<string, unknown>)._getIconUrl;
 L.Icon.Default.mergeOptions({
@@ -510,20 +511,11 @@ export function RayonerTaskModal({
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2">
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
-                    Horas Estimadas Propias
-                  </label>
-                  <div className="relative">
-                    <input
-                      type="number"
-                      min={0}
-                      step={0.5}
-                      value={plannedHours}
-                      onChange={(e) => setPlannedHours(parseFloat(e.target.value) || 0)}
-                      className="w-full border border-slate-200 rounded-lg pl-8 pr-3 py-2 text-sm font-semibold text-slate-800 focus:ring-2 focus:ring-[#0D5C75]/20 outline-none"
-                    />
-                    <Clock className="w-4 h-4 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
-                  </div>
+                  <TimeInputSexagesimal
+                    label="Horas Estimadas Propias"
+                    totalHours={plannedHours}
+                    onChange={(newHours) => setPlannedHours(newHours)}
+                  />
                 </div>
 
                 <div>
@@ -578,7 +570,7 @@ export function RayonerTaskModal({
                     Horas Propias de Tarea
                   </span>
                   <span className="text-xl font-bold text-slate-800">
-                    {plannedHours.toFixed(1)} hrs
+                    {formatHoursToSexagesimal(plannedHours)}
                   </span>
                 </div>
 
@@ -587,7 +579,7 @@ export function RayonerTaskModal({
                     Horas en Subtareas
                   </span>
                   <span className="text-xl font-bold text-blue-600">
-                    +{subtasksHours.toFixed(1)} hrs
+                    +{formatHoursToSexagesimal(subtasksHours)}
                   </span>
                 </div>
 
@@ -596,7 +588,7 @@ export function RayonerTaskModal({
                     Total Consolidado (Rollup)
                   </span>
                   <span className="text-xl font-bold text-[#0D5C75]">
-                    {totalConsolidatedHours.toFixed(1)} hrs
+                    {formatHoursToSexagesimal(totalConsolidatedHours)}
                   </span>
                 </div>
               </div>
@@ -681,16 +673,9 @@ export function RayonerTaskModal({
 
                       <div className="flex items-center space-x-4">
                         <div className="flex items-center space-x-1.5">
-                          <label className="text-xs text-slate-500 font-medium">Horas:</label>
-                          <input
-                            type="number"
-                            min={0}
-                            step={0.5}
-                            value={asg.allocatedHours}
-                            onChange={(e) =>
-                              handleUpdateAllocatedHours(idx, parseFloat(e.target.value) || 0)
-                            }
-                            className="w-16 border border-slate-200 rounded px-2 py-1 text-xs text-center font-bold text-slate-800"
+                          <TimeInputSexagesimal
+                            totalHours={asg.allocatedHours}
+                            onChange={(newH) => handleUpdateAllocatedHours(idx, newH)}
                           />
                         </div>
 

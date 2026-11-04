@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react';
 import { ChevronDown } from 'lucide-react';
 import { useRayonerStore } from '../../../store/useRayonerStore';
 import { useCheckinStore } from '../../../store/useCheckinStore';
+import { formatHoursToSexagesimal } from '../../../utils/timeFormat';
 
 interface TeamMembersViewProps {
   onNavigateToTree?: () => void;
@@ -416,10 +417,10 @@ function FragmentRow({
                             </span>
                           </div>
                           <div className="font-mono text-slate-900 dark:text-slate-200">
-                            <span className="font-semibold">{actualHours.toFixed(1)}h</span>
+                            <span className="font-semibold">{formatHoursToSexagesimal(actualHours)}</span>
                             <span className="text-slate-500 dark:text-slate-400">
                               {' '}
-                              / {plannedHours}h
+                              / {formatHoursToSexagesimal(plannedHours)}
                             </span>
                           </div>
                         </div>

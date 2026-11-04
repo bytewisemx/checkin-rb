@@ -1,4 +1,5 @@
 import type { Project, Client, TaskNode, TaskAssignment } from '../types/rayoner';
+import { formatHoursToSexagesimal } from '../utils/timeFormat';
 
 export interface ProjectReportExportData {
   project: Project;
@@ -393,13 +394,13 @@ export function exportProjectReportToPDF(data: ProjectReportExportData) {
             ${task.description ? `<div class="task-desc">${escapeHtml(task.description)}</div>` : ''}
             ${
               taskAsgs.length > 0
-                ? `<div class="task-assignees">${taskAsgs.map((a) => `<span>👤 ${escapeHtml(a.userName)} (${(userTaskActualHours[`${task.id}_${a.userId}`] || actualH / taskAsgs.length).toFixed(1)}h)</span>`).join(' ')}</div>`
+                ? `<div class="task-assignees">${taskAsgs.map((a) => `<span>👤 ${escapeHtml(a.userName)} (${formatHoursToSexagesimal(userTaskActualHours[`${task.id}_${a.userId}`] || actualH / taskAsgs.length)})</span>`).join(' ')}</div>`
                 : ''
             }
           </td>
-          <td class="text-center font-mono font-bold">${task.plannedHours.toFixed(1)}h</td>
-          <td class="text-center font-mono font-bold">${actualH.toFixed(1)}h</td>
-          <td class="text-center font-mono">${remH.toFixed(1)}h</td>
+          <td class="text-center font-mono font-bold">${formatHoursToSexagesimal(task.plannedHours)}</td>
+          <td class="text-center font-mono font-bold">${formatHoursToSexagesimal(actualH)}</td>
+          <td class="text-center font-mono">${formatHoursToSexagesimal(remH)}</td>
           <td class="text-center font-mono font-bold">${pct.toFixed(0)}%</td>
           <td class="text-right font-mono">$${cost.toLocaleString('es-MX', { minimumFractionDigits: 2 })}</td>
           <td class="text-center">${statusBadge}</td>
@@ -417,9 +418,9 @@ export function exportProjectReportToPDF(data: ProjectReportExportData) {
             <td style="padding-left: 28px;">
               <span class="subtask-bullet">↳</span> ${escapeHtml(st.name)}
             </td>
-            <td class="text-center font-mono">${st.plannedHours.toFixed(1)}h</td>
-            <td class="text-center font-mono">${stActual.toFixed(1)}h</td>
-            <td class="text-center font-mono">${stRem.toFixed(1)}h</td>
+            <td class="text-center font-mono">${formatHoursToSexagesimal(st.plannedHours)}</td>
+            <td class="text-center font-mono">${formatHoursToSexagesimal(stActual)}</td>
+            <td class="text-center font-mono">${formatHoursToSexagesimal(stRem)}</td>
             <td class="text-center font-mono">${stPct.toFixed(0)}%</td>
             <td class="text-right font-mono">$${stCost.toLocaleString('es-MX', { minimumFractionDigits: 2 })}</td>
             <td class="text-center"><span class="badge badge-sub">Subtarea</span></td>
@@ -461,8 +462,8 @@ export function exportProjectReportToPDF(data: ProjectReportExportData) {
           <td class="font-bold">👤 ${escapeHtml(c.name)}</td>
           <td>${escapeHtml(c.role)}</td>
           <td class="text-center font-mono">${c.taskCount}</td>
-          <td class="text-center font-mono">${c.plannedHours.toFixed(1)}h</td>
-          <td class="text-center font-mono font-bold">${c.actualHours.toFixed(1)}h</td>
+          <td class="text-center font-mono">${formatHoursToSexagesimal(c.plannedHours)}</td>
+          <td class="text-center font-mono font-bold">${formatHoursToSexagesimal(c.actualHours)}</td>
           <td class="text-center font-mono">${share.toFixed(1)}%</td>
           <td class="text-right font-mono font-bold">$${cost.toLocaleString('es-MX', { minimumFractionDigits: 2 })}</td>
         </tr>
@@ -781,17 +782,17 @@ export function exportProjectReportToPDF(data: ProjectReportExportData) {
   <div class="kpi-row">
     <div class="kpi-card">
       <div class="kpi-title">Presupuesto Planeado</div>
-      <div class="kpi-number">${totalPlannedHours.toFixed(1)}h</div>
+      <div class="kpi-number">${formatHoursToSexagesimal(totalPlannedHours)}</div>
       <div class="kpi-sub">$${budgetCost.toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN</div>
     </div>
     <div class="kpi-card ${percentConsumed >= 100 ? 'danger' : percentConsumed >= 80 ? 'alert' : ''}">
       <div class="kpi-title">Horas Consumidas</div>
-      <div class="kpi-number">${totalActualHours.toFixed(1)}h</div>
+      <div class="kpi-number">${formatHoursToSexagesimal(totalActualHours)}</div>
       <div class="kpi-sub">$${estimatedCost.toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN</div>
     </div>
     <div class="kpi-card">
       <div class="kpi-title">Horas Restantes</div>
-      <div class="kpi-number">${totalRemainingHours.toFixed(1)}h</div>
+      <div class="kpi-number">${formatHoursToSexagesimal(totalRemainingHours)}</div>
       <div class="kpi-sub">$${remainingCost.toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN</div>
     </div>
     <div class="kpi-card ${percentConsumed >= 100 ? 'danger' : percentConsumed >= 80 ? 'alert' : ''}">
@@ -819,9 +820,9 @@ export function exportProjectReportToPDF(data: ProjectReportExportData) {
       ${taskRowsHtml}
       <tr class="total-row">
         <td>TOTAL CONSOLIDADO DEL PROYECTO</td>
-        <td class="text-center font-mono">${totalPlannedHours.toFixed(1)}h</td>
-        <td class="text-center font-mono">${totalActualHours.toFixed(1)}h</td>
-        <td class="text-center font-mono">${totalRemainingHours.toFixed(1)}h</td>
+        <td class="text-center font-mono">${formatHoursToSexagesimal(totalPlannedHours)}</td>
+        <td class="text-center font-mono">${formatHoursToSexagesimal(totalActualHours)}</td>
+        <td class="text-center font-mono">${formatHoursToSexagesimal(totalRemainingHours)}</td>
         <td class="text-center font-mono">${percentConsumed.toFixed(1)}%</td>
         <td class="text-right font-mono">$${estimatedCost.toLocaleString('es-MX', { minimumFractionDigits: 2 })}</td>
         <td class="text-center">${percentConsumed >= 100 ? 'CRÍTICO' : percentConsumed >= 80 ? 'ALERTA' : 'ÓPTIMO'}</td>

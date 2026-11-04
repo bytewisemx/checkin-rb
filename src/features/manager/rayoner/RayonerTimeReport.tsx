@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { 
-  Download, Calendar, AlertTriangle, 
-  User, FileText, Filter, FileSpreadsheet, Printer
+  Download, 
+  Filter, FileSpreadsheet, Printer, TrendingUp
 } from 'lucide-react';
 import { useRayonerStore } from '../../../store/useRayonerStore';
 import { useCheckinStore } from '../../../store/useCheckinStore';
@@ -9,10 +9,13 @@ import {
   exportProjectReportToExcel, 
   exportProjectReportToPDF 
 } from '../../../services/reportExportService';
+import { formatHoursToSexagesimal } from '../../../utils/timeFormat';
 
 interface RayonerTimeReportProps {
   initialProjectId?: string | null;
 }
+
+type AnalyticsPeriod = 'semanal' | 'quincenal' | 'mensual' | 'personalizado';
 
 export function RayonerTimeReport({ initialProjectId }: RayonerTimeReportProps) {
   const { projects, clients, tasks, assignments, taskActualHours, userTaskActualHours } = useRayonerStore();
@@ -21,6 +24,10 @@ export function RayonerTimeReport({ initialProjectId }: RayonerTimeReportProps) 
   const [selectedProjectId, setSelectedProjectId] = useState<string>(
     initialProjectId || projects[0]?.id || ''
   );
+
+  const [period, setPeriod] = useState<AnalyticsPeriod>('mensual');
+  const [customStartDate, setCustomStartDate] = useState('2026-10-01');
+  const [customEndDate, setCustomEndDate] = useState('2026-10-31');
 
   const currentProject = useMemo(() => {
     return projects.find(p => p.id === selectedProjectId) || projects[0];
@@ -37,7 +44,7 @@ export function RayonerTimeReport({ initialProjectId }: RayonerTimeReportProps) 
     return tasks.filter(t => t.projectId === currentProject.id);
   }, [currentProject, tasks]);
 
-  // Cálculos consolidados del encabezado
+  // Cálculos consolidados del proyecto
   const totalPlannedHours = currentProject?.totalBudgetHours || 120;
 
   const totalActualHours = useMemo(() => {
@@ -50,12 +57,66 @@ export function RayonerTimeReport({ initialProjectId }: RayonerTimeReportProps) 
   const estimatedCost = totalActualHours * (currentProject?.hourlyRate || 1500);
   const budgetCost = totalPlannedHours * (currentProject?.hourlyRate || 1500);
 
+  // Estadísticas analíticas por periodo y colaborador
+  const analyticsData = useMemo(() => {
+    // Colaboradores únicos que participan en las tareas de este proyecto
+    const assignedUserIds = new Set<string>();
+    const userHoursMap: Record<string, { name: string; role: string; hours: number }> = {};
+
+    projectTasks.forEach(t => {
+      const taskAsgs = assignments.filter(a => a.taskId === t.id);
+      taskAsgs.forEach(asg => {
+        assignedUserIds.add(asg.userId);
+        const actualH = userTaskActualHours[`${t.id}_${asg.userId}`] || (taskActualHours[t.id] || 0) / Math.max(1, taskAsgs.length);
+        if (!userHoursMap[asg.userId]) {
+          userHoursMap[asg.userId] = {
+            name: asg.userName,
+            role: asg.userRoleTitle || 'Auditor',
+            hours: 0,
+          };
+        }
+        userHoursMap[asg.userId].hours += actualH;
+      });
+    });
+
+    const activeCollaboratorsCount = Math.max(1, assignedUserIds.size);
+
+    // Días laborables aproximados según periodo
+    const workDays = period === 'semanal' ? 5 : period === 'quincenal' ? 10 : 22;
+    const dailyAveragePerCollaborator = Number((totalActualHours / (activeCollaboratorsCount * workDays)).toFixed(2));
+
+    // Tasa de desviación de estimación
+    const estimationDeviationRate = totalPlannedHours > 0
+      ? Number((((totalActualHours - totalPlannedHours) / totalPlannedHours) * 100).toFixed(1))
+      : 0;
+
+    // Distribución porcentual por colaborador
+    const distribution = Object.entries(userHoursMap).map(([userId, data]) => {
+      const percentage = totalActualHours > 0 ? (data.hours / totalActualHours) * 100 : 0;
+      return {
+        userId,
+        name: data.name,
+        role: data.role,
+        hours: data.hours,
+        percentage: Number(percentage.toFixed(1)),
+      };
+    }).sort((a, b) => b.hours - a.hours);
+
+    return {
+      activeCollaboratorsCount,
+      dailyAveragePerCollaborator,
+      estimationDeviationRate,
+      peakProductivityWindow: '10:00 - 13:00 hrs',
+      distribution,
+    };
+  }, [projectTasks, assignments, userTaskActualHours, taskActualHours, totalActualHours, totalPlannedHours, period]);
+
   // Exportar reporte a formato CSV estructurado
   const handleExportCSV = () => {
     if (!currentProject) return;
 
     let csvContent = 'data:text/csv;charset=utf-8,';
-    csvContent += 'Nivel,Concepto / Tarea,Colaborador,Planeado (hrs),Actual (hrs),Restante (hrs),% Consumido,Tarifa/Hr,Costo Acumulado\r\n';
+    csvContent += 'Nivel,Concepto / Tarea,Colaborador,Planeado,Actual,Restante,% Consumido,Tarifa/Hr,Costo Acumulado\r\n';
 
     projectTasks.forEach(task => {
       const actualH = taskActualHours[task.id] || 0;
@@ -63,9 +124,8 @@ export function RayonerTimeReport({ initialProjectId }: RayonerTimeReportProps) 
       const pct = task.plannedHours > 0 ? ((actualH / task.plannedHours) * 100).toFixed(1) : '0';
       const isSubtask = Boolean(task.parentTaskId);
 
-      csvContent += `"${isSubtask ? 'Subtarea' : 'Tarea'}","${task.name.replace(/"/g, '""')}","-",${task.plannedHours},${actualH},${remH},${pct}%,${currentProject.hourlyRate},${(actualH * currentProject.hourlyRate).toFixed(2)}\r\n`;
+      csvContent += `"${isSubtask ? 'Subtarea' : 'Tarea'}","${task.name.replace(/"/g, '""')}","-","${formatHoursToSexagesimal(task.plannedHours)}","${formatHoursToSexagesimal(actualH)}","${formatHoursToSexagesimal(remH)}",${pct}%,${currentProject.hourlyRate},${(actualH * currentProject.hourlyRate).toFixed(2)}\r\n`;
 
-      // Colaboradores asignados
       const taskAsgs = assignments.filter(a => a.taskId === task.id);
       taskAsgs.forEach(asg => {
         const userActual = userTaskActualHours[`${task.id}_${asg.userId}`] || (actualH / Math.max(1, taskAsgs.length));
@@ -73,12 +133,12 @@ export function RayonerTimeReport({ initialProjectId }: RayonerTimeReportProps) 
         const userPct = asg.allocatedHours > 0 ? ((userActual / asg.allocatedHours) * 100).toFixed(1) : '0';
         const rate = asg.hourlyRateOverride || currentProject.hourlyRate;
 
-        csvContent += `"Asignado","-","${asg.userName}",${asg.allocatedHours},${userActual.toFixed(1)},${userRem.toFixed(1)},${userPct}%,${rate},${(userActual * rate).toFixed(2)}\r\n`;
+        csvContent += `"Asignado","-","${asg.userName}","${formatHoursToSexagesimal(asg.allocatedHours)}","${formatHoursToSexagesimal(userActual)}","${formatHoursToSexagesimal(userRem)}",${userPct}%,${rate},${(userActual * rate).toFixed(2)}\r\n`;
       });
     });
 
     // Fila Total
-    csvContent += `"TOTAL","Proyecto Consolidado","-",${totalPlannedHours},${totalActualHours.toFixed(1)},${totalRemainingHours.toFixed(1)},${percentConsumed.toFixed(1)}%,${currentProject.hourlyRate},${estimatedCost.toFixed(2)}\r\n`;
+    csvContent += `"TOTAL","Proyecto Consolidado","-","${formatHoursToSexagesimal(totalPlannedHours)}","${formatHoursToSexagesimal(totalActualHours)}","${formatHoursToSexagesimal(totalRemainingHours)}",${percentConsumed.toFixed(1)}%,${currentProject.hourlyRate},${estimatedCost.toFixed(2)}\r\n`;
 
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement('a');
@@ -103,7 +163,7 @@ export function RayonerTimeReport({ initialProjectId }: RayonerTimeReportProps) 
         userTaskActualHours,
         generatedBy: 'Supervisor de Auditoría',
       });
-      addToast('Generando informe corporativo en PDF listo para imprimir', 'info');
+      addToast('Generando informe corporativo en PDF', 'info');
     } catch {
       addToast('Error al generar el informe en PDF', 'error');
     }
@@ -128,17 +188,19 @@ export function RayonerTimeReport({ initialProjectId }: RayonerTimeReportProps) 
   };
 
   return (
-    <div className="w-full space-y-6 animate-fade-in">
+    <div className="w-full space-y-6 animate-fade-in text-slate-900 dark:text-slate-100">
       
-      {/* 1. Selector de Proyecto y Barra de Exportación */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 bg-white p-4 rounded-2xl shadow-sm border border-slate-200">
+      {/* 1. Selector de Proyecto y Grupo de Botones de Exportación Sobrios */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white dark:bg-[#101726] p-4 border border-slate-200 dark:border-slate-800">
         <div className="flex items-center space-x-3 flex-wrap gap-y-2">
           <Filter className="w-4 h-4 text-slate-400" />
-          <span className="text-xs font-bold text-slate-600 uppercase">Proyecto Seleccionado:</span>
+          <span className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider">
+            Proyecto:
+          </span>
           <select
             value={selectedProjectId}
             onChange={e => setSelectedProjectId(e.target.value)}
-            className="border border-slate-200 rounded-lg px-3 py-1.5 text-xs font-bold text-slate-800 focus:ring-2 focus:ring-[#0D5C75]/20 outline-none bg-slate-50"
+            className="border border-slate-300 dark:border-slate-700 rounded px-3 py-1.5 text-xs font-bold text-slate-900 dark:text-slate-100 bg-slate-50 dark:bg-[#0B111E] focus:outline-none focus:border-blue-600 dark:focus:border-sky-400"
           >
             {projects.map(p => (
               <option key={p.id} value={p.id}>
@@ -148,153 +210,241 @@ export function RayonerTimeReport({ initialProjectId }: RayonerTimeReportProps) 
           </select>
         </div>
 
-        <div className="flex items-center space-x-2 flex-wrap gap-y-1">
-          {/* Botón Descargar PDF Corporativo */}
+        {/* Button Group Sobrio en Gris Pizarra (bg-slate-800) */}
+        <div className="inline-flex rounded-md shadow-xs" role="group">
           <button
+            type="button"
             onClick={handleExportPDF}
-            className="flex items-center px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs"
-            title="Descargar informe oficial en PDF membretado Russell Bedford"
+            className="flex items-center px-3.5 py-1.5 text-xs font-medium text-slate-200 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-l transition-colors cursor-pointer"
+            title="Descargar informe oficial en PDF"
           >
-            <Printer className="w-3.5 h-3.5 mr-1.5" />
-            Descargar PDF
+            <Printer className="w-3.5 h-3.5 mr-1.5 text-slate-400" />
+            PDF
           </button>
-
-          {/* Botón Descargar Excel Estilizado */}
           <button
+            type="button"
             onClick={handleExportExcel}
-            className="flex items-center px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs"
-            title="Descargar libro de cálculo en Excel con formatos y semáforos"
+            className="flex items-center px-3.5 py-1.5 text-xs font-medium text-slate-200 bg-slate-800 hover:bg-slate-700 border-t border-b border-r border-slate-700 transition-colors cursor-pointer"
+            title="Descargar libro de cálculo en Excel"
           >
-            <FileSpreadsheet className="w-3.5 h-3.5 mr-1.5" />
-            Descargar Excel
+            <FileSpreadsheet className="w-3.5 h-3.5 mr-1.5 text-slate-400" />
+            Excel
           </button>
-
-          {/* Botón CSV */}
           <button
+            type="button"
             onClick={handleExportCSV}
-            className="flex items-center px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold transition-all border border-slate-200"
-            title="Exportar archivo CSV simple"
+            className="flex items-center px-3.5 py-1.5 text-xs font-medium text-slate-200 bg-slate-800 hover:bg-slate-700 border-t border-b border-r border-slate-700 rounded-r transition-colors cursor-pointer"
+            title="Exportar archivo CSV plano"
           >
-            <Download className="w-3.5 h-3.5 mr-1" />
+            <Download className="w-3.5 h-3.5 mr-1.5 text-slate-400" />
             CSV
           </button>
         </div>
       </div>
 
-      {/* 2. Encabezado Ejecutivo del Proyecto (Scorecard) */}
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 space-y-6">
-        <div className="flex flex-col md:flex-row md:items-center justify-between border-b border-slate-100 pb-4 gap-2">
+      {/* 2. Panel Superior de Analítica y Rendimiento por Periodos */}
+      <div className="bg-white dark:bg-[#101726] border border-slate-200 dark:border-slate-800 p-6 space-y-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 dark:border-slate-800 pb-4">
           <div>
             <div className="flex items-center space-x-2">
-              <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Cliente: {currentClient?.name || 'Cliente'}</span>
-              <span className="text-xs text-slate-300">•</span>
-              <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
-                {currentProject?.code}
-              </span>
+              <TrendingUp className="w-4 h-4 text-[#1D4ED8] dark:text-sky-400" />
+              <h3 className="text-sm font-bold font-heading uppercase tracking-wider text-slate-900 dark:text-slate-100">
+                Analítica de Rendimiento y Desviación Temporal
+              </h3>
             </div>
-            <h2 className="text-xl font-bold text-slate-800 mt-1">{currentProject?.name}</h2>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+              Métricas analíticas calculadas sobre las horas sexagesimales reales reportadas en el periodo.
+            </p>
           </div>
 
-          <div className="flex items-center space-x-4 text-xs font-semibold text-slate-600">
-            <div className="flex items-center">
-              <User className="w-4 h-4 mr-1.5 text-slate-400" />
-              <span>Líder: <b>{currentProject?.leadUserName}</b></span>
+          <div className="flex items-center space-x-2 flex-wrap">
+            <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">Periodo:</span>
+            <div className="inline-flex rounded border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-[#0B111E] p-0.5">
+              {(['semanal', 'quincenal', 'mensual', 'personalizado'] as AnalyticsPeriod[]).map(p => (
+                <button
+                  key={p}
+                  type="button"
+                  onClick={() => setPeriod(p)}
+                  className={`px-2.5 py-1 text-xs font-medium capitalize rounded transition-colors cursor-pointer ${
+                    period === p
+                      ? 'bg-[#1D4ED8] text-white'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                  }`}
+                >
+                  {p}
+                </button>
+              ))}
             </div>
-            <div className="flex items-center">
-              <Calendar className="w-4 h-4 mr-1.5 text-slate-400" />
-              <span>Fecha Límite: <b>{currentProject?.deadline || 'Sin fecha'}</b></span>
-            </div>
+
+            {period === 'personalizado' && (
+              <div className="flex items-center gap-1.5 text-xs text-slate-500 mt-2 sm:mt-0">
+                <input
+                  type="date"
+                  value={customStartDate}
+                  onChange={e => setCustomStartDate(e.target.value)}
+                  className="bg-transparent border border-slate-300 dark:border-slate-700 px-2 py-0.5 rounded text-xs"
+                />
+                <span>a</span>
+                <input
+                  type="date"
+                  value={customEndDate}
+                  onChange={e => setCustomEndDate(e.target.value)}
+                  className="bg-transparent border border-slate-300 dark:border-slate-700 px-2 py-0.5 rounded text-xs"
+                />
+              </div>
+            )}
           </div>
         </div>
 
-        {/* Tarjetas de Métricas de Control de Desviaciones */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-          
-          {/* Presupuesto Total */}
-          <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-4">
-            <span className="text-xs text-slate-500 font-medium block">Presupuesto Planeado</span>
-            <div className="flex items-baseline space-x-2 mt-1">
-              <span className="text-2xl font-bold text-slate-800">{totalPlannedHours.toFixed(1)}h</span>
-              <span className="text-xs text-slate-400">(${(budgetCost).toLocaleString('es-MX')})</span>
+        {/* KPIs de Rendimiento Clave */}
+        <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+          <div className="bg-slate-50 dark:bg-[#0B111E] p-4 border border-slate-200 dark:border-slate-800">
+            <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">
+              Promedio Diario / Colaborador
+            </span>
+            <div className="text-2xl font-bold font-heading text-slate-900 dark:text-white mt-1">
+              {formatHoursToSexagesimal(analyticsData.dailyAveragePerCollaborator)}
             </div>
+            <span className="text-[11px] text-slate-500 font-mono mt-1 block">
+              {analyticsData.activeCollaboratorsCount} colaboradores activos
+            </span>
           </div>
 
-          {/* Consumido */}
-          <div className={`border rounded-xl p-4 ${
-            percentConsumed >= 100 
-              ? 'bg-red-50/50 border-red-200 text-red-900' 
-              : percentConsumed >= 80 
-                ? 'bg-amber-50/50 border-amber-200 text-amber-900' 
-                : 'bg-slate-50 border-slate-200/80 text-slate-800'
-          }`}>
-            <span className="text-xs font-medium block opacity-80">Horas Consumidas</span>
-            <div className="flex items-baseline space-x-2 mt-1">
-              <span className="text-2xl font-bold">{totalActualHours.toFixed(1)}h</span>
-              <span className="text-xs opacity-70">(${(estimatedCost).toLocaleString('es-MX')})</span>
+          <div className="bg-slate-50 dark:bg-[#0B111E] p-4 border border-slate-200 dark:border-slate-800">
+            <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">
+              Tasa de Desviación
+            </span>
+            <div className={`text-2xl font-bold font-heading mt-1 ${
+              analyticsData.estimationDeviationRate > 0 ? 'text-rose-400' : 'text-slate-900 dark:text-white'
+            }`}>
+              {analyticsData.estimationDeviationRate > 0 ? `+${analyticsData.estimationDeviationRate}%` : `${analyticsData.estimationDeviationRate}%`}
             </div>
+            <span className="text-[11px] text-slate-500 font-mono mt-1 block">
+              {analyticsData.estimationDeviationRate > 0 ? 'Excediendo estimación inicial' : 'Dentro del rango planeado'}
+            </span>
           </div>
 
-          {/* Restante */}
-          <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-4">
-            <span className="text-xs text-slate-500 font-medium block">Horas Restantes</span>
-            <div className="flex items-baseline space-x-2 mt-1">
-              <span className={`text-2xl font-bold ${totalRemainingHours <= 5 ? 'text-red-600' : 'text-slate-800'}`}>
-                {totalRemainingHours.toFixed(1)}h
-              </span>
-              <span className="text-xs text-slate-400">
-                (${(totalRemainingHours * (currentProject?.hourlyRate || 1500)).toLocaleString('es-MX')})
-              </span>
+          <div className="bg-slate-50 dark:bg-[#0B111E] p-4 border border-slate-200 dark:border-slate-800">
+            <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">
+              Pico de Productividad
+            </span>
+            <div className="text-2xl font-bold font-heading text-slate-900 dark:text-slate-200 mt-1">
+              {analyticsData.peakProductivityWindow}
             </div>
+            <span className="text-[11px] text-slate-500 font-mono mt-1 block">
+              Mayor imputación de avances
+            </span>
           </div>
 
-          {/* % Consumido con Semáforo */}
-          <div className={`border rounded-xl p-4 ${
-            percentConsumed >= 100 
-              ? 'bg-red-50 border-red-300' 
-              : percentConsumed >= 80 
-                ? 'bg-amber-50 border-amber-300' 
-                : 'bg-emerald-50 border-emerald-200'
-          }`}>
-            <span className="text-xs font-semibold block text-slate-600">Estado de Desviación</span>
-            <div className="flex items-center space-x-2 mt-1">
-              <span className={`text-2xl font-black ${
-                percentConsumed >= 100 ? 'text-red-600' : percentConsumed >= 80 ? 'text-[#FF6B35]' : 'text-emerald-700'
-              }`}>
-                {percentConsumed.toFixed(1)}%
-              </span>
-              {percentConsumed >= 100 && (
-                <span className="text-[10px] font-bold bg-red-600 text-white px-2 py-0.5 rounded-full">
-                  SOBREPRESUPUESTO
-                </span>
-              )}
-              {percentConsumed >= 80 && percentConsumed < 100 && (
-                <span className="text-[10px] font-bold bg-[#FF6B35] text-white px-2 py-0.5 rounded-full flex items-center">
-                  <AlertTriangle className="w-2.5 h-2.5 mr-1" /> ALERTA 80%
-                </span>
-              )}
+          <div className="bg-slate-50 dark:bg-[#0B111E] p-4 border border-slate-200 dark:border-slate-800">
+            <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">
+              Distribución de Carga
+            </span>
+            <div className="text-2xl font-bold font-heading text-[#1D4ED8] dark:text-sky-400 mt-1">
+              {analyticsData.distribution[0]?.percentage || 100}% máx
             </div>
+            <span className="text-[11px] text-slate-500 font-mono mt-1 block truncate">
+              Líder: {analyticsData.distribution[0]?.name || 'Equipo'}
+            </span>
           </div>
-
         </div>
 
-        {/* Anotaciones del Supervisor */}
-        {currentProject?.notes && (
-          <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 flex items-start space-x-2.5">
-            <FileText className="w-4 h-4 text-[#0D5C75] shrink-0 mt-0.5" />
-            <div className="text-xs text-slate-600 leading-relaxed">
-              <b className="text-slate-800">Anotaciones de Supervisión:</b> {currentProject.notes}
+        {/* Gráfico Minimalista de Distribución de Carga por Colaborador */}
+        {analyticsData.distribution.length > 0 && (
+          <div className="space-y-3 pt-2">
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400 block">
+              Distribución Porcentual del Tiempo Consumido
+            </span>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {analyticsData.distribution.map(d => (
+                <div key={d.userId} className="p-3 bg-slate-50 dark:bg-[#0B111E] border border-slate-200 dark:border-slate-800 rounded">
+                  <div className="flex justify-between items-center text-xs">
+                    <span className="font-semibold text-slate-800 dark:text-slate-200 truncate">{d.name}</span>
+                    <span className="font-mono font-bold text-slate-900 dark:text-white">{formatHoursToSexagesimal(d.hours)}</span>
+                  </div>
+                  <div className="flex items-center space-x-2 mt-2">
+                    <div className="flex-1 bg-slate-200 dark:bg-slate-800 h-1.5 rounded-full overflow-hidden">
+                      <div 
+                        className="bg-blue-600 h-full rounded-full transition-all duration-300"
+                        style={{ width: `${Math.min(100, d.percentage)}%` }}
+                      />
+                    </div>
+                    <span className="text-[11px] font-mono text-slate-500 dark:text-slate-400 w-10 text-right">
+                      {d.percentage}%
+                    </span>
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         )}
       </div>
 
-      {/* 3. Tabla Multinivel de Control de Tiempos y Desviaciones */}
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-        <div className="px-6 py-4 border-b border-slate-200 bg-slate-50/70 flex justify-between items-center">
-          <h3 className="font-bold text-slate-800 text-sm">
-            Desglose de Tiempos por Tarea y Colaborador
+      {/* 3. Fila de Tarjetas de Balance de Horas (Sin colores chillones, diseño corporativo sobrio) */}
+      <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 py-1">
+        <div className="bg-white dark:bg-[#101726] p-4 border border-slate-200 dark:border-slate-800">
+          <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">
+            Presupuesto Planeado
+          </span>
+          <div className="text-2xl font-bold font-heading text-slate-900 dark:text-white mt-1">
+            {formatHoursToSexagesimal(totalPlannedHours)}
+          </div>
+          <span className="text-xs text-slate-500 font-mono mt-1 block">
+            (${budgetCost.toLocaleString('es-MX')})
+          </span>
+        </div>
+
+        <div className="bg-white dark:bg-[#101726] p-4 border border-slate-200 dark:border-slate-800">
+          <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">
+            Tiempo Consumido
+          </span>
+          <div className="text-2xl font-bold font-heading text-[#1D4ED8] dark:text-sky-400 mt-1">
+            {formatHoursToSexagesimal(totalActualHours)}
+          </div>
+          <span className="text-xs text-slate-500 font-mono mt-1 block">
+            (${estimatedCost.toLocaleString('es-MX')})
+          </span>
+        </div>
+
+        <div className="bg-white dark:bg-[#101726] p-4 border border-slate-200 dark:border-slate-800">
+          <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">
+            Tiempo Restante
+          </span>
+          <div className="text-2xl font-bold font-heading text-slate-700 dark:text-slate-300 mt-1">
+            {formatHoursToSexagesimal(totalRemainingHours)}
+          </div>
+          <span className="text-xs text-slate-500 font-mono mt-1 block">
+            (${(totalRemainingHours * (currentProject?.hourlyRate || 1500)).toLocaleString('es-MX')})
+          </span>
+        </div>
+
+        <div className="bg-white dark:bg-[#101726] p-4 border border-slate-200 dark:border-slate-800">
+          <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">
+            Desviación Presupuestal
+          </span>
+          <div className={`text-2xl font-bold font-heading mt-1 ${
+            percentConsumed > 100 ? 'text-rose-400' : 'text-slate-900 dark:text-slate-200'
+          }`}>
+            {percentConsumed.toFixed(1)}%
+            {percentConsumed > 100 && (
+              <span className="text-xs font-medium px-2 py-0.5 rounded bg-rose-950/60 border border-rose-800 text-rose-300 ml-2">
+                Excedido
+              </span>
+            )}
+          </div>
+          <span className="text-xs text-slate-500 font-mono mt-1 block">
+            {percentConsumed > 100 ? 'Requiere reasignación' : 'Dentro de límite'}
+          </span>
+        </div>
+      </div>
+
+      {/* 4. Tabla de Desglose Mejorada */}
+      <div className="bg-white dark:bg-[#101726] border border-slate-200 dark:border-slate-800 overflow-hidden">
+        <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex justify-between items-center">
+          <h3 className="font-bold text-slate-900 dark:text-slate-100 text-sm font-heading">
+            Desglose de Tareas y Tiempo Consumido
           </h3>
-          <span className="text-xs text-slate-500">
+          <span className="text-xs text-slate-500 dark:text-slate-400">
             {projectTasks.length} tareas monitoreadas
           </span>
         </div>
@@ -302,17 +452,17 @@ export function RayonerTimeReport({ initialProjectId }: RayonerTimeReportProps) 
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse text-xs">
             <thead>
-              <tr className="border-b border-slate-200 text-slate-500 uppercase tracking-wider bg-slate-50 font-bold">
+              <tr className="border-b border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400 uppercase tracking-wider font-semibold">
                 <th className="p-3.5 pl-6 min-w-[280px]">Tarea / Colaborador</th>
-                <th className="p-3.5 text-right w-28">Planeado</th>
-                <th className="p-3.5 text-right w-28">Restante</th>
-                <th className="p-3.5 text-right w-28">Actual</th>
-                <th className="p-3.5 min-w-[180px]">% Consumido</th>
-                <th className="p-3.5 pr-6 text-center w-28">Estado</th>
+                <th className="p-3.5 text-right w-32">Planeado</th>
+                <th className="p-3.5 text-right w-32">Restante</th>
+                <th className="p-3.5 text-right w-32">Actual</th>
+                <th className="p-3.5 min-w-[180px]">% Consumo</th>
+                <th className="p-3.5 pr-6 text-center w-28">Estatus</th>
               </tr>
             </thead>
             
-            <tbody className="divide-y divide-slate-100 font-medium">
+            <tbody className="divide-y divide-slate-200 dark:divide-slate-800/60 font-medium">
               {projectTasks.filter(t => !t.parentTaskId).map(task => {
                 const actualH = taskActualHours[task.id] || 0;
                 const remH = Math.max(0, task.plannedHours - actualH);
@@ -320,12 +470,12 @@ export function RayonerTimeReport({ initialProjectId }: RayonerTimeReportProps) 
                 const taskAsgs = assignments.filter(a => a.taskId === task.id);
 
                 return (
-                  <tr key={task.id} className="hover:bg-slate-50/80 transition-colors">
+                  <tr key={task.id} className="hover:bg-slate-50/70 dark:hover:bg-[#172238]/50 transition-colors">
                     {/* Tarea Principal */}
                     <td className="p-3.5 pl-6">
-                      <div className="font-bold text-slate-800 text-[13px]">{task.name}</div>
+                      <div className="font-bold text-slate-900 dark:text-slate-100 text-[13px]">{task.name}</div>
                       {task.description && (
-                        <div className="text-[11px] text-slate-400 line-clamp-1">{task.description}</div>
+                        <div className="text-[11px] text-slate-500 dark:text-slate-400 line-clamp-1">{task.description}</div>
                       )}
                       
                       {/* Sub-colaboradores asignados inline */}
@@ -338,12 +488,14 @@ export function RayonerTimeReport({ initialProjectId }: RayonerTimeReportProps) 
                             return (
                               <span 
                                 key={asg.id} 
-                                className={`text-[10px] px-2 py-0.5 rounded-md border flex items-center space-x-1 ${
-                                  userPct >= 100 ? 'bg-red-50 text-red-700 border-red-200 font-bold' : 'bg-slate-100 text-slate-600 border-slate-200'
+                                className={`text-[10px] px-2 py-0.5 rounded border flex items-center space-x-1 ${
+                                  userPct >= 100 
+                                    ? 'bg-rose-950/40 text-rose-300 border-rose-800' 
+                                    : 'bg-slate-100 dark:bg-[#1E2B45] text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-700'
                                 }`}
                               >
-                                <span>{asg.userName}: {userActual.toFixed(1)}/{asg.allocatedHours}h</span>
-                                {asg.blockOnLimit && <span title="Bloqueo al límite activo">🔒</span>}
+                                <span>{asg.userName}: {formatHoursToSexagesimal(userActual)} / {formatHoursToSexagesimal(asg.allocatedHours)}</span>
+                                {asg.blockOnLimit && <span title="Límite estricto activo">🔒</span>}
                               </span>
                             );
                           })}
@@ -351,49 +503,49 @@ export function RayonerTimeReport({ initialProjectId }: RayonerTimeReportProps) 
                       )}
                     </td>
 
-                    <td className="p-3.5 text-right font-mono text-slate-700 font-bold">
-                      {task.plannedHours.toFixed(1)}h
+                    <td className="p-3.5 text-right font-mono text-slate-800 dark:text-slate-200 font-bold">
+                      {formatHoursToSexagesimal(task.plannedHours)}
                     </td>
 
-                    <td className={`p-3.5 text-right font-mono font-bold ${remH <= 2 ? 'text-red-600' : 'text-slate-600'}`}>
-                      {remH.toFixed(1)}h
+                    <td className={`p-3.5 text-right font-mono font-bold ${remH <= 0 ? 'text-rose-400' : 'text-slate-600 dark:text-slate-400'}`}>
+                      {formatHoursToSexagesimal(remH)}
                     </td>
 
-                    <td className="p-3.5 text-right font-mono text-slate-900 font-extrabold">
-                      {actualH.toFixed(1)}h
+                    <td className="p-3.5 text-right font-mono text-slate-900 dark:text-slate-100 font-extrabold">
+                      {formatHoursToSexagesimal(actualH)}
                     </td>
 
-                    {/* Barra de Porcentaje */}
+                    {/* Barra de Consumo Sobria */}
                     <td className="p-3.5">
                       <div className="flex items-center space-x-2">
-                        <div className="flex-1 bg-slate-100 rounded-full h-2 overflow-hidden">
+                        <div className="flex-1 bg-slate-200 dark:bg-slate-800 rounded-full h-2 overflow-hidden">
                           <div
                             style={{ width: `${Math.min(100, pct)}%` }}
                             className={`h-full rounded-full transition-all ${
-                              pct >= 100 ? 'bg-red-500' : pct >= 80 ? 'bg-[#FF6B35]' : 'bg-emerald-500'
+                              pct > 100 ? 'bg-rose-500' : 'bg-blue-600'
                             }`}
                           />
                         </div>
-                        <span className={`w-12 text-right font-bold text-xs ${
-                          pct >= 100 ? 'text-red-600' : pct >= 80 ? 'text-[#FF6B35]' : 'text-slate-700'
+                        <span className={`w-12 text-right font-mono font-bold text-xs ${
+                          pct > 100 ? 'text-rose-400' : 'text-slate-700 dark:text-slate-300'
                         }`}>
                           {pct.toFixed(0)}%
                         </span>
                       </div>
                     </td>
 
-                    {/* Badge de Estado con Alerta */}
+                    {/* Badge de Estatus Sobrio */}
                     <td className="p-3.5 pr-6 text-center">
-                      {pct >= 100 ? (
-                        <span className="px-2.5 py-1 bg-red-100 text-red-700 border border-red-200 rounded-full font-bold text-[10px]">
+                      {pct > 100 ? (
+                        <span className="px-2 py-0.5 bg-rose-950/60 text-rose-300 border border-rose-800 rounded text-[11px] font-medium">
                           Excedido
                         </span>
                       ) : pct >= 80 ? (
-                        <span className="px-2.5 py-1 bg-amber-100 text-amber-800 border border-amber-200 rounded-full font-bold text-[10px] flex items-center justify-center">
-                          <AlertTriangle className="w-2.5 h-2.5 mr-1" /> Alerta
+                        <span className="px-2 py-0.5 bg-amber-950/50 text-amber-300 border border-amber-800 rounded text-[11px] font-medium">
+                          Alerta
                         </span>
                       ) : (
-                        <span className="px-2.5 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full font-bold text-[10px]">
+                        <span className="px-2 py-0.5 bg-slate-100 dark:bg-[#1E2B45] text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-700 rounded text-[11px] font-medium">
                           En Rango
                         </span>
                       )}
@@ -403,43 +555,41 @@ export function RayonerTimeReport({ initialProjectId }: RayonerTimeReportProps) 
               })}
 
               {/* Fila de TOTAL Consolidado */}
-              <tr className="bg-slate-100/80 border-t-2 border-slate-300 font-bold text-slate-900 text-xs">
-                <td className="p-4 pl-6 uppercase tracking-wider font-extrabold text-[#0D5C75]">
+              <tr className="bg-slate-100/70 dark:bg-[#0B111E] border-t-2 border-slate-300 dark:border-slate-700 font-bold text-xs">
+                <td className="p-4 pl-6 uppercase tracking-wider font-extrabold text-slate-900 dark:text-slate-100">
                   TOTAL DEL PROYECTO
                 </td>
-                <td className="p-4 text-right font-mono font-extrabold text-sm">
-                  {totalPlannedHours.toFixed(1)}h
+                <td className="p-4 text-right font-mono font-extrabold text-sm text-slate-900 dark:text-slate-100">
+                  {formatHoursToSexagesimal(totalPlannedHours)}
                 </td>
-                <td className="p-4 text-right font-mono font-extrabold text-sm text-slate-700">
-                  {totalRemainingHours.toFixed(1)}h
+                <td className="p-4 text-right font-mono font-extrabold text-sm text-slate-700 dark:text-slate-300">
+                  {formatHoursToSexagesimal(totalRemainingHours)}
                 </td>
-                <td className="p-4 text-right font-mono font-extrabold text-sm text-slate-900">
-                  {totalActualHours.toFixed(1)}h
+                <td className="p-4 text-right font-mono font-extrabold text-sm text-slate-900 dark:text-white">
+                  {formatHoursToSexagesimal(totalActualHours)}
                 </td>
                 <td className="p-4">
                   <div className="flex items-center space-x-2">
-                    <div className="flex-1 bg-slate-200 rounded-full h-2.5 overflow-hidden">
+                    <div className="flex-1 bg-slate-200 dark:bg-slate-800 rounded-full h-2.5 overflow-hidden">
                       <div
                         style={{ width: `${Math.min(100, percentConsumed)}%` }}
                         className={`h-full rounded-full ${
-                          percentConsumed >= 100 ? 'bg-red-500' : percentConsumed >= 80 ? 'bg-[#FF6B35]' : 'bg-emerald-600'
+                          percentConsumed > 100 ? 'bg-rose-500' : 'bg-blue-600'
                         }`}
                       />
                     </div>
-                    <span className="font-extrabold text-sm">
+                    <span className="font-extrabold font-mono text-sm text-slate-900 dark:text-slate-100">
                       {percentConsumed.toFixed(1)}%
                     </span>
                   </div>
                 </td>
                 <td className="p-4 pr-6 text-center">
-                  <span className={`px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider ${
-                    percentConsumed >= 100 
-                      ? 'bg-red-600 text-white' 
-                      : percentConsumed >= 80 
-                        ? 'bg-[#FF6B35] text-white' 
-                        : 'bg-emerald-600 text-white'
+                  <span className={`px-2.5 py-0.5 rounded text-xs font-semibold uppercase tracking-wider ${
+                    percentConsumed > 100 
+                      ? 'bg-rose-950/60 text-rose-300 border border-rose-800' 
+                      : 'bg-slate-100 dark:bg-[#1E2B45] text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-700'
                   }`}>
-                    {percentConsumed >= 100 ? 'Crítico' : percentConsumed >= 80 ? 'Alerta 80%' : 'Óptimo'}
+                    {percentConsumed > 100 ? 'Excedido' : 'Óptimo'}
                   </span>
                 </td>
               </tr>

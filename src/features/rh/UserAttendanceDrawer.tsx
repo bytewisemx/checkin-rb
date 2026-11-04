@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import type { RHAttendanceRecord } from '../../services/rbac';
+import { formatHoursToSexagesimal } from '../../utils/timeFormat';
 
 export interface UserAttendanceDrawerProps {
   isOpen: boolean;
@@ -430,7 +431,7 @@ export function UserAttendanceDrawer({
                         )}
                       </td>
                       <td className="py-2.5 px-2 text-right font-bold text-slate-900 dark:text-white">
-                        {rec.totalHours.toFixed(1)}h
+                        {formatHoursToSexagesimal(rec.totalHours)}
                       </td>
                     </tr>
                   );

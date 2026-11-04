@@ -18,6 +18,7 @@ import {
   exportProjectReportToExcel,
   exportProjectReportToPDF,
 } from '../../../services/reportExportService';
+import { formatHoursToSexagesimal } from '../../../utils/timeFormat';
 
 interface ProjectExecutiveReportModalProps {
   isOpen: boolean;
@@ -148,22 +149,22 @@ export function ProjectExecutiveReportModal({
             <button
               type="button"
               onClick={handleDownloadPDF}
-              className="flex items-center space-x-1.5 px-3.5 py-2 bg-[#0D5C75] hover:bg-[#0A485C] text-white rounded-xl text-xs font-heading font-bold shadow-xs transition-colors cursor-pointer"
+              className="flex items-center space-x-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-lg text-xs font-heading font-medium transition-colors cursor-pointer"
               title="Descargar documento PDF con formato corporativo Russell Bedford"
             >
-              <Printer className="w-4 h-4 text-[#00E5FF]" />
-              <span>Descargar PDF</span>
+              <Printer className="w-3.5 h-3.5 text-slate-400" />
+              <span>PDF</span>
             </button>
 
             {/* Descargar Excel */}
             <button
               type="button"
               onClick={handleDownloadExcel}
-              className="flex items-center space-x-1.5 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-heading font-bold shadow-xs transition-colors cursor-pointer"
+              className="flex items-center space-x-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-lg text-xs font-heading font-medium transition-colors cursor-pointer"
               title="Descargar hoja de cálculo Excel con estilos y fórmulas"
             >
-              <FileSpreadsheet className="w-4 h-4 text-emerald-100" />
-              <span>Descargar Excel</span>
+              <FileSpreadsheet className="w-3.5 h-3.5 text-slate-400" />
+              <span>Excel</span>
             </button>
 
             {/* Cerrar */}
@@ -237,13 +238,13 @@ export function ProjectExecutiveReportModal({
           {/* 4 KPIs Financieros y Operativos */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
             {/* Presupuesto */}
-            <div className="bg-slate-50 dark:bg-[#1A2742] p-4 rounded-xl border border-slate-200 dark:border-[#233354]">
-              <span className="text-[11px] font-heading font-bold text-slate-500 dark:text-[#94A3B8] uppercase block">
+            <div className="bg-slate-50 dark:bg-[#101726] p-4 border border-slate-200 dark:border-slate-800">
+              <span className="text-[11px] font-heading font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">
                 Presupuesto Planeado
               </span>
               <div className="flex items-baseline space-x-2 mt-1">
-                <span className="text-2xl font-heading font-extrabold text-slate-900 dark:text-white font-mono">
-                  {totalPlannedHours.toFixed(1)}h
+                <span className="text-2xl font-heading font-bold text-slate-900 dark:text-white font-mono">
+                  {formatHoursToSexagesimal(totalPlannedHours)}
                 </span>
               </div>
               <span className="text-xs text-slate-500 dark:text-slate-400 font-mono mt-0.5 block">
@@ -252,29 +253,13 @@ export function ProjectExecutiveReportModal({
             </div>
 
             {/* Consumido */}
-            <div
-              className={`p-4 rounded-xl border ${
-                percentConsumed >= 100
-                  ? 'bg-rose-50/70 dark:bg-rose-950/20 border-rose-200 dark:border-rose-900/40'
-                  : percentConsumed >= 80
-                  ? 'bg-amber-50/70 dark:bg-amber-950/20 border-amber-200 dark:border-amber-900/40'
-                  : 'bg-slate-50 dark:bg-[#1A2742] border-slate-200 dark:border-[#233354]'
-              }`}
-            >
-              <span className="text-[11px] font-heading font-bold text-slate-500 dark:text-[#94A3B8] uppercase block">
-                Horas Consumidas
+            <div className="bg-slate-50 dark:bg-[#101726] p-4 border border-slate-200 dark:border-slate-800">
+              <span className="text-[11px] font-heading font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">
+                Tiempo Consumido
               </span>
               <div className="flex items-baseline space-x-2 mt-1">
-                <span
-                  className={`text-2xl font-heading font-extrabold font-mono ${
-                    percentConsumed >= 100
-                      ? 'text-rose-600 dark:text-rose-400'
-                      : percentConsumed >= 80
-                      ? 'text-amber-600 dark:text-amber-400'
-                      : 'text-slate-900 dark:text-white'
-                  }`}
-                >
-                  {totalActualHours.toFixed(1)}h
+                <span className="text-2xl font-heading font-bold font-mono text-[#1D4ED8] dark:text-sky-400">
+                  {formatHoursToSexagesimal(totalActualHours)}
                 </span>
               </div>
               <span className="text-xs text-slate-500 dark:text-slate-400 font-mono mt-0.5 block">
@@ -283,17 +268,13 @@ export function ProjectExecutiveReportModal({
             </div>
 
             {/* Horas Restantes */}
-            <div className="bg-slate-50 dark:bg-[#1A2742] p-4 rounded-xl border border-slate-200 dark:border-[#233354]">
-              <span className="text-[11px] font-heading font-bold text-slate-500 dark:text-[#94A3B8] uppercase block">
-                Horas Disponibles
+            <div className="bg-slate-50 dark:bg-[#101726] p-4 border border-slate-200 dark:border-slate-800">
+              <span className="text-[11px] font-heading font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">
+                Tiempo Restante
               </span>
               <div className="flex items-baseline space-x-2 mt-1">
-                <span
-                  className={`text-2xl font-heading font-extrabold font-mono ${
-                    totalRemainingHours <= 5 ? 'text-rose-600' : 'text-slate-900 dark:text-white'
-                  }`}
-                >
-                  {totalRemainingHours.toFixed(1)}h
+                <span className="text-2xl font-heading font-bold font-mono text-slate-700 dark:text-slate-300">
+                  {formatHoursToSexagesimal(totalRemainingHours)}
                 </span>
               </div>
               <span className="text-xs text-slate-500 dark:text-slate-400 font-mono mt-0.5 block">
@@ -301,40 +282,25 @@ export function ProjectExecutiveReportModal({
               </span>
             </div>
 
-            {/* Porcentaje de Avance */}
-            <div className="bg-slate-50 dark:bg-[#1A2742] p-4 rounded-xl border border-slate-200 dark:border-[#233354]">
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] font-heading font-bold text-slate-500 dark:text-[#94A3B8] uppercase block">
-                  Consumo Total
-                </span>
-                <span
-                  className={`text-xs font-bold font-mono ${
-                    percentConsumed >= 100
-                      ? 'text-rose-600'
-                      : percentConsumed >= 80
-                      ? 'text-amber-600'
-                      : 'text-emerald-600'
-                  }`}
-                >
+            {/* Desviación Presupuestal */}
+            <div className="bg-slate-50 dark:bg-[#101726] p-4 border border-slate-200 dark:border-slate-800">
+              <span className="text-[11px] font-heading font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">
+                Desviación Presupuestal
+              </span>
+              <div className="flex items-center space-x-2 mt-1">
+                <span className={`text-2xl font-heading font-bold font-mono ${
+                  percentConsumed > 100 ? 'text-rose-400' : 'text-slate-900 dark:text-slate-200'
+                }`}>
                   {percentConsumed.toFixed(1)}%
                 </span>
+                {percentConsumed > 100 && (
+                  <span className="text-xs font-medium px-2 py-0.5 rounded bg-rose-950/60 border border-rose-800 text-rose-300">
+                    Excedido
+                  </span>
+                )}
               </div>
-              <div className="w-full bg-slate-200 dark:bg-slate-700 h-2.5 rounded-full overflow-hidden mt-2.5">
-                <div
-                  style={{ width: `${Math.min(100, percentConsumed)}%` }}
-                  className={`h-full rounded-full transition-all duration-500 ${
-                    percentConsumed >= 100
-                      ? 'bg-rose-500'
-                      : percentConsumed >= 80
-                      ? 'bg-amber-500'
-                      : 'bg-emerald-500'
-                  }`}
-                />
-              </div>
-              <span className="text-[11px] text-slate-400 dark:text-slate-400 mt-2 block">
-                {percentConsumed >= 100
-                  ? 'Excede el presupuesto planeado'
-                  : `${(100 - percentConsumed).toFixed(1)}% margen disponible`}
+              <span className="text-xs text-slate-500 font-mono mt-0.5 block">
+                {percentConsumed > 100 ? 'Requiere reasignación' : 'Dentro de límite'}
               </span>
             </div>
           </div>
@@ -408,7 +374,7 @@ export function ProjectExecutiveReportModal({
                                     >
                                       <span>👤 {asg.userName}</span>
                                       <span className="font-mono font-bold text-blue-600 dark:text-[#38BDF8]">
-                                        ({uActual.toFixed(1)}h)
+                                        ({formatHoursToSexagesimal(uActual)})
                                       </span>
                                     </span>
                                   );
@@ -417,17 +383,17 @@ export function ProjectExecutiveReportModal({
                             )}
                           </td>
                           <td className="py-3 px-3 text-right font-mono font-bold text-slate-700 dark:text-slate-300">
-                            {task.plannedHours.toFixed(1)}h
+                            {formatHoursToSexagesimal(task.plannedHours)}
                           </td>
                           <td className="py-3 px-3 text-right font-mono font-extrabold text-slate-900 dark:text-white">
-                            {actualH.toFixed(1)}h
+                            {formatHoursToSexagesimal(actualH)}
                           </td>
                           <td
                             className={`py-3 px-3 text-right font-mono font-bold ${
                               remH <= 2 ? 'text-rose-600' : 'text-slate-600 dark:text-slate-400'
                             }`}
                           >
-                            {remH.toFixed(1)}h
+                            {formatHoursToSexagesimal(remH)}
                           </td>
                           <td className="py-3 px-3 text-center">
                             <div className="flex items-center space-x-1.5 justify-center">
@@ -484,13 +450,13 @@ export function ProjectExecutiveReportModal({
                       Total del Proyecto
                     </td>
                     <td className="py-3 px-3 text-right font-mono font-bold text-slate-900 dark:text-white">
-                      {totalPlannedHours.toFixed(1)}h
+                      {formatHoursToSexagesimal(totalPlannedHours)}
                     </td>
                     <td className="py-3 px-3 text-right font-mono font-extrabold text-blue-600 dark:text-[#38BDF8]">
-                      {totalActualHours.toFixed(1)}h
+                      {formatHoursToSexagesimal(totalActualHours)}
                     </td>
                     <td className="py-3 px-3 text-right font-mono font-bold text-slate-700 dark:text-slate-300">
-                      {totalRemainingHours.toFixed(1)}h
+                      {formatHoursToSexagesimal(totalRemainingHours)}
                     </td>
                     <td className="py-3 px-3 text-center font-mono font-bold">
                       {percentConsumed.toFixed(1)}%
@@ -576,10 +542,10 @@ export function ProjectExecutiveReportModal({
                             {c.taskCount}
                           </td>
                           <td className="py-2.5 px-3 text-right font-mono font-bold text-slate-600 dark:text-slate-400">
-                            {c.plannedHours.toFixed(1)}h
+                            {formatHoursToSexagesimal(c.plannedHours)}
                           </td>
                           <td className="py-2.5 px-3 text-right font-mono font-extrabold text-blue-600 dark:text-[#38BDF8]">
-                            {c.actualHours.toFixed(1)}h
+                            {formatHoursToSexagesimal(c.actualHours)}
                           </td>
                           <td className="py-2.5 px-3 text-center font-mono font-bold text-slate-700 dark:text-slate-300">
                             {share.toFixed(1)}%
