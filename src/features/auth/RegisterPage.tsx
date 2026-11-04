@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { useCheckinStore } from '../../store/useCheckinStore';
+import { useRayonerStore } from '../../store/useRayonerStore';
 import { 
   registerWithEmail, 
   loginWithGoogle, 
@@ -91,6 +92,18 @@ export function RegisterPage() {
     setIsLoading(true);
 
     try {
+      const supervisorCode = useRayonerStore.getState().getSupervisorCode(invitation.supervisorId);
+      const invitationPayload = {
+        supervisorId: invitation.supervisorId,
+        supervisorName: invitation.supervisorName,
+        supervisorCode,
+        team: invitation.team,
+        roleTitle: invitation.roleTitle,
+        role: invitation.targetRole || invitation.role || 'Empleado',
+        created_by_ti_id: invitation.created_by_ti_id || null,
+        token: invitation.token,
+      };
+
       if (firebaseReady) {
         const res = await registerWithEmail(email, password);
         if (res.success && res.user) {
@@ -103,7 +116,7 @@ export function RegisterPage() {
           loginWithFirebaseUser({
             ...res.user,
             email,
-          });
+          }, invitationPayload);
 
           addToast('¡Registro completado! Por favor configura tus datos de perfil.', 'success');
           navigate('/complete-profile');
@@ -122,14 +135,7 @@ export function RegisterPage() {
           uid: localUid,
           email: invitation.email,
           displayName: invitation.email.split('@')[0],
-        }, {
-          supervisorId: invitation.supervisorId,
-          supervisorName: invitation.supervisorName,
-          team: invitation.team,
-          roleTitle: invitation.roleTitle,
-          role: invitation.targetRole || invitation.role || 'Empleado',
-          created_by_ti_id: invitation.created_by_ti_id || null,
-        });
+        }, invitationPayload);
 
         addToast('Invitación aceptada exitosamente. Completa tus datos.', 'success');
         navigate('/complete-profile');
@@ -167,12 +173,22 @@ export function RegisterPage() {
             return;
           }
 
+          const supervisorCode = useRayonerStore.getState().getSupervisorCode(invitation.supervisorId);
           await consumeInvitationToken(invitation.token, {
             uid: res.user.uid,
             email: targetEmail,
             name: res.user.displayName || targetEmail.split('@')[0],
           });
-          loginWithFirebaseUser(res.user);
+          loginWithFirebaseUser(res.user, {
+            supervisorId: invitation.supervisorId,
+            supervisorName: invitation.supervisorName,
+            supervisorCode,
+            team: invitation.team,
+            roleTitle: invitation.roleTitle,
+            role: invitation.targetRole || invitation.role || 'Empleado',
+            created_by_ti_id: invitation.created_by_ti_id || null,
+            token: invitation.token,
+          });
 
           addToast('¡Autenticado con Google bajo lista blanca! Completa tu perfil.', 'success');
           navigate('/complete-profile');

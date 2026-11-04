@@ -1,9 +1,12 @@
 import { useState, useEffect, useRef } from 'react';
 import { useCheckinStore } from '../../store/useCheckinStore';
+import { useInvitationStore } from '../../store/useInvitationStore';
+import { useRayonerStore } from '../../store/useRayonerStore';
 import { useNavigate, Link } from 'react-router-dom';
 import { 
   loginWithEmail, 
   loginWithGoogle, 
+  logoutFirebase,
   isFirebaseConfigured 
 } from '../../services/firebase';
 import { AlertCircle, Lock, ArrowDown, ChevronUp } from 'lucide-react';
@@ -124,6 +127,58 @@ export function AuthPage() {
     });
   };
 
+  // Validación de Lista Blanca / Invitación Corporativa Previa
+  const verifyAccessAndGetInvitation = (emailAddress: string) => {
+    const cleanEmail = emailAddress.trim().toLowerCase();
+    const { mockEmployeesData } = useCheckinStore.getState();
+    const { isEmailWhitelisted, findInvitationForEmail } = useInvitationStore.getState();
+    const { getSupervisorCode } = useRayonerStore.getState();
+
+    // 1. Cuentas maestras de TI Root
+    const isTiRoot = cleanEmail.includes('ti.root') || cleanEmail.startsWith('ti@') || cleanEmail.includes('root');
+    if (isTiRoot) {
+      return { allowed: true, invitationData: undefined };
+    }
+
+    // 2. Colaboradores existentes con perfil ya completado
+    const existingCompleted = mockEmployeesData.find(
+      (e) => e.email.toLowerCase() === cleanEmail && e.isProfileComplete
+    );
+    if (existingCompleted) {
+      return { allowed: true, invitationData: undefined };
+    }
+
+    // 3. Verificación de Invitación Corporativa previa emitida por un Supervisor o TI
+    const hasWhitelist = isEmailWhitelisted(cleanEmail);
+    const invitation = findInvitationForEmail(cleanEmail);
+
+    if (!hasWhitelist && !invitation) {
+      return {
+        allowed: false,
+        error: `Acceso restringido: La cuenta "${cleanEmail}" no cuenta con una invitación previa en la lista blanca de la firma. Para poder registrarte y crear tu perfil, solicita previamente a tu supervisor o a TI que emita tu invitación.`,
+        invitationData: undefined,
+      };
+    }
+
+    // 4. Si cuenta con invitación previa, recuperar datos jerárquicos y código de supervisor en automático
+    let invitationData = undefined;
+    if (invitation) {
+      const supervisorCode = getSupervisorCode(invitation.supervisorId);
+      invitationData = {
+        role: invitation.targetRole || invitation.role,
+        team: invitation.team,
+        roleTitle: invitation.roleTitle,
+        supervisorId: invitation.supervisorId,
+        supervisorName: invitation.supervisorName,
+        supervisorCode,
+        created_by_ti_id: invitation.created_by_ti_id,
+        token: invitation.token,
+      };
+    }
+
+    return { allowed: true, invitationData };
+  };
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg('');
@@ -152,8 +207,19 @@ export function AuthPage() {
       if (firebaseReady) {
         const res = await loginWithEmail(email, password);
         if (res.success && res.user) {
-          loginWithFirebaseUser(res.user);
-          addToast('Inicio de sesión exitoso con Firebase', 'success');
+          const access = verifyAccessAndGetInvitation(res.user.email || email);
+          if (!access.allowed) {
+            await logoutFirebase();
+            setErrorMsg(access.error || 'Acceso restringido por lista blanca corporativa.');
+            return;
+          }
+
+          loginWithFirebaseUser(res.user, access.invitationData);
+          if (access.invitationData) {
+            addToast(`¡Invitación validada para ${access.invitationData.supervisorName}! Redirigiendo a completar tu perfil...`, 'success');
+          } else {
+            addToast('Inicio de sesión exitoso con Firebase', 'success');
+          }
           navigate('/');
           return;
         } else {
@@ -191,8 +257,26 @@ export function AuthPage() {
       if (firebaseReady) {
         const res = await loginWithGoogle();
         if (res.success && res.user) {
-          loginWithFirebaseUser(res.user);
-          addToast(`¡Bienvenido! Conectado con ${res.user.email}`, 'success');
+          const userEmail = res.user.email || '';
+          const access = verifyAccessAndGetInvitation(userEmail);
+
+          if (!access.allowed) {
+            // Se bloquea el acceso si no hay invitación previa
+            await logoutFirebase();
+            setErrorMsg(access.error || 'Acceso no autorizado por lista blanca.');
+            return;
+          }
+
+          // Iniciar sesión inyectando automáticamente la invitación y el código del supervisor
+          loginWithFirebaseUser(res.user, access.invitationData);
+          if (access.invitationData) {
+            addToast(
+              `¡Invitación validada con ${access.invitationData.supervisorName}! Asignación automática cargada.`,
+              'success'
+            );
+          } else {
+            addToast(`¡Bienvenido! Conectado con ${res.user.email}`, 'success');
+          }
           navigate('/');
         } else {
           setErrorMsg(res.error || 'No se pudo iniciar con Google.');

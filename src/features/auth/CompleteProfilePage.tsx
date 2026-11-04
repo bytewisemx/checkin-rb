@@ -1,6 +1,7 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
 import { useCheckinStore } from '../../store/useCheckinStore';
 import { useRayonerStore } from '../../store/useRayonerStore';
+import { useInvitationStore } from '../../store/useInvitationStore';
 import { Button } from '../../components/common/Button';
 import { 
   UserCircle, Calendar, Users, ChevronRight, 
@@ -29,8 +30,10 @@ export function CompleteProfilePage() {
     validateSupervisorCode, 
     registerCollaborator, 
     registerSupervisorProfile,
-    validateMasterCorporateKey 
+    validateMasterCorporateKey,
+    getSupervisorCode
   } = useRayonerStore();
+  const { consumeToken } = useInvitationStore();
   const navigate = useNavigate();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -69,8 +72,22 @@ export function CompleteProfilePage() {
   );
   const [team, setTeam] = useState(user?.team || 'Auditoría Fiscal');
 
-  // Campos específicos de Colaborador
-  const [supervisorCode, setSupervisorCode] = useState('');
+  // Campos específicos de Colaborador (código obtenido en automático si proviene de invitación previa)
+  const autoSupervisorCode = useMemo(() => {
+    if (user?.supervisorCode) return user.supervisorCode;
+    if (user?.supervisorId) return getSupervisorCode(user.supervisorId);
+    return '';
+  }, [user, getSupervisorCode]);
+
+  const [supervisorCode, setSupervisorCode] = useState(autoSupervisorCode);
+
+  useEffect(() => {
+    if (autoSupervisorCode && (!supervisorCode || supervisorCode !== autoSupervisorCode)) {
+      setSupervisorCode(autoSupervisorCode);
+    }
+  }, [autoSupervisorCode, supervisorCode]);
+
+  const isCodeAutoAssigned = Boolean(autoSupervisorCode || user?.supervisorId);
 
   // Campos específicos de Supervisor (incluyendo Clave Maestra Corporativa o Invitación de TI)
   const [corporateKey, setCorporateKey] = useState(user?.created_by_ti_id ? 'RB-SOCIO-2026' : '');
@@ -269,6 +286,15 @@ export function CompleteProfilePage() {
         roleTitle: 'Auditor Junior',
         supervisorId: matchedSupervisor.supervisorId,
       });
+
+      // 3. Si proviene de invitación corporativa, marcar el token como aceptado formalmente
+      if (user?.invitationToken) {
+        consumeToken(user.invitationToken, {
+          uid: userId,
+          email: user?.email || '',
+          name: fullName,
+        });
+      }
 
       addToast(
         `¡Bienvenido ${name}! Fuiste vinculado exitosamente al equipo de ${matchedSupervisor.supervisorName}.`,
@@ -535,7 +561,7 @@ export function CompleteProfilePage() {
           
           {/* CASO 1: COLABORADOR (Pide código de su supervisor) */}
           {accountRole === 'employee' && (
-            <div className="space-y-2 pt-2 border-t border-slate-200/80 animate-fade-in">
+            <div className="space-y-3 pt-2 border-t border-slate-200/80 animate-fade-in">
               <div className="flex items-center justify-between">
                 <label className="text-xs font-black text-slate-800 uppercase tracking-wider flex items-center space-x-1.5">
                   <ShieldCheck className="w-4 h-4 text-[#0D5C75]" />
@@ -543,58 +569,89 @@ export function CompleteProfilePage() {
                   <span className="text-rose-500">*</span>
                 </label>
                 <span className="text-[10px] text-slate-400 font-medium">
-                  Requerido para vincularte
+                  {isCodeAutoAssigned ? 'Asignado automáticamente por invitación' : 'Requerido para vincularte'}
                 </span>
               </div>
+
+              {/* Mensaje de Asignación Automática si proviene de invitación previa */}
+              {isCodeAutoAssigned && (
+                <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-xs text-emerald-800 flex items-start space-x-2.5 animate-scale-up">
+                  <div className="w-6 h-6 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0 mt-0.5">
+                    <ShieldCheck className="w-3.5 h-3.5" />
+                  </div>
+                  <div>
+                    <p className="font-bold text-emerald-900">
+                      ✓ Invitación Corporativa Validada en Automático
+                    </p>
+                    <p className="text-[11px] text-emerald-700 mt-0.5">
+                      Quedarás asignado a <b>{matchedSupervisor?.supervisorName || user?.supervisorName || 'Supervisor Asignado'}</b> con el código <span className="font-mono font-bold bg-white px-1.5 py-0.5 rounded border border-emerald-300">{supervisorCode}</span> sin necesidad de capturarlo manualmente.
+                    </p>
+                  </div>
+                </div>
+              )}
 
               <div className="relative">
                 <input
                   type="text"
                   required
+                  readOnly={isCodeAutoAssigned}
                   value={supervisorCode}
                   onChange={(e) => {
-                    setSupervisorCode(e.target.value.toUpperCase());
-                    setErrorMsg('');
+                    if (!isCodeAutoAssigned) {
+                      setSupervisorCode(e.target.value.toUpperCase());
+                      setErrorMsg('');
+                    }
                   }}
                   placeholder="Ej. SUP-CARLOS-784 o SUP-SILVA-101"
                   className={`w-full pl-4 pr-10 py-3 rounded-xl border text-sm font-bold uppercase tracking-wider transition-all ${
-                    matchedSupervisor
+                    isCodeAutoAssigned
+                      ? 'border-emerald-500 bg-emerald-50/40 text-emerald-900 cursor-not-allowed select-none'
+                      : matchedSupervisor
                       ? 'border-emerald-500 bg-emerald-50/30 text-emerald-900 focus:ring-2 focus:ring-emerald-500/20'
                       : 'border-slate-300 bg-slate-50/50 text-slate-800 focus:ring-2 focus:ring-[#0D5C75]/20 focus:border-[#0D5C75]'
                   }`}
                 />
                 {matchedSupervisor && (
-                  <div className="absolute right-3.5 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-emerald-500 text-white flex items-center justify-center shadow-xs">
-                    <Check className="w-3.5 h-3.5 stroke-[3]" />
+                  <div className="absolute right-3.5 top-1/2 -translate-y-1/2 flex items-center space-x-1.5">
+                    {isCodeAutoAssigned && (
+                      <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded hidden sm:inline">
+                        Auto
+                      </span>
+                    )}
+                    <div className="w-6 h-6 rounded-full bg-emerald-500 text-white flex items-center justify-center shadow-xs">
+                      <Check className="w-3.5 h-3.5 stroke-[3]" />
+                    </div>
                   </div>
                 )}
               </div>
 
-              {matchedSupervisor ? (
-                <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-xs text-emerald-800 flex items-start space-x-2.5 animate-scale-up">
-                  <div className="w-6 h-6 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0 mt-0.5">
-                    <Building2 className="w-3.5 h-3.5" />
+              {!isCodeAutoAssigned && (
+                matchedSupervisor ? (
+                  <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-xs text-emerald-800 flex items-start space-x-2.5 animate-scale-up">
+                    <div className="w-6 h-6 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0 mt-0.5">
+                      <Building2 className="w-3.5 h-3.5" />
+                    </div>
+                    <div>
+                      <p className="font-bold text-emerald-900">
+                        ✓ Vinculado con: {matchedSupervisor.supervisorName}
+                      </p>
+                      <p className="text-[11px] text-emerald-700 mt-0.5">
+                        {matchedSupervisor.supervisorTitle}. Tu cuenta quedará registrada en su panel para asignarte proyectos y clientes.
+                      </p>
+                    </div>
                   </div>
-                  <div>
-                    <p className="font-bold text-emerald-900">
-                      ✓ Vinculado con: {matchedSupervisor.supervisorName}
-                    </p>
-                    <p className="text-[11px] text-emerald-700 mt-0.5">
-                      {matchedSupervisor.supervisorTitle}. Tu cuenta quedará registrada en su panel para asignarte proyectos y clientes.
-                    </p>
+                ) : supervisorCode.trim().length > 0 ? (
+                  <p className="text-xs font-semibold text-rose-600 flex items-center space-x-1">
+                    <span>Código no reconocido. Usa un código válido de supervisor (ej. SUP-CARLOS-784 o SUP-SILVA-101).</span>
+                  </p>
+                ) : (
+                  <div className="flex items-center space-x-1.5 text-[11px] text-slate-500 bg-slate-50 p-2.5 rounded-xl border border-slate-200">
+                    <Sparkles className="w-3.5 h-3.5 text-[#0D5C75] shrink-0" />
+                    <span>
+                      Códigos activos de demostración: <strong>SUP-CARLOS-784</strong> o <strong>SUP-SILVA-101</strong>.
+                    </span>
                   </div>
-                </div>
-              ) : supervisorCode.trim().length > 0 ? (
-                <p className="text-xs font-semibold text-rose-600 flex items-center space-x-1">
-                  <span>Código no reconocido. Usa un código válido de supervisor (ej. SUP-CARLOS-784 o SUP-SILVA-101).</span>
-                </p>
-              ) : (
-                <div className="flex items-center space-x-1.5 text-[11px] text-slate-500 bg-slate-50 p-2.5 rounded-xl border border-slate-200">
-                  <Sparkles className="w-3.5 h-3.5 text-[#0D5C75] shrink-0" />
-                  <span>
-                    Códigos activos de demostración: <strong>SUP-CARLOS-784</strong> o <strong>SUP-SILVA-101</strong>.
-                  </span>
-                </div>
+                )
               )}
             </div>
           )}

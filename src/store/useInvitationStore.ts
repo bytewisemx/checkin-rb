@@ -69,6 +69,7 @@ interface InvitationState {
   getInvitationsBySupervisor: (supervisorId: string) => Invitation[];
   getInvitationsByTI: () => Invitation[];
   isEmailWhitelisted: (email: string) => boolean;
+  findInvitationForEmail: (email: string) => Invitation | undefined;
 }
 
 const INITIAL_INVITATIONS: Invitation[] = [
@@ -447,6 +448,15 @@ export const useInvitationStore = create<InvitationState>()(
         const clean = (email || '').trim().toLowerCase();
         return get().invitations.some(
           (i) => i.email.toLowerCase() === clean && (i.status === 'pending' || i.status === 'accepted')
+        );
+      },
+
+      findInvitationForEmail: (email: string) => {
+        const clean = (email || '').trim().toLowerCase();
+        return (
+          get().invitations.find(
+            (i) => i.email.toLowerCase() === clean && (i.status === 'pending' || i.status === 'accepted')
+          ) || get().invitations.find((i) => i.email.toLowerCase() === clean)
         );
       },
     }),

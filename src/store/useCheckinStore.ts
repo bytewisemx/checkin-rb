@@ -59,6 +59,8 @@ export interface User {
   supervisor_id?: string | null;
   supervisorId?: string;
   supervisorName?: string;
+  supervisorCode?: string;
+  invitationToken?: string;
   created_by_ti_id?: string | null;
   createdByTiId?: string;
   assigned_team_members?: string[];
@@ -146,10 +148,12 @@ interface CheckinState {
     invitationData?: {
       supervisorId: string;
       supervisorName: string;
+      supervisorCode?: string;
       team: string;
       roleTitle?: string;
       role?: UserRole | 'employee' | 'supervisor';
       created_by_ti_id?: string | null;
+      token?: string;
     }
   ) => void;
 
@@ -867,6 +871,8 @@ export const useCheckinStore = create<CheckinState>()(
             supervisor_id: newEmp.supervisor_id,
             supervisorId: newEmp.supervisor_id || undefined,
             supervisorName: invitationData?.supervisorName,
+            supervisorCode: invitationData?.supervisorCode,
+            invitationToken: invitationData?.token,
             created_by_ti_id: newEmp.created_by_ti_id,
             createdByTiId: newEmp.created_by_ti_id || undefined,
             assigned_team_members: assignedRole === 'Supervisor' ? [] : undefined,
