@@ -27,13 +27,26 @@ import { CheckinPanel } from '../checkin/CheckinPanel';
  * - Paleta monocromática/análoga oscura corporativa con acentos celestes y azul rey.
  */
 export function RHDashboard() {
-  const { user, getEffectiveUserModules, mockEmployeesData, addToast } = useCheckinStore();
+  const { user, userPermissionsDirectory, getEffectiveUserModules, mockEmployeesData, addToast } = useCheckinStore();
   const { teamMembers } = useRayonerStore();
 
   const effectiveModules = getEffectiveUserModules(user?.id) || getEffectiveModules(user);
   const hasVector = Boolean(
     user?.biometrics?.faceDescriptor?.length || user?.faceDescriptor?.length
   );
+
+  // Equipos (Supervisores) que TI autorizó visualizar a este perfil de RH
+  const rhPermissionEntry = userPermissionsDirectory[user?.id || 'rh-01'] || userPermissionsDirectory['rh-01'];
+  const allowedSupervisorIds = useMemo(() => {
+    if (rhPermissionEntry?.allowedSupervisorIds) {
+      return rhPermissionEntry.allowedSupervisorIds;
+    }
+    return teamMembers.filter((m) => m.role === 'Supervisor').map((m) => m.id);
+  }, [rhPermissionEntry, teamMembers]);
+
+  const authorizedSupervisors = useMemo(() => {
+    return teamMembers.filter((m) => m.role === 'Supervisor' && allowedSupervisorIds.includes(m.id));
+  }, [teamMembers, allowedSupervisorIds]);
 
   const [rhTab, setRhTab] = useState<'metrics' | 'my_checkin'>('metrics');
   const [isRecalibrateOpen, setIsRecalibrateOpen] = useState(false);
@@ -72,41 +85,48 @@ export function RHDashboard() {
   }, [user?.id, startDate, endDate]);
 
   // Vista limpia equivalente a rh_work_time_view:
-  // Combina colaboradores omitiendo estrictamente cualquier campo de clientes, proyectos o tareas
+  // Filtra únicamente los equipos asignados por TI a RH y omite cualquier campo de clientes, proyectos o tareas
   const sanitizedPersonnel = useMemo(() => {
-    return teamMembers.map((m) => {
-      const mockEmp = mockEmployeesData.find(
-        (e) => e.id === m.id || e.email.toLowerCase() === m.email.toLowerCase()
-      );
-      const historyLogs = (mockEmp?.history || []).filter((h) => {
-        if (startDate && h.date < startDate) return false;
-        if (endDate && h.date > endDate) return false;
-        return true;
+    return teamMembers
+      .filter((m) => {
+        if (m.role === 'RH') return false;
+        if (m.role === 'Supervisor') return allowedSupervisorIds.includes(m.id);
+        const supId = m.supervisor_id || m.supervisorId || 'admin-99';
+        return allowedSupervisorIds.includes(supId);
+      })
+      .map((m) => {
+        const mockEmp = mockEmployeesData.find(
+          (e) => e.id === m.id || e.email.toLowerCase() === m.email.toLowerCase()
+        );
+        const historyLogs = (mockEmp?.history || []).filter((h) => {
+          if (startDate && h.date < startDate) return false;
+          if (endDate && h.date > endDate) return false;
+          return true;
+        });
+
+        const historyHours = historyLogs.reduce(
+          (sum, h) => sum + (h.totalDurationMinutes || 480) / 60,
+          0
+        );
+        const todayHours = Number(((m.workedMinutesToday || 0) / 60).toFixed(2));
+        const totalPeriodHours = Number((historyHours + todayHours).toFixed(2));
+
+        return {
+          user_id: m.id,
+          user_name: m.name,
+          email: m.email,
+          role: m.role || 'Empleado',
+          department: m.team,
+          status: m.status,
+          check_in: m.entryTime || '09:00',
+          check_out: m.checkOutTime || (m.status === 'active' ? 'En jornada' : '18:00'),
+          hours_today: todayHours,
+          hours_worked_period: totalPeriodHours,
+          is_late: m.isLate,
+          minutes_late: m.minutesLate,
+        };
       });
-
-      const historyHours = historyLogs.reduce(
-        (sum, h) => sum + (h.totalDurationMinutes || 480) / 60,
-        0
-      );
-      const todayHours = Number(((m.workedMinutesToday || 0) / 60).toFixed(2));
-      const totalPeriodHours = Number((historyHours + todayHours).toFixed(2));
-
-      return {
-        user_id: m.id,
-        user_name: m.name,
-        email: m.email,
-        role: m.role || 'Empleado',
-        department: m.team,
-        status: m.status,
-        check_in: m.entryTime || '09:00',
-        check_out: m.checkOutTime || (m.status === 'active' ? 'En jornada' : '18:00'),
-        hours_today: todayHours,
-        hours_worked_period: totalPeriodHours,
-        is_late: m.isLate,
-        minutes_late: m.minutesLate,
-      };
-    });
-  }, [teamMembers, mockEmployeesData, startDate, endDate]);
+  }, [teamMembers, mockEmployeesData, startDate, endDate, allowedSupervisorIds]);
 
   const filteredPersonnel = useMemo(() => {
     return sanitizedPersonnel.filter((p) => {
@@ -150,6 +170,9 @@ export function RHDashboard() {
     });
 
     mockEmployeesData.forEach((emp) => {
+      const empSupId = emp.supervisor_id || 'admin-99';
+      if (!allowedSupervisorIds.includes(empSupId)) return;
+
       emp.history.slice(0, 6).forEach((h) => {
         if (startDate && h.date < startDate) return;
         if (endDate && h.date > endDate) return;
@@ -178,7 +201,7 @@ export function RHDashboard() {
       const q = searchQuery.toLowerCase();
       return l.user_name.toLowerCase().includes(q) || l.user_id.toLowerCase().includes(q);
     });
-  }, [sanitizedPersonnel, mockEmployeesData, startDate, endDate, searchQuery]);
+  }, [sanitizedPersonnel, mockEmployeesData, startDate, endDate, searchQuery, allowedSupervisorIds]);
 
   const totalUsers = sanitizedPersonnel.length;
   const activeUsers = sanitizedPersonnel.filter((p) => p.status === 'active').length;
@@ -228,7 +251,12 @@ export function RHDashboard() {
                 Métricas Operativas de Personal y Registros de Tiempo
               </h1>
               <p className="text-xs text-[#94A3B8] mt-0.5 max-w-2xl">
-                Acceso exclusivo de solo lectura a conteo de personal activo (<code>headcount</code>), directorio de colaboradores y horas laboradas (<code>time_logs</code>).
+                Acceso exclusivo de solo lectura a conteo de personal activo (<code>headcount</code>) y checadas (<code>time_logs</code>) de los equipos asignados por TI:{' '}
+                <strong className="text-[#38BDF8]">
+                  {authorizedSupervisors.length > 0
+                    ? authorizedSupervisors.map((s) => `Equipo de ${s.name}`).join(', ')
+                    : 'Sin equipos asignados por TI'}
+                </strong>.
               </p>
             </div>
           </div>

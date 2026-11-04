@@ -37,7 +37,7 @@ function rbacApiPlugin(): Plugin {
   const usersDb: Record<string, InMemoryUserRecord> = {
     'ti-root-01': {
       id: 'ti-root-01',
-      name: 'Administrador TI (Root)',
+      name: 'TI Prueba',
       email: 'ti.root@russellbedford.mx',
       role: 'TI',
       modules: { checkIn: true, facialCheckIn: false, tasks: true, reports: true, clients: true },
@@ -48,21 +48,12 @@ function rbacApiPlugin(): Plugin {
       name: 'Supervisor Prueba',
       email: 'supervisor.prueba@russellbedford.mx',
       role: 'Supervisor',
-      // Exención de rol por defecto para Supervisor: facialCheckIn = false
-      modules: { checkIn: true, facialCheckIn: false, tasks: true, reports: true, clients: true },
-      biometrics: null,
-    },
-    'sup-1': {
-      id: 'sup-1',
-      name: 'Mtro. Roberto Silva',
-      email: 'roberto.silva@russellbedford.mx',
-      role: 'Supervisor',
       modules: { checkIn: true, facialCheckIn: false, tasks: true, reports: true, clients: true },
       biometrics: null,
     },
     'rh-01': {
       id: 'rh-01',
-      name: 'Dirección Recursos Humanos (RH)',
+      name: 'RH Prueba',
       email: 'rh.prueba@russellbedford.mx',
       role: 'RH',
       modules: { checkIn: true, facialCheckIn: true, tasks: false, reports: true, clients: false },
@@ -70,40 +61,8 @@ function rbacApiPlugin(): Plugin {
     },
     'usr-ana': {
       id: 'usr-ana',
-      name: 'Colaborador Prueba',
+      name: 'Empleado Prueba',
       email: 'colaborador.prueba@russellbedford.mx',
-      role: 'Empleado',
-      modules: { checkIn: true, facialCheckIn: true, tasks: true, reports: false, clients: false },
-      biometrics: null,
-    },
-    'usr-carlos': {
-      id: 'usr-carlos',
-      name: 'Carlos Ruiz',
-      email: 'carlos.ruiz@russellbedford.mx',
-      role: 'Empleado',
-      modules: { checkIn: true, facialCheckIn: true, tasks: true, reports: false, clients: false },
-      biometrics: null,
-    },
-    'usr-luis': {
-      id: 'usr-luis',
-      name: 'Luis Mendoza',
-      email: 'luis.mendoza@russellbedford.mx',
-      role: 'Empleado',
-      modules: { checkIn: true, facialCheckIn: true, tasks: true, reports: false, clients: false },
-      biometrics: null,
-    },
-    'usr-sofia': {
-      id: 'usr-sofia',
-      name: 'Sofía Valdés',
-      email: 'sofia.valdes@russellbedford.mx',
-      role: 'Empleado',
-      modules: { checkIn: true, facialCheckIn: true, tasks: true, reports: false, clients: false },
-      biometrics: null,
-    },
-    'usr-miguel': {
-      id: 'usr-miguel',
-      name: 'Miguel Ángel Ramos',
-      email: 'miguel.ramos@russellbedford.mx',
       role: 'Empleado',
       modules: { checkIn: true, facialCheckIn: true, tasks: true, reports: false, clients: false },
       biometrics: null,
@@ -338,13 +297,8 @@ function rbacApiPlugin(): Plugin {
           const endDate = urlObj.searchParams.get('endDate') || null;
 
           const collaborators = [
-            { user_id: 'usr-ana', user_name: 'Colaborador Prueba (Ana García)', status: 'active', role: 'Empleado', hours_worked_in_period: 42.5, days_logged: 5, last_check_in: '09:02', last_check_out: '18:05' },
-            { user_id: 'usr-carlos', user_name: 'Carlos Ruiz', status: 'active', role: 'Empleado', hours_worked_in_period: 38.5, days_logged: 5, last_check_in: '09:18', last_check_out: '17:50' },
-            { user_id: 'usr-luis', user_name: 'Luis Mendoza', status: 'active', role: 'Empleado', hours_worked_in_period: 44.0, days_logged: 5, last_check_in: '08:52', last_check_out: '18:10' },
-            { user_id: 'usr-sofia', user_name: 'Sofía Valdés', status: 'inactive', role: 'Empleado', hours_worked_in_period: 24.0, days_logged: 4, last_check_in: '09:00', last_check_out: '15:00' },
-            { user_id: 'usr-miguel', user_name: 'Miguel Ángel Ramos', status: 'active', role: 'Empleado', hours_worked_in_period: 40.0, days_logged: 5, last_check_in: '09:04', last_check_out: '18:00' },
+            { user_id: 'usr-ana', user_name: 'Empleado Prueba', status: 'active', role: 'Empleado', hours_worked_in_period: 42.5, days_logged: 5, last_check_in: '09:02', last_check_out: '18:05' },
             { user_id: 'admin-99', user_name: 'Supervisor Prueba', status: 'active', role: 'Supervisor', hours_worked_in_period: 45.0, days_logged: 5, last_check_in: '08:45', last_check_out: '18:30' },
-            { user_id: 'sup-1', user_name: 'Mtro. Roberto Silva', status: 'active', role: 'Supervisor', hours_worked_in_period: 43.0, days_logged: 5, last_check_in: '08:30', last_check_out: '18:00' },
           ];
 
           return sendJson(200, {

@@ -718,14 +718,14 @@ export function UserProfileModal({ isOpen, onClose, initialTab = 'rank' }: UserP
                         Supervisor de Equipo
                       </span>
                       <p className="text-xs font-heading font-semibold text-slate-900 dark:text-white mt-0.5">
-                        {user?.supervisorName || 'Carlos Ruiz'}
+                        {user?.supervisorName || 'Supervisor Prueba'}
                       </p>
                       <div className="flex items-center space-x-2 mt-1">
                         <span className="text-xs text-slate-500 dark:text-slate-400">
                           Código de vinculación:
                         </span>
                         <code className="text-xs font-mono font-bold bg-white dark:bg-[#0B111E] px-2 py-0.5 rounded-md border border-slate-200 dark:border-[#233354] text-blue-700 dark:text-sky-400">
-                          {user?.supervisorId === 'sup-1' ? 'SUP-SILVA-101' : (user?.supervisorId || 'SUP-CARLOS-784')}
+                          {user?.supervisorCode || 'SUP-RB-9901'}
                         </code>
                       </div>
                     </div>

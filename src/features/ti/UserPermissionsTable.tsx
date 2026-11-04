@@ -9,6 +9,9 @@ import {
   ShieldCheck,
   Lock,
   Sparkles,
+  Ban,
+  Unlock,
+  Users,
 } from 'lucide-react';
 import { useCheckinStore, type ManagedUserPermissionEntry } from '../../store/useCheckinStore';
 import { useRayonerStore } from '../../store/useRayonerStore';
@@ -23,6 +26,8 @@ export function UserPermissionsTable() {
   const {
     userPermissionsDirectory,
     updateUserModules,
+    toggleUserAccessRevoked,
+    updateRHAllowedTeams,
     addToast,
   } = useCheckinStore();
   const { teamMembers } = useRayonerStore();
@@ -206,6 +211,47 @@ export function UserPermissionsTable() {
     }
   };
 
+  // Lista de todos los supervisores/socios (equipos) disponibles para asignar a RH
+  const supervisorTeams = useMemo(() => {
+    return mergedUsers.filter((u) => u.role === 'Supervisor');
+  }, [mergedUsers]);
+
+  const rhUsersList = useMemo(() => {
+    return mergedUsers.filter((u) => u.role === 'RH');
+  }, [mergedUsers]);
+
+  const handleToggleRHSupervisorTeam = (rhUser: ManagedUserPermissionEntry, supervisorId: string) => {
+    const currentAllowed = rhUser.allowedSupervisorIds || supervisorTeams.map((s) => s.id);
+    const exists = currentAllowed.includes(supervisorId);
+    const nextAllowed = exists
+      ? currentAllowed.filter((id) => id !== supervisorId)
+      : [...currentAllowed, supervisorId];
+
+    updateRHAllowedTeams(rhUser.id, nextAllowed);
+    const supName = supervisorTeams.find((s) => s.id === supervisorId)?.name || supervisorId;
+    addToast(
+      exists
+        ? `TI revocó a ${rhUser.name} la visualización de checadas del equipo de ${supName}.`
+        : `TI asignó a ${rhUser.name} la visualización de checadas del equipo de ${supName}.`,
+      exists ? 'info' : 'success'
+    );
+  };
+
+  const handleToggleRevokeUser = (targetUser: ManagedUserPermissionEntry) => {
+    if (targetUser.role === 'TI') {
+      addToast('El puesto de TI es el nivel más alto y no puede auto-revocarse.', 'error');
+      return;
+    }
+    const willRevoke = !targetUser.accessRevoked;
+    toggleUserAccessRevoked(targetUser.id);
+    addToast(
+      willRevoke
+        ? `Permisos y acceso REVOCADOS por TI para ${targetUser.name} (${targetUser.role}).`
+        : `Permisos y acceso RESTAURADOS por TI para ${targetUser.name} (${targetUser.role}).`,
+      willRevoke ? 'error' : 'success'
+    );
+  };
+
   return (
     <div className="bg-[#131D31] rounded-md border border-[#233354] shadow-xs overflow-hidden animate-fade-in text-[#F8FAFC]">
       {/* Cabecera de Gestión Granular de Módulos */}
@@ -262,6 +308,81 @@ export function UserPermissionsTable() {
           </button>
         </div>
       </div>
+
+      {/* Panel de Asignación de Equipos para Recursos Humanos (RH) controlado por TI */}
+      {rhUsersList.length > 0 && (
+        <div className="p-4 sm:p-5 border-b border-[#233354] bg-[#0F172A]/80 space-y-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div className="flex items-center space-x-2.5">
+              <div className="w-8 h-8 rounded-md bg-[#F59E0B]/15 border border-[#F59E0B]/40 text-[#F59E0B] flex items-center justify-center shrink-0">
+                <Users className="w-4 h-4" />
+              </div>
+              <div>
+                <h3 className="text-xs font-heading font-bold uppercase tracking-wider text-[#F8FAFC]">
+                  Asignación de Equipos de Checadas para Recursos Humanos (Control Exclusivo TI)
+                </h3>
+                <p className="text-[11px] text-[#94A3B8]">
+                  Selecciona cuáles equipos (Supervisores / Socios y sus subordinados) puede auditar cada perfil de RH en sus reportes de checadas.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 gap-3">
+            {rhUsersList.map((rhUser) => {
+              const allowedIds = rhUser.allowedSupervisorIds ?? supervisorTeams.map((s) => s.id);
+              return (
+                <div
+                  key={rhUser.id}
+                  className="bg-[#131D31] border border-[#233354] rounded-md p-3.5 flex flex-col md:flex-row md:items-center justify-between gap-3"
+                >
+                  <div>
+                    <div className="flex items-center space-x-2">
+                      <span className="font-heading font-bold text-xs text-[#F8FAFC]">{rhUser.name}</span>
+                      <span className="text-[10px] font-mono text-[#F59E0B] bg-[#1A2742] px-2 py-0.5 rounded-sm border border-[#F59E0B]/30">
+                        {rhUser.email}
+                      </span>
+                    </div>
+                    <span className="text-[11px] text-[#94A3B8] block mt-0.5">
+                      Equipos autorizados para visualizar checadas: <b>{allowedIds.length}</b> de {supervisorTeams.length}
+                    </span>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2">
+                    {supervisorTeams.map((sup) => {
+                      const isChecked = allowedIds.includes(sup.id);
+                      const subCount = teamMembers.filter(
+                        (m) => (m.role === 'Empleado' || !m.role) && (m.supervisor_id === sup.id || m.supervisorId === sup.id)
+                      ).length;
+
+                      return (
+                        <label
+                          key={sup.id}
+                          className={`flex items-center space-x-2 px-3 py-1.5 rounded-md border text-xs cursor-pointer transition-all select-none ${
+                            isChecked
+                              ? 'bg-[#1E40AF]/25 border-[#38BDF8] text-[#F8FAFC] font-semibold'
+                              : 'bg-[#1A2742] border-[#233354] text-[#94A3B8] hover:text-[#F8FAFC]'
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={() => handleToggleRHSupervisorTeam(rhUser, sup.id)}
+                            className="w-3.5 h-3.5 accent-[#38BDF8] rounded cursor-pointer"
+                          />
+                          <span>
+                            Equipo: {sup.name} ({subCount} {subCount === 1 ? 'usuario' : 'usuarios'})
+                          </span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Filtros y Buscador */}
       <div className="p-4 border-b border-[#233354] bg-[#131D31] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -330,7 +451,16 @@ export function UserPermissionsTable() {
                 >
                   {/* Nombre y Correo */}
                   <td className="py-3.5 px-4">
-                    <div className="font-semibold text-[#F8FAFC]">{u.name}</div>
+                    <div className="flex items-center space-x-2">
+                      <span className={`font-semibold ${u.accessRevoked ? 'line-through text-rose-400' : 'text-[#F8FAFC]'}`}>
+                        {u.name}
+                      </span>
+                      {u.accessRevoked && (
+                        <span className="text-[9px] font-heading font-bold uppercase bg-rose-950/80 text-rose-400 border border-rose-700/50 px-1.5 py-0.5 rounded-sm">
+                          REVOCADO POR TI
+                        </span>
+                      )}
+                    </div>
                     <div className="text-[11px] text-[#94A3B8] font-mono">{u.email}</div>
                   </td>
 
@@ -341,7 +471,7 @@ export function UserPermissionsTable() {
                         u.role
                       )}`}
                     >
-                      {u.role}
+                      {u.role === 'Supervisor' ? 'Socio / Supervisor' : u.role}
                     </span>
                   </td>
 
@@ -474,6 +604,34 @@ export function UserPermissionsTable() {
                       >
                         <RotateCcw className="w-3.5 h-3.5" />
                       </button>
+                      {!isTI && (
+                        <button
+                          type="button"
+                          onClick={() => handleToggleRevokeUser(u)}
+                          title={
+                            u.accessRevoked
+                              ? 'Restaurar acceso y permisos de esta cuenta'
+                              : 'Revocar todos los permisos y acceso (incluye Socios / Supervisores)'
+                          }
+                          className={`px-2.5 py-1 rounded-md text-[10px] font-heading font-bold transition-colors cursor-pointer flex items-center space-x-1 border ${
+                            u.accessRevoked
+                              ? 'bg-emerald-950/50 hover:bg-emerald-900/60 text-emerald-300 border-emerald-700/50'
+                              : 'bg-rose-950/50 hover:bg-rose-900/60 text-rose-300 border-rose-700/50'
+                          }`}
+                        >
+                          {u.accessRevoked ? (
+                            <>
+                              <Unlock className="w-3 h-3" />
+                              <span>Restaurar</span>
+                            </>
+                          ) : (
+                            <>
+                              <Ban className="w-3 h-3" />
+                              <span>Revocar</span>
+                            </>
+                          )}
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>

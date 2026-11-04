@@ -74,6 +74,10 @@ export interface ManagedUserPermissionEntry {
   team?: string;
   modules: UserModules;
   biometrics?: BiometricVectorRecord | null;
+  accessRevoked?: boolean;
+  allowedSupervisorIds?: string[];
+  supervisor_id?: string | null;
+  created_by_ti_id?: string | null;
 }
 
 export interface PauseBlock {
@@ -170,13 +174,16 @@ interface CheckinState {
   setTheme: (theme: 'dark' | 'light') => void;
   toggleTheme: () => void;
 
-  // Gestión granular de módulos por usuario (Panel TI)
+  // Gestión granular de módulos y estructura jerárquica por usuario (Panel TI)
   updateUserModules: (
     targetUserId: string,
     modules: UserModules,
     meta?: { name?: string; email?: string; role?: UserRole; team?: string }
   ) => Promise<void>;
   getEffectiveUserModules: (userId?: string) => UserModules;
+  toggleUserAccessRevoked: (targetUserId: string) => void;
+  updateRHAllowedTeams: (rhUserId: string, supervisorIds: string[]) => void;
+  reassignEmployeeSupervisor: (employeeId: string, newSupervisorId: string) => void;
 
   startCheckin: (
     lat: number,
@@ -262,91 +269,47 @@ const generateMockHistory = (days: number): CheckinRecord[] => {
 const initialPermissionsDirectory: Record<string, ManagedUserPermissionEntry> = {
   'ti-root-01': {
     id: 'ti-root-01',
-    name: 'Administrador TI (Root)',
+    name: 'TI Prueba',
     email: 'ti.root@russellbedford.mx',
     role: 'TI',
-    team: 'Infraestructura & Seguridad TI',
+    team: 'Equipo Prueba (TI Root)',
     modules: getDefaultModulesForRole('TI'),
     biometrics: null,
+    accessRevoked: false,
   },
   'admin-99': {
     id: 'admin-99',
     name: 'Supervisor Prueba',
     email: 'supervisor.prueba@russellbedford.mx',
     role: 'Supervisor',
-    team: 'Administración y Supervisión',
+    team: 'Equipo Prueba',
     modules: getDefaultModulesForRole('Supervisor'), // facialCheckIn: false por defecto (Exento)
     biometrics: null,
-  },
-  'sup-1': {
-    id: 'sup-1',
-    name: 'Mtro. Roberto Silva',
-    email: 'roberto.silva@russellbedford.mx',
-    role: 'Supervisor',
-    team: 'Supervisión Auditoría Fiscal',
-    modules: getDefaultModulesForRole('Supervisor'), // facialCheckIn: false por defecto (Exento)
-    biometrics: null,
+    accessRevoked: false,
+    created_by_ti_id: 'ti-root-01',
   },
   'rh-01': {
     id: 'rh-01',
-    name: 'Dirección Recursos Humanos (RH)',
+    name: 'RH Prueba',
     email: 'rh.prueba@russellbedford.mx',
     role: 'RH',
-    team: 'Capital Humano y Asistencia',
+    team: 'Equipo Prueba (Recursos Humanos)',
     modules: getDefaultModulesForRole('RH'),
     biometrics: null,
+    accessRevoked: false,
+    allowedSupervisorIds: ['admin-99'],
+    created_by_ti_id: 'ti-root-01',
   },
   'usr-ana': {
     id: 'usr-ana',
-    name: 'Colaborador Prueba',
+    name: 'Empleado Prueba',
     email: 'colaborador.prueba@russellbedford.mx',
     role: 'Empleado',
-    team: 'Auditoría Fiscal',
+    team: 'Equipo Prueba',
     modules: getDefaultModulesForRole('Empleado'),
     biometrics: null,
-  },
-  'usr-carlos': {
-    id: 'usr-carlos',
-    name: 'Carlos Ruiz',
-    email: 'carlos.ruiz@russellbedford.mx',
-    role: 'Empleado',
-    team: 'Auditoría Fiscal',
-    modules: getDefaultModulesForRole('Empleado'),
-    biometrics: null,
-  },
-  'usr-luis': {
-    id: 'usr-luis',
-    name: 'Luis Mendoza',
-    email: 'luis.mendoza@russellbedford.mx',
-    role: 'Empleado',
-    team: 'Consultoría e Impuestos',
-    modules: getDefaultModulesForRole('Empleado'),
-    biometrics: null,
-  },
-  'usr-sofia': {
-    id: 'usr-sofia',
-    name: 'Sofía Valdés',
-    email: 'sofia.valdes@russellbedford.mx',
-    role: 'Empleado',
-    team: 'Contabilidad Corporativa',
-    modules: {
-      // Ejemplo práctico inicial o configurable: empleada activa
-      checkIn: true,
-      facialCheckIn: true,
-      tasks: true,
-      reports: false,
-      clients: false,
-    },
-    biometrics: null,
-  },
-  'usr-miguel': {
-    id: 'usr-miguel',
-    name: 'Miguel Ángel Ramos',
-    email: 'miguel.ramos@russellbedford.mx',
-    role: 'Empleado',
-    team: 'Precios de Transferencia',
-    modules: getDefaultModulesForRole('Empleado'),
-    biometrics: null,
+    accessRevoked: false,
+    supervisor_id: 'admin-99',
   },
 };
 
@@ -354,9 +317,9 @@ const initialMockEmployees: MockEmployee[] = [
   {
     id: 'usr-ana',
     email: 'colaborador.prueba@russellbedford.mx',
-    name: 'Colaborador Prueba',
+    name: 'Empleado Prueba',
     role: 'Empleado',
-    team: 'Auditoría Fiscal',
+    team: 'Equipo Prueba',
     status: 'active',
     isProfileComplete: true,
     workedMinutesToday: 405,
@@ -364,34 +327,6 @@ const initialMockEmployees: MockEmployee[] = [
     supervisor_id: 'admin-99',
     modules: getDefaultModulesForRole('Empleado'),
     history: generateMockHistory(20),
-  },
-  {
-    id: 'usr-carlos',
-    email: 'carlos.ruiz@russellbedford.mx',
-    name: 'Carlos Ruiz',
-    role: 'Empleado',
-    team: 'Auditoría Fiscal',
-    status: 'active',
-    isProfileComplete: true,
-    workedMinutesToday: 330,
-    expectedEntryTime: '09:00',
-    supervisor_id: 'admin-99',
-    modules: getDefaultModulesForRole('Empleado'),
-    history: generateMockHistory(15),
-  },
-  {
-    id: 'usr-luis',
-    email: 'luis.mendoza@russellbedford.mx',
-    name: 'Luis Mendoza',
-    role: 'Empleado',
-    team: 'Consultoría e Impuestos',
-    status: 'active',
-    isProfileComplete: true,
-    workedMinutesToday: 450,
-    expectedEntryTime: '09:00',
-    supervisor_id: 'admin-99',
-    modules: getDefaultModulesForRole('Empleado'),
-    history: generateMockHistory(18),
   },
 ];
 
@@ -533,6 +468,10 @@ export const useCheckinStore = create<CheckinState>()(
           team: meta?.team || existing?.team,
           modules: sanitizedModules,
           biometrics: existing?.biometrics || null,
+          accessRevoked: existing?.accessRevoked ?? false,
+          allowedSupervisorIds: existing?.allowedSupervisorIds,
+          supervisor_id: existing?.supervisor_id,
+          created_by_ti_id: existing?.created_by_ti_id,
         };
 
         const nextDirectory = {
@@ -558,6 +497,113 @@ export const useCheckinStore = create<CheckinState>()(
         broadcastPermissionsUpdate({ userId: targetUserId, modules: sanitizedModules });
       },
 
+      toggleUserAccessRevoked: (targetUserId) => {
+        if (targetUserId === 'ti-root-01') {
+          get().addToast('No se puede revocar el acceso de la cuenta suprema de TI.', 'error');
+          return;
+        }
+        const { userPermissionsDirectory, mockEmployeesData } = get();
+        const existing = userPermissionsDirectory[targetUserId];
+        if (!existing) return;
+
+        const nextRevoked = !existing.accessRevoked;
+        const revokedModules: UserModules = {
+          checkIn: false,
+          facialCheckIn: false,
+          tasks: false,
+          reports: false,
+          clients: false,
+        };
+        const restoredModules: UserModules = getDefaultModulesForRole(existing.role);
+
+        const nextModules = nextRevoked ? revokedModules : restoredModules;
+
+        const nextDirectory = {
+          ...userPermissionsDirectory,
+          [targetUserId]: {
+            ...existing,
+            accessRevoked: nextRevoked,
+            modules: nextModules,
+          },
+        };
+
+        const nextMockEmployees = mockEmployeesData.map((emp) =>
+          emp.id === targetUserId
+            ? {
+                ...emp,
+                status: (nextRevoked ? 'inactive' : 'active') as 'active' | 'inactive',
+                modules: nextModules,
+              }
+            : emp
+        );
+
+        set({
+          userPermissionsDirectory: nextDirectory,
+          mockEmployeesData: nextMockEmployees,
+        });
+
+        broadcastPermissionsUpdate({
+          userId: targetUserId,
+          accessRevoked: nextRevoked,
+          modules: nextModules,
+        });
+      },
+
+      updateRHAllowedTeams: (rhUserId, supervisorIds) => {
+        const { userPermissionsDirectory } = get();
+        const existing = userPermissionsDirectory[rhUserId] || userPermissionsDirectory['rh-01'];
+        if (!existing) return;
+
+        const nextDirectory = {
+          ...userPermissionsDirectory,
+          [existing.id]: {
+            ...existing,
+            allowedSupervisorIds: supervisorIds,
+          },
+        };
+
+        set({ userPermissionsDirectory: nextDirectory });
+        broadcastPermissionsUpdate({ userId: existing.id, allowedSupervisorIds: supervisorIds });
+      },
+
+      reassignEmployeeSupervisor: (employeeId, newSupervisorId) => {
+        const { userPermissionsDirectory, mockEmployeesData } = get();
+        const existing = userPermissionsDirectory[employeeId];
+        const nextDirectory = existing
+          ? {
+              ...userPermissionsDirectory,
+              [employeeId]: {
+                ...existing,
+                supervisor_id: newSupervisorId,
+              },
+            }
+          : userPermissionsDirectory;
+
+        const nextMockEmployees = mockEmployeesData.map((emp) =>
+          emp.id === employeeId ? { ...emp, supervisor_id: newSupervisorId } : emp
+        );
+
+        set({
+          userPermissionsDirectory: nextDirectory,
+          mockEmployeesData: nextMockEmployees,
+        });
+
+        // Actualizar también en useRayonerStore
+        const rayonerState = useRayonerStore.getState();
+        const member = rayonerState.teamMembers.find((m) => m.id === employeeId);
+        if (member) {
+          rayonerState.registerCollaborator({
+            id: member.id,
+            name: member.name,
+            email: member.email,
+            team: member.team,
+            role: 'Empleado',
+            supervisorId: newSupervisorId,
+          });
+        }
+        broadcastPermissionsUpdate({ userId: employeeId, supervisor_id: newSupervisorId });
+      },
+
       login: (email, password) => {
         const { addToast, mockEmployeesData, userPermissionsDirectory } = get();
         const lowerEmail = email.trim().toLowerCase();
@@ -567,7 +613,7 @@ export const useCheckinStore = create<CheckinState>()(
           return false;
         }
 
-        // 1. NIVEL TI (Root / Administrador del Sistema)
+        // 1. NIVEL TI (Puesto Más Alto - TI Prueba)
         if (
           lowerEmail.includes('ti.') ||
           lowerEmail.startsWith('ti@') ||
@@ -580,13 +626,13 @@ export const useCheckinStore = create<CheckinState>()(
           set({
             user: {
               id: 'ti-root-01',
-              name: 'Administrador',
-              lastName: 'TI (Root)',
+              name: 'TI',
+              lastName: 'Prueba',
               email: 'ti.root@russellbedford.mx',
               role: 'TI',
               verified: true,
               isProfileComplete: true,
-              team: 'Infraestructura & Seguridad TI',
+              team: 'Equipo Prueba (TI Root)',
               expectedEntryTime: '09:00',
               status: 'active',
               modules: dir?.modules || getDefaultModulesForRole('TI'),
@@ -602,7 +648,7 @@ export const useCheckinStore = create<CheckinState>()(
           return true;
         }
 
-        // 2. NIVEL RH (Recursos Humanos - Perfil Restringido)
+        // 2. NIVEL RH (RH Prueba - Visualiza solo equipos asignados por TI)
         if (
           lowerEmail.includes('rh.') ||
           lowerEmail.startsWith('rh@') ||
@@ -611,18 +657,22 @@ export const useCheckinStore = create<CheckinState>()(
           lowerEmail === 'rh.prueba@russellbedford.mx'
         ) {
           const dir = userPermissionsDirectory['rh-01'];
+          if (dir?.accessRevoked) {
+            addToast('Acceso revocado por TI: Tus permisos de Recursos Humanos fueron suspendidos.', 'error');
+            return false;
+          }
           const userActive = get().userActiveCheckins?.['rh-01'] || null;
           const userHist = get().userHistories?.['rh-01'] || [];
           set({
             user: {
               id: 'rh-01',
-              name: 'Dirección',
-              lastName: 'Recursos Humanos (RH)',
+              name: 'RH',
+              lastName: 'Prueba',
               email: 'rh.prueba@russellbedford.mx',
               role: 'RH',
               verified: true,
               isProfileComplete: true,
-              team: 'Capital Humano y Asistencia',
+              team: 'Equipo Prueba (Recursos Humanos)',
               expectedEntryTime: '09:00',
               status: 'active',
               modules: dir?.modules || getDefaultModulesForRole('RH'),
@@ -638,30 +688,31 @@ export const useCheckinStore = create<CheckinState>()(
           return true;
         }
 
-        // 3. NIVEL SUPERVISOR (Líder de Equipo - Exento de biometría por defecto salvo flag de TI)
-        if (lowerEmail.includes('supervisor') || lowerEmail.includes('silva')) {
-          const isSilva = lowerEmail.includes('silva');
-          const supId = isSilva ? 'sup-1' : 'admin-99';
+        // 3. NIVEL SUPERVISOR / SOCIO (Supervisor Prueba - Gestionado por TI)
+        if (lowerEmail.includes('supervisor')) {
+          const supId = 'admin-99';
           const dir = userPermissionsDirectory[supId];
+          if (dir?.accessRevoked) {
+            addToast('Acceso revocado por TI: Tus permisos de Socio / Supervisor han sido revocados.', 'error');
+            return false;
+          }
           const userActive = get().userActiveCheckins?.[supId] || null;
           const userHist = get().userHistories?.[supId] || [];
           set({
             user: {
               id: supId,
-              name: isSilva ? 'Mtro. Roberto' : 'Supervisor',
-              lastName: isSilva ? 'Silva' : 'Prueba',
-              email: isSilva ? 'roberto.silva@russellbedford.mx' : 'supervisor.prueba@russellbedford.mx',
+              name: 'Supervisor',
+              lastName: 'Prueba',
+              email: 'supervisor.prueba@russellbedford.mx',
               role: 'Supervisor',
               verified: true,
               isProfileComplete: true,
-              team: 'Administración y Supervisión',
+              team: 'Equipo Prueba',
               expectedEntryTime: '09:00',
               status: 'active',
               created_by_ti_id: 'ti-root-01',
               createdByTiId: 'ti-root-01',
-              assigned_team_members: isSilva
-                ? ['usr-miguel']
-                : ['usr-ana', 'usr-carlos', 'usr-luis', 'usr-sofia'],
+              assigned_team_members: ['usr-ana'],
               modules: dir?.modules || getDefaultModulesForRole('Supervisor'),
               biometrics: dir?.biometrics || null,
               faceDescriptor: dir?.biometrics?.faceDescriptor,
@@ -675,27 +726,32 @@ export const useCheckinStore = create<CheckinState>()(
           return true;
         }
 
-        // 4. NIVEL EMPLEADO / OPERATIVO (Subordinado)
+        // 4. NIVEL EMPLEADO / OPERATIVO (Empleado Prueba - Subordinado a Supervisor Prueba)
         if (
           lowerEmail.includes('colaborador') ||
+          lowerEmail.includes('empleado') ||
           lowerEmail.includes('ana') ||
           lowerEmail === 'ana@russellbedford.mx' ||
           lowerEmail === 'colaborador.prueba@russellbedford.mx' ||
           lowerEmail === 'demo@russellbedford.mx'
         ) {
           const dir = userPermissionsDirectory['usr-ana'];
+          if (dir?.accessRevoked) {
+            addToast('Acceso revocado por TI: Tu cuenta de Empleado tiene los permisos revocados.', 'error');
+            return false;
+          }
           const anaActive = get().userActiveCheckins?.['usr-ana'] || null;
           const anaHist = get().userHistories?.['usr-ana'] || generateMockHistory(15);
           set({
             user: {
               id: 'usr-ana',
-              name: 'Colaborador',
+              name: 'Empleado',
               lastName: 'Prueba',
               email: 'colaborador.prueba@russellbedford.mx',
               role: 'Empleado',
               verified: true,
               isProfileComplete: true,
-              team: 'Auditoría Fiscal',
+              team: 'Equipo Prueba',
               expectedEntryTime: '09:00',
               status: 'active',
               supervisor_id: 'admin-99',
@@ -722,7 +778,7 @@ export const useCheckinStore = create<CheckinState>()(
             email: lowerEmail,
             name: lowerEmail.split('@')[0],
             role: 'Empleado',
-            team: 'Auditoría Fiscal',
+            team: 'Equipo Prueba',
             status: 'active',
             isProfileComplete: true,
             workedMinutesToday: 0,
@@ -735,6 +791,10 @@ export const useCheckinStore = create<CheckinState>()(
         }
 
         const dir = userPermissionsDirectory[existingEmp.id];
+        if (dir?.accessRevoked) {
+          addToast('Acceso revocado por Administración de TI.', 'error');
+          return false;
+        }
         const activeToday = existingEmp.history.find(
           (h) => h.date === getPastDateStr(0) && !h.checkOutTimeMs
         );
@@ -1237,7 +1297,7 @@ export const useCheckinStore = create<CheckinState>()(
       },
     }),
     {
-      name: 'checkin-rb-storage',
+      name: 'checkin-rb-storage-v2',
       partialize: (state) => {
         // Garantizar en persistencia que jamás se guarde ninguna imagen biométrica base64 heredada
         const cleanUser = state.user
@@ -1283,6 +1343,11 @@ if (typeof window !== 'undefined') {
     const state = useCheckinStore.getState();
     if (state.user && state.userPermissionsDirectory[state.user.id]) {
       const latestDir = state.userPermissionsDirectory[state.user.id];
+      if (latestDir.accessRevoked) {
+        state.addToast('Tus permisos han sido revocados en tiempo real por Administración de TI.', 'error');
+        state.logout();
+        return;
+      }
       useCheckinStore.setState({
         user: {
           ...state.user,
@@ -1305,7 +1370,7 @@ if (typeof window !== 'undefined') {
   });
 
   window.addEventListener('storage', (e) => {
-    if (e.key === 'checkin-rb-storage') {
+    if (e.key === 'checkin-rb-storage-v2') {
       syncFromStorage();
     }
   });

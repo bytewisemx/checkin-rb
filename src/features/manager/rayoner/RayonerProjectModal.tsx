@@ -56,8 +56,8 @@ export function RayonerProjectModal({
       setClientId(existingProject.clientId);
       setName(existingProject.name);
       setCode(existingProject.code);
-      setLeadUserId(existingProject.leadUserId || 'sup-1');
-      setLeadUserName(existingProject.leadUserName || 'Mtro. Roberto Silva (Socio)');
+      setLeadUserId(existingProject.leadUserId || 'admin-99');
+      setLeadUserName(existingProject.leadUserName || 'Supervisor Prueba (Socio / Líder)');
       setDeadline(existingProject.deadline || new Date().toISOString().split('T')[0]);
       setBudgetType(existingProject.budgetType || 'fixed_project');
       setTotalBudgetHours(existingProject.totalBudgetHours || 60);
@@ -70,8 +70,8 @@ export function RayonerProjectModal({
       setClientId(defaultClientId);
       setName('');
       setCode(`PRJ-${new Date().getFullYear()}-${Math.floor(100 + Math.random() * 900)}`);
-      setLeadUserId(teamMembers[0]?.id || 'sup-1');
-      setLeadUserName(teamMembers[0]?.name || 'Mtro. Roberto Silva (Socio)');
+      setLeadUserId(teamMembers[0]?.id || 'admin-99');
+      setLeadUserName(teamMembers[0]?.name || 'Supervisor Prueba (Socio / Líder)');
       
       // Fecha límite sugerida: fin de mes actual o 30 días
       const nextMonth = new Date();
@@ -121,7 +121,7 @@ export function RayonerProjectModal({
       clientId,
       name: name.trim(),
       code: code.trim() || `PRJ-${Date.now()}`,
-      leadUserId: leadUserId || 'sup-1',
+      leadUserId: leadUserId || 'admin-99',
       leadUserName: finalLeadName,
       deadline,
       budgetType,

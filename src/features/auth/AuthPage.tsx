@@ -25,6 +25,7 @@ export function AuthPage() {
   const { login, loginWithFirebaseUser, addToast } = useCheckinStore();
   const navigate = useNavigate();
 
+  
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -127,12 +128,24 @@ export function AuthPage() {
     });
   };
 
-  // Validación de Lista Blanca / Invitación Corporativa Previa
+  // Validación de Lista Blanca / Invitación Corporativa Previa y Estado de Revocación TI
   const verifyAccessAndGetInvitation = (emailAddress: string) => {
     const cleanEmail = emailAddress.trim().toLowerCase();
-    const { mockEmployeesData } = useCheckinStore.getState();
+    const { mockEmployeesData, userPermissionsDirectory } = useCheckinStore.getState();
     const { isEmailWhitelisted, findInvitationForEmail } = useInvitationStore.getState();
     const { getSupervisorCode } = useRayonerStore.getState();
+
+    // 0. Verificar si TI revocó los permisos de esta cuenta (incluso Socios / Supervisores)
+    const dirEntry = Object.values(userPermissionsDirectory).find(
+      (u) => u.email.toLowerCase() === cleanEmail
+    );
+    if (dirEntry?.accessRevoked) {
+      return {
+        allowed: false,
+        error: `Acceso revocado por TI: Los permisos de la cuenta "${cleanEmail}" (${dirEntry.name}) fueron revocados por el administrador de TI.`,
+        invitationData: undefined,
+      };
+    }
 
     // 1. Cuentas maestras de TI Root
     const isTiRoot = cleanEmail.includes('ti.root') || cleanEmail.startsWith('ti@') || cleanEmail.includes('root');
@@ -191,12 +204,12 @@ export function AuthPage() {
         if (success) {
           const lower = email.toLowerCase();
           const roleLabel = lower.includes('ti')
-            ? 'Administrador TI (Root)'
+            ? 'TI Prueba (Nivel Más Alto)'
             : lower.includes('rh')
-            ? 'Recursos Humanos (Perfil Restringido)'
+            ? 'RH Prueba'
             : lower.includes('supervisor')
-            ? 'Supervisor de Equipo'
-            : 'Empleado Operativo';
+            ? 'Supervisor Prueba'
+            : 'Empleado Prueba';
           addToast(`Bienvenido: ${roleLabel}`, 'success');
           navigate('/');
           return;
@@ -390,13 +403,13 @@ export function AuthPage() {
                   onClick={() => setShowDemoProfiles(!showDemoProfiles)}
                   className="inline-flex items-center space-x-1.5 text-[11px] font-semibold text-slate-400 hover:text-[#0D5C75] transition-colors cursor-pointer select-none py-1"
                 >
-                  <span>{showDemoProfiles ? '▾ Ocultar perfiles de prueba' : '▸ Perfiles de prueba rápida'}</span>
+                  <span>{showDemoProfiles ? '▾ Ocultar equipo de prueba' : '▸ Equipo de Prueba (Acceso directo)'}</span>
                 </button>
 
                 {showDemoProfiles && (
                   <div className="mt-2 space-y-1.5 animate-fade-in">
                     <span className="font-medium text-slate-400 text-[10px] block">
-                      Contraseña: <code className="font-mono text-slate-600 font-semibold">admin123</code>
+                      Equipo de Prueba • Contraseña: <code className="font-mono text-slate-600 font-semibold">admin123</code>
                     </span>
                     <div className="grid grid-cols-2 gap-1.5">
                       <button
@@ -406,9 +419,9 @@ export function AuthPage() {
                           setPassword('admin123');
                         }}
                         className="inline-flex items-center justify-center px-2 py-1.5 rounded-lg bg-[#001A29] hover:bg-[#002538] text-amber-300 text-[10px] font-bold border border-slate-700 transition-all cursor-pointer shadow-2xs active:scale-95"
-                        title="TI (Root): Audita todo el sistema"
+                        title="TI Prueba (Nivel más alto): Gestiona toda la estructura, revoca/asigna permisos incluso de Socios y asigna equipos a RH"
                       >
-                        <span>👑 TI (Root Admin)</span>
+                        <span>👑 TI Prueba</span>
                       </button>
                       <button
                         type="button"
@@ -417,9 +430,9 @@ export function AuthPage() {
                           setPassword('admin123');
                         }}
                         className="inline-flex items-center justify-center px-2 py-1.5 rounded-lg bg-cyan-50 hover:bg-cyan-100 text-[#0D5C75] text-[10px] font-bold border border-cyan-200 transition-all cursor-pointer shadow-2xs active:scale-95"
-                        title="Supervisor: Invita a su equipo y asigna tareas"
+                        title="Supervisor Prueba (Socio / Líder): Invita a su equipo y asigna tareas"
                       >
-                        <span>🛡️ Supervisor</span>
+                        <span>🛡️ Supervisor Prueba</span>
                       </button>
                       <button
                         type="button"
@@ -428,9 +441,9 @@ export function AuthPage() {
                           setPassword('admin123');
                         }}
                         className="inline-flex items-center justify-center px-2 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-800 text-[10px] font-bold border border-blue-200 transition-all cursor-pointer shadow-2xs active:scale-95"
-                        title="Empleado / Operativo: Visualiza sus tareas y registra asistencia"
+                        title="Empleado Prueba: Subordinado a Supervisor Prueba"
                       >
-                        <span>👤 Empleado</span>
+                        <span>👤 Empleado Prueba</span>
                       </button>
                       <button
                         type="button"
@@ -439,9 +452,9 @@ export function AuthPage() {
                           setPassword('admin123');
                         }}
                         className="inline-flex items-center justify-center px-2 py-1.5 rounded-lg bg-teal-50 hover:bg-teal-100 text-teal-800 text-[10px] font-bold border border-teal-200 transition-all cursor-pointer shadow-2xs active:scale-95"
-                        title="RH (Restringido): Métricas de personal y horas"
+                        title="RH Prueba: Visualiza checadas de los equipos asignados por TI"
                       >
-                        <span>📊 RH (Restringido)</span>
+                        <span>📊 RH Prueba</span>
                       </button>
                     </div>
                   </div>

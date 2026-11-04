@@ -15,9 +15,10 @@ import {
   Lock,
   Send,
   Sparkles,
-  Activity,
   Eye,
   Sliders,
+  Ban,
+  Unlock,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useCheckinStore } from '../../store/useCheckinStore';
@@ -29,6 +30,7 @@ import { UserPermissionsTable } from './UserPermissionsTable';
 import type { Invitation } from '../../types/invitation';
 
 const SUPERVISOR_TEAMS = [
+  'Equipo Prueba',
   'Dirección y Supervisión de Auditoría',
   'Auditoría Fiscal',
   'Consultoría e Impuestos',
@@ -37,6 +39,7 @@ const SUPERVISOR_TEAMS = [
 ];
 
 const SUPERVISOR_TITLES = [
+  'Socio / Supervisor Líder (Prueba)',
   'Supervisor Líder de Equipo',
   'Socio Director de Práctica',
   'Gerente de Auditoría',
@@ -49,7 +52,14 @@ export interface TIDashboardProps {
 
 export function TIDashboard({ initialTab = 'users_permissions' }: TIDashboardProps) {
   const navigate = useNavigate();
-  const { user, addToast } = useCheckinStore();
+  const {
+    user,
+    userPermissionsDirectory,
+    toggleUserAccessRevoked,
+    updateRHAllowedTeams,
+    reassignEmployeeSupervisor,
+    addToast,
+  } = useCheckinStore();
   const { teamMembers, tasks, clients, projects } = useRayonerStore();
   const {
     invitations,
@@ -538,27 +548,165 @@ export function TIDashboard({ initialTab = 'users_permissions' }: TIDashboardPro
         </div>
       )}
 
-      {/* PESTAÑA 2: AUDITORÍA DE CUENTAS DE TODOS LOS NIVELES */}
+      {/* PESTAÑA 2: AUDITORÍA Y GESTIÓN DE LA ESTRUCTURA JERÁRQUICA COMPLETA */}
       {activeTab === 'audit_accounts' && (
         <div className="space-y-6 animate-fade-in">
-          <div className="bg-[#131D31] rounded-md border border-[#233354] p-5 sm:p-6 shadow-xs space-y-4 text-[#F8FAFC]">
-            <div className="flex items-center justify-between border-b border-[#233354] pb-3">
+          <div className="bg-[#131D31] rounded-md border border-[#233354] p-5 sm:p-6 shadow-xs space-y-5 text-[#F8FAFC]">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-[#233354] pb-3 gap-2">
               <div className="flex items-center space-x-2.5">
                 <GitFork className="w-5 h-5 text-[#38BDF8]" />
                 <div>
                   <h2 className="text-sm font-heading font-bold text-[#F8FAFC]">
-                    Auditoría Jerárquica de Cuentas (TI → Supervisores → Empleados y RH)
+                    Estructura Organizacional Gestionada por TI (TI → RH y Equipos de Supervisores → Usuarios)
                   </h2>
                   <p className="text-xs text-[#94A3B8]">
-                    Verificación en tiempo real de <code>created_by_ti_id</code>, <code>supervisor_id</code> y <code>assigned_team_members</code>.
+                    TI es el puesto más alto: revoca o restaura permisos incluso de Socios/Supervisores, asigna qué equipos visualiza RH en checadas y supervisa cada equipo.
                   </p>
                 </div>
               </div>
             </div>
 
-            {/* Supervisores y sus Equipos Vinculados */}
+            {/* 1. NIVEL SUPREMO: TI PRUEBA */}
+            <div className="border border-[#1E40AF]/60 rounded-md p-4 bg-[#0F172A] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-center space-x-3">
+                <div className="w-9 h-9 rounded-md bg-[#1E40AF] text-amber-300 font-heading font-bold text-xs flex items-center justify-center border border-amber-400/30">
+                  TI
+                </div>
+                <div>
+                  <div className="flex items-center space-x-2">
+                    <span className="font-heading font-bold text-[#F8FAFC] text-sm">
+                      {userPermissionsDirectory['ti-root-01']?.name || 'TI Prueba'}
+                    </span>
+                    <span className="text-[10px] font-heading font-bold bg-[#1E40AF] text-amber-300 px-2 py-0.5 rounded-sm">
+                      PUESTO MÁS ALTO • ROOT
+                    </span>
+                  </div>
+                  <p className="text-xs text-[#94A3B8] mt-0.5">
+                    {userPermissionsDirectory['ti-root-01']?.email || 'ti.root@russellbedford.mx'} • Control total sobre Socios/Supervisores, RH y Empleados
+                  </p>
+                </div>
+              </div>
+              <span className="text-xs font-heading font-semibold text-amber-300 bg-[#1A2742] px-3 py-1 rounded-md border border-[#233354]">
+                Autoridad Global Activa
+              </span>
+            </div>
+
+            {/* 2. PERFIL DE RECURSOS HUMANOS (RH PRUEBA) Y ASIGNACIÓN DE EQUIPOS A VISUALIZAR */}
+            <div className="space-y-3">
+              {hierarchyAudit.rhUsers.map((rh) => {
+                const rhDir = userPermissionsDirectory[rh.id];
+                const isRhRevoked = Boolean(rhDir?.accessRevoked);
+                const allowedSups = rhDir?.allowedSupervisorIds ?? hierarchyAudit.supervisors.map((s) => s.id);
+
+                const toggleTeamForRH = (supId: string) => {
+                  const exists = allowedSups.includes(supId);
+                  const next = exists ? allowedSups.filter((id) => id !== supId) : [...allowedSups, supId];
+                  updateRHAllowedTeams(rh.id, next);
+                  const supName = hierarchyAudit.supervisors.find((s) => s.id === supId)?.name || supId;
+                  addToast(
+                    exists
+                      ? `TI retiró a ${rh.name} el acceso a las checadas del equipo de ${supName}.`
+                      : `TI asignó a ${rh.name} la visualización de checadas del equipo de ${supName}.`,
+                    exists ? 'info' : 'success'
+                  );
+                };
+
+                return (
+                  <div
+                    key={rh.id}
+                    className="border border-[#F59E0B]/40 rounded-md p-4 bg-[#1A2742] space-y-3"
+                  >
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div className="flex items-center space-x-3">
+                        <div className="w-8 h-8 rounded-md bg-[#F59E0B] text-black font-heading font-bold text-xs flex items-center justify-center">
+                          RH
+                        </div>
+                        <div>
+                          <div className="flex items-center space-x-2">
+                            <span className={`font-heading font-bold text-xs ${isRhRevoked ? 'line-through text-rose-400' : 'text-[#F8FAFC]'}`}>
+                              {rh.name} ({rh.email})
+                            </span>
+                            <span className="text-[10px] font-heading font-bold bg-[#131D31] text-[#F59E0B] px-2 py-0.5 rounded-sm border border-[#F59E0B]/30">
+                              Rol: RH (Checadas por Equipo)
+                            </span>
+                            {isRhRevoked && (
+                              <span className="text-[9px] font-heading font-bold uppercase bg-rose-950 text-rose-400 border border-rose-700 px-1.5 py-0.5 rounded-sm">
+                                ACCESO REVOCADO POR TI
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-xs text-[#94A3B8] mt-0.5">
+                            TI asigna a continuación cuáles equipos (Supervisores y sus usuarios) puede visualizar RH en el módulo de checadas:
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center space-x-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            toggleUserAccessRevoked(rh.id);
+                            addToast(
+                              isRhRevoked
+                                ? `Permisos restaurados por TI para ${rh.name}.`
+                                : `Permisos revocados por TI para ${rh.name}.`,
+                              isRhRevoked ? 'success' : 'error'
+                            );
+                          }}
+                          className={`px-3 py-1.5 rounded-md text-xs font-heading font-bold cursor-pointer flex items-center space-x-1.5 border transition-colors ${
+                            isRhRevoked
+                              ? 'bg-emerald-950/60 hover:bg-emerald-900/70 text-emerald-300 border-emerald-700/50'
+                              : 'bg-rose-950/60 hover:bg-rose-900/70 text-rose-300 border-rose-700/50'
+                          }`}
+                        >
+                          {isRhRevoked ? <Unlock className="w-3.5 h-3.5" /> : <Ban className="w-3.5 h-3.5" />}
+                          <span>{isRhRevoked ? 'Restaurar RH' : 'Revocar Permisos RH'}</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Selector de Equipos asignados a RH */}
+                    <div className="bg-[#131D31] p-3 rounded-md border border-[#233354] flex flex-wrap items-center gap-2.5">
+                      <span className="text-[11px] font-heading font-semibold text-[#94A3B8]">
+                        Equipos autorizados para checadas:
+                      </span>
+                      {hierarchyAudit.supervisors.map((sup) => {
+                        const checked = allowedSups.includes(sup.id);
+                        const teamCount = hierarchyAudit.employees.filter(
+                          (e) => e.supervisor_id === sup.id || e.supervisorId === sup.id
+                        ).length;
+                        return (
+                          <label
+                            key={sup.id}
+                            className={`flex items-center space-x-2 px-3 py-1 rounded-md border text-xs cursor-pointer transition-all select-none ${
+                              checked
+                                ? 'bg-[#1E40AF]/30 border-[#38BDF8] text-[#F8FAFC] font-semibold'
+                                : 'bg-[#0F172A] border-[#233354] text-[#64748B]'
+                            }`}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={() => toggleTeamForRH(sup.id)}
+                              className="w-3.5 h-3.5 accent-[#38BDF8] rounded cursor-pointer"
+                            />
+                            <span>
+                              Equipo de {sup.name} ({teamCount} {teamCount === 1 ? 'usuario' : 'usuarios'})
+                            </span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* 3. EQUIPOS DE SUPERVISORES / SOCIOS Y SUS USUARIOS SUBORDINADOS */}
             <div className="space-y-3">
               {hierarchyAudit.supervisors.map((sup) => {
+                const supDir = userPermissionsDirectory[sup.id];
+                const isSupRevoked = Boolean(supDir?.accessRevoked);
                 const subTeam = hierarchyAudit.employees.filter(
                   (e) => e.supervisor_id === sup.id || e.supervisorId === sup.id
                 );
@@ -574,14 +722,21 @@ export function TIDashboard({ initialTab = 'users_permissions' }: TIDashboardPro
                           SUP
                         </div>
                         <div>
-                          <div className="flex items-center space-x-2">
-                            <span className="font-heading font-bold text-[#F8FAFC] text-xs">{sup.name}</span>
-                            <span className="text-[10px] font-heading font-semibold bg-[#0F172A] text-[#38BDF8] px-2 py-0.5 rounded-sm border border-[#233354]">
-                              Rol: Supervisor
+                          <div className="flex items-center flex-wrap gap-2">
+                            <span className={`font-heading font-bold text-xs ${isSupRevoked ? 'line-through text-rose-400' : 'text-[#F8FAFC]'}`}>
+                              {sup.name}
                             </span>
+                            <span className="text-[10px] font-heading font-semibold bg-[#0F172A] text-[#38BDF8] px-2 py-0.5 rounded-sm border border-[#233354]">
+                              Socio / Supervisor • {sup.team}
+                            </span>
+                            {isSupRevoked && (
+                              <span className="text-[9px] font-heading font-bold uppercase bg-rose-950 text-rose-400 border border-rose-700 px-1.5 py-0.5 rounded-sm">
+                                PERMISOS REVOCADOS POR TI
+                              </span>
+                            )}
                           </div>
                           <p className="text-xs text-[#94A3B8]">
-                            {sup.email} • ID: <code>{sup.id}</code> • Alta por TI:{' '}
+                            {sup.email} • ID: <code>{sup.id}</code> • Gestionado por TI:{' '}
                             <code className="text-[#38BDF8] font-bold">
                               {sup.created_by_ti_id || 'ti-root-01'}
                             </code>
@@ -589,41 +744,112 @@ export function TIDashboard({ initialTab = 'users_permissions' }: TIDashboardPro
                         </div>
                       </div>
 
-                      <div className="text-xs font-medium text-[#94A3B8] bg-[#1A2742] px-3 py-1 rounded-md border border-[#233354]">
-                        subordinados: {subTeam.length} colaboradores
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-xs font-medium text-[#94A3B8] bg-[#1A2742] px-3 py-1 rounded-md border border-[#233354]">
+                          Subordinados en su equipo: {subTeam.length}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            toggleUserAccessRevoked(sup.id);
+                            addToast(
+                              isSupRevoked
+                                ? `Permisos de Socio / Supervisor restaurados por TI para ${sup.name}.`
+                                : `Permisos de Socio / Supervisor REVOCADOS por TI para ${sup.name}.`,
+                              isSupRevoked ? 'success' : 'error'
+                            );
+                          }}
+                          className={`px-3 py-1 rounded-md text-xs font-heading font-bold cursor-pointer flex items-center space-x-1 border transition-colors ${
+                            isSupRevoked
+                              ? 'bg-emerald-950/60 hover:bg-emerald-900/70 text-emerald-300 border-emerald-700/50'
+                              : 'bg-rose-950/60 hover:bg-rose-900/70 text-rose-300 border-rose-700/50'
+                          }`}
+                        >
+                          {isSupRevoked ? <Unlock className="w-3.5 h-3.5" /> : <Ban className="w-3.5 h-3.5" />}
+                          <span>{isSupRevoked ? 'Restaurar Socio/Supervisor' : 'Revocar Socio/Supervisor'}</span>
+                        </button>
                       </div>
                     </div>
 
                     {/* Empleados subordinados a este Supervisor */}
                     <div className="p-3 grid grid-cols-1 md:grid-cols-2 gap-2.5">
                       {subTeam.map((emp) => {
+                        const empDir = userPermissionsDirectory[emp.id];
+                        const isEmpRevoked = Boolean(empDir?.accessRevoked);
                         const empTasks = tasks.filter((t) => t.assigned_to === emp.id);
                         return (
                           <div
                             key={emp.id}
-                            className="bg-[#131D31] p-3 rounded-md border border-[#233354] flex items-center justify-between"
+                            className="bg-[#131D31] p-3 rounded-md border border-[#233354] flex items-center justify-between gap-2"
                           >
                             <div>
                               <div className="flex items-center space-x-2">
-                                <span className="font-semibold text-[#F8FAFC] text-xs">{emp.name}</span>
+                                <span className={`font-semibold text-xs ${isEmpRevoked ? 'line-through text-rose-400' : 'text-[#F8FAFC]'}`}>
+                                  {emp.name}
+                                </span>
                                 <span className="text-[10px] font-heading font-semibold bg-[#0F172A] text-[#38BDF8] px-1.5 py-0.2 rounded-sm border border-[#233354]">
                                   Empleado
                                 </span>
+                                {isEmpRevoked && (
+                                  <span className="text-[9px] font-heading font-bold uppercase bg-rose-950 text-rose-400 border border-rose-700 px-1.5 py-0.5 rounded-sm">
+                                    REVOCADO
+                                  </span>
+                                )}
                               </div>
                               <span className="text-[11px] text-[#94A3B8] block">{emp.email}</span>
-                              <span className="text-[10px] font-mono text-[#64748B] block mt-0.5">
-                                supervisor_id: <b>{emp.supervisor_id || sup.id}</b>
-                              </span>
+                              <div className="flex items-center space-x-2 mt-1">
+                                <span className="text-[10px] font-mono text-[#64748B]">
+                                  Equipo: <b>{sup.name}</b>
+                                </span>
+                                {hierarchyAudit.supervisors.length > 1 && (
+                                  <select
+                                    value={emp.supervisor_id || sup.id}
+                                    onChange={(e) => {
+                                      reassignEmployeeSupervisor(emp.id, e.target.value);
+                                      addToast(`Usuario ${emp.name} reasignado por TI.`, 'info');
+                                    }}
+                                    className="bg-[#0F172A] border border-[#233354] text-[10px] text-[#38BDF8] rounded px-1.5 py-0.5"
+                                    title="Cambiar de Supervisor / Equipo"
+                                  >
+                                    {hierarchyAudit.supervisors.map((s) => (
+                                      <option key={s.id} value={s.id}>
+                                        Mover a: {s.name}
+                                      </option>
+                                    ))}
+                                  </select>
+                                )}
+                              </div>
                             </div>
 
-                            <div className="text-right">
-                              <span className="text-xs font-heading font-bold text-[#38BDF8] block">
-                                {empTasks.length} tareas
-                              </span>
-                              <span className="text-[10px] text-[#64748B]">
-                                {Math.floor((emp.workedMinutesToday || 0) / 60)}h{' '}
-                                {(emp.workedMinutesToday || 0) % 60}m hoy
-                              </span>
+                            <div className="text-right flex flex-col items-end space-y-1.5">
+                              <div>
+                                <span className="text-xs font-heading font-bold text-[#38BDF8] block">
+                                  {empTasks.length} tareas
+                                </span>
+                                <span className="text-[10px] text-[#64748B]">
+                                  {Math.floor((emp.workedMinutesToday || 0) / 60)}h{' '}
+                                  {(emp.workedMinutesToday || 0) % 60}m hoy
+                                </span>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  toggleUserAccessRevoked(emp.id);
+                                  addToast(
+                                    isEmpRevoked
+                                      ? `Permisos restaurados por TI para ${emp.name}.`
+                                      : `Permisos revocados por TI para ${emp.name}.`,
+                                    isEmpRevoked ? 'success' : 'error'
+                                  );
+                                }}
+                                className={`px-2 py-0.5 rounded text-[10px] font-heading font-semibold cursor-pointer border ${
+                                  isEmpRevoked
+                                    ? 'bg-emerald-950/60 text-emerald-300 border-emerald-700/50'
+                                    : 'bg-rose-950/60 text-rose-300 border-rose-700/50'
+                                }`}
+                              >
+                                {isEmpRevoked ? 'Restaurar' : 'Revocar'}
+                              </button>
                             </div>
                           </div>
                         );
@@ -632,32 +858,6 @@ export function TIDashboard({ initialTab = 'users_permissions' }: TIDashboardPro
                   </div>
                 );
               })}
-
-              {/* Nivel Especial: Cuenta RH Restringida */}
-              <div className="border border-[#233354] rounded-md p-3.5 bg-[#1A2742] flex items-center justify-between">
-                <div className="flex items-center space-x-3">
-                  <div className="w-8 h-8 rounded-md bg-[#F59E0B] text-black font-heading font-bold text-xs flex items-center justify-center">
-                    RH
-                  </div>
-                  <div>
-                    <div className="flex items-center space-x-2">
-                      <span className="font-heading font-bold text-[#F8FAFC] text-xs">
-                        Dirección Recursos Humanos (rh.auditoria@russellbedford.mx)
-                      </span>
-                      <span className="text-[10px] font-heading font-bold bg-[#131D31] text-[#F59E0B] px-2 py-0.5 rounded-sm border border-[#F59E0B]/30">
-                        Rol: RH (Perfil Restringido)
-                      </span>
-                    </div>
-                    <p className="text-xs text-[#94A3B8] mt-0.5">
-                      Permisos de solo lectura sobre métricas operativas (<code>headcount</code> y <code>time_logs</code>). Bloqueado con HTTP 403 en <code>tasks</code> y <code>clients</code>.
-                    </p>
-                  </div>
-                </div>
-                <span className="text-xs font-heading font-semibold text-[#38BDF8] bg-[#0F172A] px-2.5 py-1 rounded-md border border-[#233354] flex items-center space-x-1">
-                  <Activity className="w-3.5 h-3.5 text-[#38BDF8]" />
-                  <span>Auditado</span>
-                </span>
-              </div>
             </div>
           </div>
         </div>

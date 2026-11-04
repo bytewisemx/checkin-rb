@@ -214,7 +214,7 @@ const initialTasks: TaskNode[] = [
     id: 'sub-plan-2',
     title: 'Muestreo de Actas y Contratos Corporativos',
     name: 'Muestreo de Actas y Contratos Corporativos',
-    assigned_to: 'usr-carlos',
+    assigned_to: 'usr-ana',
     created_by: 'admin-99',
     status: 'pending',
     created_at: '2026-10-17T11:00:00.000Z',
@@ -250,7 +250,7 @@ const initialTasks: TaskNode[] = [
     id: 'sub-sust-1',
     title: 'Cruce de CFDI de Ingresos vs. Depósitos Bancarios',
     name: 'Cruce de CFDI de Ingresos vs. Depósitos Bancarios',
-    assigned_to: 'usr-luis',
+    assigned_to: 'usr-ana',
     created_by: 'admin-99',
     status: 'review',
     created_at: '2026-10-18T12:00:00.000Z',
@@ -268,7 +268,7 @@ const initialTasks: TaskNode[] = [
     id: 'sub-sust-2',
     title: 'Circularización y confirmación de saldos con Proveedores',
     name: 'Circularización y confirmación de saldos con Proveedores',
-    assigned_to: 'usr-carlos',
+    assigned_to: 'usr-ana',
     created_by: 'admin-99',
     status: 'pending',
     created_at: '2026-10-19T09:30:00.000Z',
@@ -322,7 +322,7 @@ const initialTasks: TaskNode[] = [
     id: 'tsk-patr-2',
     title: 'Diseño del Protocolo Sucesorio',
     name: 'Diseño del Protocolo Sucesorio',
-    assigned_to: 'usr-luis',
+    assigned_to: 'usr-ana',
     created_by: 'admin-99',
     status: 'in_progress',
     created_at: '2026-10-12T09:00:00.000Z',
@@ -358,7 +358,7 @@ const initialTasks: TaskNode[] = [
     id: 'tsk-int-reu',
     title: 'Reunión Semanal de Supervisión y Asignaciones',
     name: 'Reunión Semanal de Supervisión y Asignaciones',
-    assigned_to: 'usr-carlos',
+    assigned_to: 'usr-ana',
     created_by: 'admin-99',
     status: 'in_progress',
     created_at: '2026-10-14T09:00:00.000Z',
@@ -415,15 +415,13 @@ const initialTasks: TaskNode[] = [
 ];
 
 const initialAssignments: TaskAssignment[] = [
-  { id: 'asg-1', taskId: 'tsk-plan', userId: 'usr-ana', userName: 'Colaborador Prueba', userRoleTitle: 'Auditor Senior', allocatedHours: 12, hourlyRateOverride: 1800, blockOnLimit: true },
-  { id: 'asg-2', taskId: 'tsk-plan', userId: 'usr-carlos', userName: 'Carlos Ruiz', userRoleTitle: 'Auditor Junior', allocatedHours: 8, hourlyRateOverride: 950, blockOnLimit: true },
-  { id: 'asg-3', taskId: 'tsk-sust', userId: 'usr-ana', userName: 'Colaborador Prueba', userRoleTitle: 'Auditor Senior', allocatedHours: 30, hourlyRateOverride: 1800, blockOnLimit: true },
-  { id: 'asg-4', taskId: 'tsk-sust', userId: 'usr-luis', userName: 'Luis Mendoza', userRoleTitle: 'Especialista Fiscal', allocatedHours: 40, hourlyRateOverride: 1600, blockOnLimit: true },
-  { id: 'asg-5', taskId: 'tsk-cierr', userId: 'usr-ana', userName: 'Colaborador Prueba', userRoleTitle: 'Auditor Senior', allocatedHours: 30, hourlyRateOverride: 1800, blockOnLimit: false },
-  { id: 'asg-6', taskId: 'tsk-patr-1', userId: 'usr-ana', userName: 'Colaborador Prueba', userRoleTitle: 'Auditor Senior', allocatedHours: 25, hourlyRateOverride: 1800, blockOnLimit: false },
-  { id: 'asg-7', taskId: 'tsk-patr-2', userId: 'usr-luis', userName: 'Luis Mendoza', userRoleTitle: 'Especialista Fiscal', allocatedHours: 20, hourlyRateOverride: 1600, blockOnLimit: false },
-  { id: 'asg-ext-1', taskId: 'tsk-extra-1', userId: 'usr-ana', userName: 'Colaborador Prueba', userRoleTitle: 'Auditor Senior', allocatedHours: 12, blockOnLimit: false },
-  { id: 'asg-ext-2', taskId: 'tsk-extra-2', userId: 'usr-ana', userName: 'Colaborador Prueba', userRoleTitle: 'Auditor Senior', allocatedHours: 8, blockOnLimit: false },
+  { id: 'asg-1', taskId: 'tsk-plan', userId: 'usr-ana', userName: 'Empleado Prueba', userRoleTitle: 'Auditor Senior (Prueba)', allocatedHours: 20, hourlyRateOverride: 1800, blockOnLimit: true },
+  { id: 'asg-3', taskId: 'tsk-sust', userId: 'usr-ana', userName: 'Empleado Prueba', userRoleTitle: 'Auditor Senior (Prueba)', allocatedHours: 70, hourlyRateOverride: 1800, blockOnLimit: true },
+  { id: 'asg-5', taskId: 'tsk-cierr', userId: 'usr-ana', userName: 'Empleado Prueba', userRoleTitle: 'Auditor Senior (Prueba)', allocatedHours: 30, hourlyRateOverride: 1800, blockOnLimit: false },
+  { id: 'asg-6', taskId: 'tsk-patr-1', userId: 'usr-ana', userName: 'Empleado Prueba', userRoleTitle: 'Auditor Senior (Prueba)', allocatedHours: 25, hourlyRateOverride: 1800, blockOnLimit: false },
+  { id: 'asg-7', taskId: 'tsk-patr-2', userId: 'usr-ana', userName: 'Empleado Prueba', userRoleTitle: 'Auditor Senior (Prueba)', allocatedHours: 20, hourlyRateOverride: 1800, blockOnLimit: false },
+  { id: 'asg-ext-1', taskId: 'tsk-extra-1', userId: 'usr-ana', userName: 'Empleado Prueba', userRoleTitle: 'Auditor Senior (Prueba)', allocatedHours: 12, blockOnLimit: false },
+  { id: 'asg-ext-2', taskId: 'tsk-extra-2', userId: 'usr-ana', userName: 'Empleado Prueba', userRoleTitle: 'Auditor Senior (Prueba)', allocatedHours: 8, blockOnLimit: false },
 ];
 
 const initialGeofences: Record<string, GeofenceConfig> = {
@@ -464,18 +462,17 @@ const initialTaskActualHours: Record<string, number> = {
 };
 
 const initialUserTaskActualHours: Record<string, number> = {
-  'tsk-plan_usr-ana': 12.0,
-  'tsk-plan_usr-carlos': 5.5,
-  'tsk-sust_usr-ana': 32.5,
-  'tsk-sust_usr-luis': 41.5,
+  'tsk-plan_usr-ana': 17.5,
+  'tsk-sust_usr-ana': 74.0,
   'tsk-cierr_usr-ana': 12.0,
   'tsk-patr-1_usr-ana': 18.0,
+  'tsk-patr-2_usr-ana': 6.0,
 };
 
 const initialActiveWorkers: ActiveWorker[] = [
   {
     userId: 'usr-ana',
-    userName: 'Colaborador Prueba',
+    userName: 'Empleado Prueba',
     taskId: 'sub-plan-1',
     taskName: 'Cotejo y conciliación de Balanza de Comprobación',
     projectName: 'Auditoría Fiscal Anual 2026',
@@ -483,27 +480,17 @@ const initialActiveWorkers: ActiveWorker[] = [
     startedAtMs: Date.now() - 102 * 60 * 1000,
     currentDurationStr: '01:42:15',
   },
-  {
-    userId: 'usr-luis',
-    userName: 'Luis Mendoza',
-    taskId: 'sub-sust-1',
-    taskName: 'Cruce de CFDI de Ingresos vs. Depósitos Bancarios',
-    projectName: 'Auditoría Fiscal Anual 2026',
-    clientName: 'Grupo Baluarte S.A. de C.V.',
-    startedAtMs: Date.now() - 48 * 60 * 1000,
-    currentDurationStr: '00:48:30',
-  },
 ];
 
-// Directorio Jerárquico Completo (TI -> Supervisores -> Empleados y RH)
+// Directorio Jerárquico del Equipo de Prueba (TI Prueba -> Supervisor Prueba -> Empleado Prueba y RH Prueba)
 const initialTeamMembers: TeamMember[] = [
   {
     id: 'usr-ana',
-    name: 'Colaborador Prueba',
+    name: 'Empleado Prueba',
     email: 'colaborador.prueba@russellbedford.mx',
     role: 'Empleado',
-    roleTitle: 'Auditor Senior',
-    team: 'Auditoría Fiscal',
+    roleTitle: 'Colaborador Operativo (Prueba)',
+    team: 'Equipo Prueba',
     status: 'active',
     workedMinutesToday: 405,
     entryTime: '09:02',
@@ -515,80 +502,12 @@ const initialTeamMembers: TeamMember[] = [
     supervisorId: 'admin-99',
   },
   {
-    id: 'usr-carlos',
-    name: 'Carlos Ruiz',
-    email: 'carlos.ruiz@russellbedford.mx',
-    role: 'Empleado',
-    roleTitle: 'Auditor Junior',
-    team: 'Auditoría Fiscal',
-    status: 'active',
-    workedMinutesToday: 330,
-    entryTime: '09:18',
-    checkOutTime: '17:50',
-    isLate: true,
-    minutesLate: 18,
-    allowedClientIds: ['cli-baluarte', 'cli-interno'],
-    supervisor_id: 'admin-99',
-    supervisorId: 'admin-99',
-  },
-  {
-    id: 'usr-luis',
-    name: 'Luis Mendoza',
-    email: 'luis.mendoza@russellbedford.mx',
-    role: 'Empleado',
-    roleTitle: 'Especialista Tributario',
-    team: 'Consultoría e Impuestos',
-    status: 'active',
-    workedMinutesToday: 450,
-    entryTime: '08:52',
-    checkOutTime: '18:10',
-    isLate: false,
-    minutesLate: 0,
-    allowedClientIds: ['cli-baluarte', 'cli-montes', 'cli-interno'],
-    supervisor_id: 'admin-99',
-    supervisorId: 'admin-99',
-  },
-  {
-    id: 'usr-sofia',
-    name: 'Sofía Valdés',
-    email: 'sofia.valdes@russellbedford.mx',
-    role: 'Empleado',
-    roleTitle: 'Practicante de Auditoría',
-    team: 'Auditoría Fiscal',
-    status: 'inactive',
-    workedMinutesToday: 240,
-    entryTime: '09:00',
-    checkOutTime: '14:00',
-    isLate: false,
-    minutesLate: 0,
-    allowedClientIds: ['cli-baluarte'],
-    supervisor_id: 'admin-99',
-    supervisorId: 'admin-99',
-  },
-  {
-    id: 'usr-miguel',
-    name: 'Miguel Ángel Ramos',
-    email: 'miguel.ramos@russellbedford.mx',
-    role: 'Empleado',
-    roleTitle: 'Contador de Impuestos',
-    team: 'Contabilidad Corporativa',
-    status: 'active',
-    workedMinutesToday: 390,
-    entryTime: '09:04',
-    checkOutTime: '18:00',
-    isLate: false,
-    minutesLate: 0,
-    allowedClientIds: ['cli-alsea', 'cli-interno'],
-    supervisor_id: 'sup-1',
-    supervisorId: 'sup-1',
-  },
-  {
     id: 'admin-99',
     name: 'Supervisor Prueba',
     email: 'supervisor.prueba@russellbedford.mx',
     role: 'Supervisor',
-    roleTitle: 'Supervisor Líder de Equipo',
-    team: 'Administración y Supervisión',
+    roleTitle: 'Socio / Supervisor Líder (Prueba)',
+    team: 'Equipo Prueba',
     status: 'active',
     workedMinutesToday: 460,
     entryTime: '08:45',
@@ -597,24 +516,23 @@ const initialTeamMembers: TeamMember[] = [
     minutesLate: 0,
     allowedClientIds: ['cli-baluarte', 'cli-alsea', 'cli-montes', 'cli-interno'],
     created_by_ti_id: 'ti-root-01',
-    assigned_team_members: ['usr-ana', 'usr-carlos', 'usr-luis', 'usr-sofia'],
+    assigned_team_members: ['usr-ana'],
   },
   {
-    id: 'sup-1',
-    name: 'Mtro. Roberto Silva',
-    email: 'roberto.silva@russellbedford.mx',
-    role: 'Supervisor',
-    roleTitle: 'Socio Director de Práctica',
-    team: 'Dirección General',
+    id: 'rh-01',
+    name: 'RH Prueba',
+    email: 'rh.prueba@russellbedford.mx',
+    role: 'RH',
+    roleTitle: 'Recursos Humanos (Prueba)',
+    team: 'Equipo Prueba',
     status: 'active',
-    workedMinutesToday: 480,
-    entryTime: '08:30',
+    workedMinutesToday: 420,
+    entryTime: '09:00',
     checkOutTime: '18:00',
     isLate: false,
     minutesLate: 0,
-    allowedClientIds: ['cli-baluarte', 'cli-alsea', 'cli-montes', 'cli-interno'],
+    allowedClientIds: [],
     created_by_ti_id: 'ti-root-01',
-    assigned_team_members: ['usr-miguel'],
   },
 ];
 
@@ -634,11 +552,9 @@ export const useRayonerStore = create<RayonerState>()(
       teamMembers: initialTeamMembers,
       supervisorInviteCodes: {
         'admin-99': 'SUP-RB-9901',
-        'sup-1': 'SUP-SILVA-101',
       },
       supervisorsMetadata: {
-        'admin-99': { name: 'Supervisor Prueba', title: 'Supervisor Líder de Equipo', created_by_ti_id: 'ti-root-01' },
-        'sup-1': { name: 'Mtro. Roberto Silva', title: 'Socio Director de Práctica', created_by_ti_id: 'ti-root-01' },
+        'admin-99': { name: 'Supervisor Prueba', title: 'Socio / Supervisor Líder (Prueba)', created_by_ti_id: 'ti-root-01' },
       },
       corporateMasterKeys: ['RB-SOCIO-2026', 'SUPERVISOR2026', 'RB2026', 'RB-MASTER-2026'],
 
@@ -1098,7 +1014,7 @@ export const useRayonerStore = create<RayonerState>()(
         const memberName =
           userName ||
           get().teamMembers.find((m) => m.id === userId)?.name ||
-          'Colaborador Prueba';
+          'Empleado Prueba';
         const nowIso = new Date().toISOString();
 
         set((state) => {
@@ -1313,7 +1229,6 @@ export const useRayonerStore = create<RayonerState>()(
       getSupervisorCode: (supervisorId) => {
         const codes = get().supervisorInviteCodes || {};
         if (codes[supervisorId]) return codes[supervisorId];
-        if (supervisorId.includes('silva') || supervisorId === 'sup-1') return 'SUP-SILVA-101';
         return 'SUP-RB-9901';
       },
 
@@ -1342,28 +1257,14 @@ export const useRayonerStore = create<RayonerState>()(
                 supervisorTitle: meta[supId].title,
               };
             }
-            if (supId === 'sup-1') {
-              return {
-                supervisorId: supId,
-                supervisorName: 'Mtro. Roberto Silva',
-                supervisorTitle: 'Socio Líder de Auditoría',
-              };
-            }
             return {
               supervisorId: supId,
               supervisorName: 'Supervisor Prueba',
-              supervisorTitle: 'Supervisor Líder de Equipo',
+              supervisorTitle: 'Socio / Supervisor Líder (Prueba)',
             };
           }
         }
 
-        if (normalized === 'SUP-SILVA-101' || normalized === 'SILVA101') {
-          return {
-            supervisorId: 'sup-1',
-            supervisorName: 'Mtro. Roberto Silva',
-            supervisorTitle: 'Socio Líder de Auditoría',
-          };
-        }
         if (
           normalized === 'SUP-RB-9901' ||
           normalized === 'RB-SUPERVISOR-2026' ||
@@ -1372,7 +1273,7 @@ export const useRayonerStore = create<RayonerState>()(
           return {
             supervisorId: 'admin-99',
             supervisorName: 'Supervisor Prueba',
-            supervisorTitle: 'Supervisor Líder de Equipo',
+            supervisorTitle: 'Socio / Supervisor Líder (Prueba)',
           };
         }
 
@@ -1495,7 +1396,7 @@ export const useRayonerStore = create<RayonerState>()(
       },
     }),
     {
-      name: 'rayoner-supervisor-storage',
+      name: 'rayoner-supervisor-storage-v2',
     }
   )
 );
@@ -1507,7 +1408,7 @@ if (typeof window !== 'undefined') {
   });
 
   window.addEventListener('storage', (e) => {
-    if (e.key === 'rayoner-supervisor-storage') {
+    if (e.key === 'rayoner-supervisor-storage-v2') {
       useRayonerStore.persist.rehydrate();
     }
   });
