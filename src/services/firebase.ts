@@ -155,6 +155,8 @@ export async function loginWithGoogle(): Promise<AuthResult> {
       msg = 'La ventana de inicio de sesión de Google fue cerrada.';
     } else if (error.code === 'auth/cancelled-popup-request') {
       msg = 'Solicitud de autenticación cancelada.';
+    } else if (error.code === 'auth/unauthorized-domain') {
+      msg = 'El dominio "bytewisemx.github.io" no está autorizado en Firebase. Añádelo en la consola de Firebase: Authentication > Configuración > Dominios autorizados.';
     } else if (error.message) {
       msg = error.message;
     }
