@@ -286,12 +286,94 @@ export async function updateUserBiometricsApi(
   }
 }
 
+export interface RHAttendanceLocation {
+  label: string;
+  latitude: number;
+  longitude: number;
+}
+
+export interface RHAttendanceCheckEvent {
+  timestamp: string;
+  facialMatch: boolean;
+  confidenceScore?: number;
+  location: RHAttendanceLocation;
+}
+
+export interface RHAttendanceRecord {
+  id: string;
+  userName: string;
+  userEmail: string;
+  teamName: string;
+  supervisorName: string;
+  supervisorId?: string;
+  checkIn: RHAttendanceCheckEvent;
+  checkOut: RHAttendanceCheckEvent | null;
+  totalHours: number;
+}
+
+/**
+ * Endpoint requerido: GET /api/rh/attendance
+ * Devuelve el arreglo consolidado de asistencias con fecha/hora de entrada,
+ * fecha/hora de salida, estatus del análisis facial y coordenadas/ubicación.
+ */
+export async function fetchRHAttendanceRecords(
+  actorUser?: { id?: string; role?: LegacyOrCurrentRole }
+): Promise<RHAttendanceRecord[]> {
+  const actorRole = normalizeRole(actorUser?.role || 'RH');
+  const url = `${getApiBasePrefix()}/api/rh/attendance`;
+
+  try {
+    const res = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-user-role': actorRole,
+        'x-user-id': actorUser?.id || 'rh-01',
+      },
+    });
+    if (!res.ok) return [];
+    const data = await res.json();
+    return Array.isArray(data) ? data : [];
+  } catch {
+    return [
+      {
+        id: 'att_98765',
+        userName: 'Empleado Prueba',
+        userEmail: 'colaborador.prueba@russellbedford.mx',
+        teamName: 'Equipo Prueba (Auditoría Fiscal)',
+        supervisorName: 'Supervisor Prueba',
+        supervisorId: 'admin-99',
+        checkIn: {
+          timestamp: '2026-10-29T08:55:12Z',
+          facialMatch: true,
+          confidenceScore: 0.96,
+          location: {
+            label: 'Oficina Central',
+            latitude: 21.8853,
+            longitude: -102.2915,
+          },
+        },
+        checkOut: {
+          timestamp: '2026-10-29T18:05:40Z',
+          facialMatch: true,
+          location: {
+            label: 'Oficina Central',
+            latitude: 21.8853,
+            longitude: -102.2915,
+          },
+        },
+        totalHours: 9.1,
+      },
+    ];
+  }
+}
+
 /**
  * Valida contra el endpoint real del servidor local (/api/tasks, /api/clients, /api/rh/work-summary)
  * incluyendo tanto el rol como las banderas granulares de `modules`.
  */
 export async function probeRBACEndpoint(
-  endpoint: '/api/tasks' | '/api/clients' | '/api/rh/work-summary' | '/api/rh/metrics/headcount' | '/api/rh/metrics/work-time',
+  endpoint: '/api/tasks' | '/api/clients' | '/api/rh/work-summary' | '/api/rh/metrics/headcount' | '/api/rh/metrics/work-time' | '/api/rh/attendance',
   role: LegacyOrCurrentRole,
   userId?: string,
   queryParams?: Record<string, string>,
@@ -325,6 +407,7 @@ export async function probeRBACEndpoint(
       '/api/rh/work-summary': ['TI', 'RH'],
       '/api/rh/metrics/headcount': ['TI', 'RH'],
       '/api/rh/metrics/work-time': ['TI', 'RH'],
+      '/api/rh/attendance': ['TI', 'RH'],
     };
     const moduleFlag =
       endpoint === '/api/tasks'

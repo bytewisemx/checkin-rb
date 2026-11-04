@@ -31,7 +31,7 @@ export function HelpDrawer() {
     <>
       {/* Backdrop con desenfoque suave */}
       <div 
-        className="fixed inset-0 bg-slate-900/50 dark:bg-black/60 backdrop-blur-xs z-50 animate-fade-in"
+        className="fixed inset-0 bg-slate-900/50 dark:bg-[#090E17]/75 backdrop-blur-xs z-50 animate-fade-in"
         onClick={closeHelpDrawer}
         aria-hidden="true"
       />
@@ -39,7 +39,7 @@ export function HelpDrawer() {
       {/* Drawer Lateral de Ayuda */}
       <div 
         id="helpDrawer" 
-        className="fixed inset-y-0 right-0 w-full sm:w-96 bg-white dark:bg-[#131D31] text-slate-800 dark:text-slate-100 p-6 shadow-2xl z-50 border-l border-slate-200 dark:border-slate-800 flex flex-col justify-between animate-slide-left overflow-hidden"
+        className="fixed inset-y-0 right-0 w-full sm:w-96 bg-white dark:bg-[#101726] text-slate-800 dark:text-slate-100 p-6 shadow-2xl shadow-black/60 z-50 border-l border-slate-200 dark:border-slate-800 flex flex-col justify-between animate-slide-left overflow-hidden"
       >
         <div className="flex flex-col h-full overflow-hidden">
           {/* Cabecera del Drawer */}

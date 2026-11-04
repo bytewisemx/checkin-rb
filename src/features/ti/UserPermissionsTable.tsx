@@ -1,18 +1,5 @@
-import { useState, useMemo, useEffect } from 'react';
-import {
-  Sliders,
-  CheckCircle2,
-  Search,
-  Save,
-  RotateCcw,
-  ScanFace,
-  ShieldCheck,
-  Lock,
-  Sparkles,
-  Ban,
-  Unlock,
-  Users,
-} from 'lucide-react';
+import { useState, useMemo, useEffect, Fragment } from 'react';
+import { Search } from 'lucide-react';
 import { useCheckinStore, type ManagedUserPermissionEntry } from '../../store/useCheckinStore';
 import { useRayonerStore } from '../../store/useRayonerStore';
 import {
@@ -22,633 +9,677 @@ import {
   type UserRole,
 } from '../../services/rbac';
 
+const MODULE_COLUMNS: Array<{
+  key: keyof UserModules;
+  label: string;
+  shortLabel: string;
+  hint: string;
+}> = [
+  {
+    key: 'checkIn',
+    label: 'Reloj Checador',
+    shortLabel: 'Reloj Checador',
+    hint: 'Habilita el reloj de entrada/salida (Check-In / Check-Out)',
+  },
+  {
+    key: 'tasks',
+    label: 'Tareas (Kanban)',
+    shortLabel: 'Tareas (Kanban)',
+    hint: 'Habilita el tablero Kanban y la ejecución de tareas asignadas',
+  },
+  {
+    key: 'clients',
+    label: 'Clientes / Empresas',
+    shortLabel: 'Clientes / Empresas',
+    hint: 'Permite visualizar empresas y proyectos en el árbol C/P/T',
+  },
+  {
+    key: 'reports',
+    label: 'Reportes / Auditoría',
+    shortLabel: 'Reportes / Auditoría',
+    hint: 'Acceso a métricas operativas y reportes de horas',
+  },
+  {
+    key: 'facialCheckIn',
+    label: 'Check-In Facial',
+    shortLabel: 'Check-In Facial',
+    hint: 'Fuerza la verificación biométrica facial (128D) incluso en Supervisores',
+  },
+];
+
 export function UserPermissionsTable() {
   const {
     userPermissionsDirectory,
+    mockEmployeesData,
     updateUserModules,
     toggleUserAccessRevoked,
     updateRHAllowedTeams,
+    reassignEmployeeSupervisor,
     addToast,
   } = useCheckinStore();
   const { teamMembers } = useRayonerStore();
 
-  const [searchTerm, setSearchTerm] = useState('');
+  const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState<'ALL' | UserRole>('ALL');
-  const [autoSaveReactive, setAutoSaveReactive] = useState(true);
-  const [savingUserId, setSavingUserId] = useState<string | null>(null);
-  const [isSavingAll, setIsSavingAll] = useState(false);
+  const [groupByHierarchy, setGroupByHierarchy] = useState<boolean>(true);
 
-  // Combinar directorio de permisos con cualquier miembro nuevo dado de alta en RayonerStore
   const mergedUsers = useMemo<ManagedUserPermissionEntry[]>(() => {
     const map = new Map<string, ManagedUserPermissionEntry>();
 
     Object.values(userPermissionsDirectory).forEach((entry) => {
-      map.set(entry.id, entry);
+      map.set(entry.id, {
+        ...entry,
+        role: normalizeRole(entry.role),
+        modules: { ...entry.modules },
+      });
     });
 
     teamMembers.forEach((tm) => {
-      if (!map.has(tm.id)) {
-        const normRole = normalizeRole(tm.role || 'Empleado');
+      const existing = map.get(tm.id);
+      const role = normalizeRole(tm.role);
+      if (existing) {
+        map.set(tm.id, {
+          ...existing,
+          name: tm.name || existing.name,
+          email: tm.email || existing.email,
+          role,
+          team: tm.team || existing.team,
+          supervisor_id: tm.supervisor_id || tm.supervisorId || existing.supervisor_id,
+        });
+      } else {
         map.set(tm.id, {
           id: tm.id,
           name: tm.name,
           email: tm.email,
-          role: normRole,
+          role,
           team: tm.team,
-          modules: getDefaultModulesForRole(normRole),
-          biometrics: null,
+          supervisor_id: tm.supervisor_id || tm.supervisorId,
+          modules: getDefaultModulesForRole(role),
+        });
+      }
+    });
+
+    mockEmployeesData.forEach((emp) => {
+      const existing = map.get(emp.id);
+      const role = normalizeRole(emp.role);
+      if (!existing) {
+        map.set(emp.id, {
+          id: emp.id,
+          name: emp.name,
+          email: emp.email,
+          role,
+          team: emp.team,
+          supervisor_id: emp.supervisor_id || 'admin-99',
+          modules: getDefaultModulesForRole(role),
         });
       }
     });
 
     return Array.from(map.values());
-  }, [userPermissionsDirectory, teamMembers]);
+  }, [userPermissionsDirectory, teamMembers, mockEmployeesData]);
 
-  // Borrador local para soportar tanto guardado reactivo como botón "Guardar Permisos"
-  const [draftModules, setDraftModules] = useState<Record<string, UserModules>>({});
-  const [dirtyIds, setDirtyIds] = useState<Record<string, boolean>>({});
+  const [drafts, setDrafts] = useState<Record<string, UserModules>>({});
+  const [savingUserId, setSavingUserId] = useState<string | null>(null);
 
   useEffect(() => {
-    const nextDrafts: Record<string, UserModules> = {};
+    const initial: Record<string, UserModules> = {};
     mergedUsers.forEach((u) => {
-      nextDrafts[u.id] = { ...u.modules };
+      initial[u.id] = { ...u.modules };
     });
-    setDraftModules(nextDrafts);
+    setDrafts(initial);
   }, [mergedUsers]);
 
   const filteredUsers = useMemo(() => {
     return mergedUsers.filter((u) => {
       if (roleFilter !== 'ALL' && u.role !== roleFilter) return false;
-      if (searchTerm.trim()) {
-        const q = searchTerm.toLowerCase();
+      if (search.trim()) {
+        const q = search.toLowerCase();
         return (
           u.name.toLowerCase().includes(q) ||
           u.email.toLowerCase().includes(q) ||
-          u.role.toLowerCase().includes(q) ||
-          (u.team && u.team.toLowerCase().includes(q))
+          u.id.toLowerCase().includes(q) ||
+          (u.team || '').toLowerCase().includes(q)
         );
       }
       return true;
     });
-  }, [mergedUsers, roleFilter, searchTerm]);
+  }, [mergedUsers, roleFilter, search]);
 
-  const dirtyCount = Object.keys(dirtyIds).length;
+  const hierarchyGroups = useMemo(() => {
+    const tiUsers = filteredUsers.filter((u) => u.role === 'TI');
+    const rhUsers = filteredUsers.filter((u) => u.role === 'RH');
+    const allSupervisors = mergedUsers.filter((u) => u.role === 'Supervisor');
+    const visibleSupervisors = filteredUsers.filter((u) => u.role === 'Supervisor');
+    const visibleEmployees = filteredUsers.filter((u) => u.role === 'Empleado');
 
-  const handleToggleModule = async (
-    targetUser: ManagedUserPermissionEntry,
-    moduleKey: keyof UserModules
-  ) => {
-    const currentMods = draftModules[targetUser.id] || targetUser.modules;
-    const nextMods: UserModules = {
-      ...currentMods,
-      [moduleKey]: !currentMods[moduleKey],
+    const teams = allSupervisors
+      .map((sup, index) => {
+        const teamEmployees = visibleEmployees.filter(
+          (emp) => (emp.supervisor_id || 'admin-99') === sup.id
+        );
+        const isSupVisible = visibleSupervisors.some((s) => s.id === sup.id);
+        return {
+          teamNumber: index + 1,
+          supervisor: sup,
+          employees: teamEmployees,
+          shouldRender: isSupVisible || teamEmployees.length > 0,
+        };
+      })
+      .filter((t) => t.shouldRender);
+
+    return {
+      tiUsers,
+      rhUsers,
+      allSupervisors,
+      teams,
     };
+  }, [filteredUsers, mergedUsers]);
 
-    setDraftModules((prev) => ({
-      ...prev,
-      [targetUser.id]: nextMods,
-    }));
-
-    if (autoSaveReactive) {
-      setSavingUserId(targetUser.id);
-      await updateUserModules(targetUser.id, nextMods, {
-        name: targetUser.name,
-        email: targetUser.email,
-        role: targetUser.role,
-        team: targetUser.team,
-      });
-      setSavingUserId(null);
-      setDirtyIds((prev) => {
-        const copy = { ...prev };
-        delete copy[targetUser.id];
-        return copy;
-      });
-      addToast(
-        `PUT /api/users/${targetUser.id}/modules → Permisos de ${targetUser.name} actualizados.`,
-        'success'
-      );
-    } else {
-      setDirtyIds((prev) => ({
-        ...prev,
-        [targetUser.id]: true,
-      }));
-    }
-  };
-
-  const handleSaveSingleUser = async (targetUser: ManagedUserPermissionEntry) => {
-    const mods = draftModules[targetUser.id] || targetUser.modules;
-    setSavingUserId(targetUser.id);
-    await updateUserModules(targetUser.id, mods, {
-      name: targetUser.name,
-      email: targetUser.email,
-      role: targetUser.role,
-      team: targetUser.team,
-    });
-    setSavingUserId(null);
-    setDirtyIds((prev) => {
-      const copy = { ...prev };
-      delete copy[targetUser.id];
-      return copy;
-    });
-    addToast(`Permisos guardados para ${targetUser.name} (PUT /api/users/${targetUser.id}/modules).`, 'success');
-  };
-
-  const handleSaveAllPermissions = async () => {
-    setIsSavingAll(true);
-    const targets = mergedUsers.filter((u) => dirtyIds[u.id] || draftModules[u.id]);
-    for (const u of targets) {
-      const mods = draftModules[u.id] || u.modules;
-      await updateUserModules(u.id, mods, {
-        name: u.name,
-        email: u.email,
-        role: u.role,
-        team: u.team,
-      });
-    }
-    setDirtyIds({});
-    setIsSavingAll(false);
-    addToast('Todos los cambios de permisos han sido guardados en el backend.', 'success');
-  };
-
-  const handleResetRoleDefaults = async (targetUser: ManagedUserPermissionEntry) => {
-    const defaults = getDefaultModulesForRole(targetUser.role);
-    setDraftModules((prev) => ({
-      ...prev,
-      [targetUser.id]: defaults,
-    }));
-
-    if (autoSaveReactive) {
-      await updateUserModules(targetUser.id, defaults, {
-        name: targetUser.name,
-        email: targetUser.email,
-        role: targetUser.role,
-        team: targetUser.team,
-      });
-      setDirtyIds((prev) => {
-        const copy = { ...prev };
-        delete copy[targetUser.id];
-        return copy;
-      });
-      addToast(`Permisos restaurados a valores por defecto para ${targetUser.name}.`, 'info');
-    } else {
-      setDirtyIds((prev) => ({
-        ...prev,
-        [targetUser.id]: true,
-      }));
-    }
-  };
-
-  const getRoleBadge = (role: UserRole) => {
-    switch (role) {
-      case 'TI':
-        return 'bg-[#1E40AF]/20 text-[#38BDF8] border-[#1E40AF]/50';
-      case 'Supervisor':
-        return 'bg-[#0F172A] text-[#38BDF8] border-[#233354]';
-      case 'RH':
-        return 'bg-[#1A2742] text-[#F59E0B] border-[#F59E0B]/40';
-      default:
-        return 'bg-[#1A2742] text-[#F8FAFC] border-[#233354]';
-    }
-  };
-
-  // Lista de todos los supervisores/socios (equipos) disponibles para asignar a RH
-  const supervisorTeams = useMemo(() => {
-    return mergedUsers.filter((u) => u.role === 'Supervisor');
-  }, [mergedUsers]);
-
-  const rhUsersList = useMemo(() => {
-    return mergedUsers.filter((u) => u.role === 'RH');
-  }, [mergedUsers]);
-
-  const handleToggleRHSupervisorTeam = (rhUser: ManagedUserPermissionEntry, supervisorId: string) => {
-    const currentAllowed = rhUser.allowedSupervisorIds || supervisorTeams.map((s) => s.id);
-    const exists = currentAllowed.includes(supervisorId);
-    const nextAllowed = exists
-      ? currentAllowed.filter((id) => id !== supervisorId)
-      : [...currentAllowed, supervisorId];
-
-    updateRHAllowedTeams(rhUser.id, nextAllowed);
-    const supName = supervisorTeams.find((s) => s.id === supervisorId)?.name || supervisorId;
-    addToast(
-      exists
-        ? `TI revocó a ${rhUser.name} la visualización de checadas del equipo de ${supName}.`
-        : `TI asignó a ${rhUser.name} la visualización de checadas del equipo de ${supName}.`,
-      exists ? 'info' : 'success'
+  const hasUnsavedChanges = (userId: string, original: UserModules): boolean => {
+    const draft = drafts[userId];
+    if (!draft) return false;
+    return (
+      draft.checkIn !== original.checkIn ||
+      draft.tasks !== original.tasks ||
+      draft.clients !== original.clients ||
+      draft.reports !== original.reports ||
+      draft.facialCheckIn !== original.facialCheckIn
     );
   };
 
-  const handleToggleRevokeUser = (targetUser: ManagedUserPermissionEntry) => {
-    if (targetUser.role === 'TI') {
-      addToast('El puesto de TI es el nivel más alto y no puede auto-revocarse.', 'error');
+  const handleToggleModule = (userEntry: ManagedUserPermissionEntry, key: keyof UserModules) => {
+    if (userEntry.role === 'TI') {
+      addToast('Las cuentas TI (Root) conservan todos los módulos activos por seguridad.', 'info');
       return;
     }
-    const willRevoke = !targetUser.accessRevoked;
-    toggleUserAccessRevoked(targetUser.id);
+
+    if (userEntry.role === 'RH' && (key === 'tasks' || key === 'clients')) {
+      addToast('Política RBAC 403: Recursos Humanos tiene bloqueado el acceso a Tareas y Clientes.', 'error');
+      return;
+    }
+
+    setDrafts((prev) => {
+      const current = prev[userEntry.id] || userEntry.modules;
+      return {
+        ...prev,
+        [userEntry.id]: {
+          ...current,
+          [key]: !current[key],
+        },
+      };
+    });
+  };
+
+  const handleApplyPreset = (
+    userEntry: ManagedUserPermissionEntry,
+    preset: 'entry_exit_only' | 'full_role'
+  ) => {
+    if (userEntry.role === 'TI') return;
+
+    const nextModules: UserModules =
+      preset === 'entry_exit_only'
+        ? {
+            checkIn: true,
+            tasks: false,
+            clients: false,
+            reports: false,
+            facialCheckIn: true,
+          }
+        : getDefaultModulesForRole(userEntry.role);
+
+    setDrafts((prev) => ({
+      ...prev,
+      [userEntry.id]: nextModules,
+    }));
+  };
+
+  const handleSaveUserPermissions = async (userEntry: ManagedUserPermissionEntry) => {
+    const nextModules = drafts[userEntry.id] || userEntry.modules;
+    setSavingUserId(userEntry.id);
+
+    await new Promise((resolve) => setTimeout(resolve, 150));
+
+    updateUserModules(userEntry.id, nextModules);
+    setSavingUserId(null);
+
     addToast(
-      willRevoke
-        ? `Permisos y acceso REVOCADOS por TI para ${targetUser.name} (${targetUser.role}).`
-        : `Permisos y acceso RESTAURADOS por TI para ${targetUser.name} (${targetUser.role}).`,
-      willRevoke ? 'error' : 'success'
+      `Permisos guardados para ${userEntry.name} (${userEntry.role}).`,
+      'success'
+    );
+  };
+
+  const handleRevokeEntireTeam = (
+    supervisor: ManagedUserPermissionEntry,
+    employees: ManagedUserPermissionEntry[],
+    shouldRevoke: boolean
+  ) => {
+    if (Boolean(supervisor.accessRevoked) !== shouldRevoke) {
+      toggleUserAccessRevoked(supervisor.id);
+    }
+    employees.forEach((emp) => {
+      if (Boolean(emp.accessRevoked) !== shouldRevoke) {
+        toggleUserAccessRevoked(emp.id);
+      }
+    });
+    addToast(
+      shouldRevoke
+        ? `TI revocó el acceso completo al Equipo de ${supervisor.name} (${employees.length + 1} cuentas).`
+        : `TI restauró el acceso completo al Equipo de ${supervisor.name} (${employees.length + 1} cuentas).`,
+      shouldRevoke ? 'error' : 'success'
+    );
+  };
+
+  const renderUserMatrixRow = (
+    u: ManagedUserPermissionEntry,
+    options?: {
+      isSubordinate?: boolean;
+      isLastSubordinate?: boolean;
+      teamNumber?: number;
+      supervisorName?: string;
+    }
+  ) => {
+    const draft = drafts[u.id] || u.modules;
+    const isTI = u.role === 'TI';
+    const isRH = u.role === 'RH';
+    const isRevoked = Boolean(u.accessRevoked);
+    const dirty = hasUnsavedChanges(u.id, u.modules);
+
+    const supIndex = hierarchyGroups.allSupervisors.findIndex(
+      (s) => s.id === (u.role === 'Supervisor' ? u.id : u.supervisor_id || 'admin-99')
+    );
+    const resolvedTeamNumber = options?.teamNumber ?? (supIndex >= 0 ? supIndex + 1 : 1);
+    const resolvedSupName =
+      options?.supervisorName ??
+      (supIndex >= 0 ? hierarchyGroups.allSupervisors[supIndex].name : 'Supervisor Prueba');
+
+    const allowedSupsForRH =
+      u.allowedSupervisorIds ?? hierarchyGroups.allSupervisors.map((s) => s.id);
+
+    const toggleTeamForRH = (supId: string, supName: string) => {
+      const exists = allowedSupsForRH.includes(supId);
+      const next = exists
+        ? allowedSupsForRH.filter((id) => id !== supId)
+        : [...allowedSupsForRH, supId];
+      updateRHAllowedTeams(u.id, next);
+      addToast(
+        exists
+          ? `TI retiró a ${u.name} la visualización de checadas del equipo de ${supName}.`
+          : `TI autorizó a ${u.name} visualizar las checadas del equipo de ${supName}.`,
+        exists ? 'info' : 'success'
+      );
+    };
+
+    return (
+      <tr
+        key={u.id}
+        className={`bg-white dark:bg-[#101726] hover:bg-slate-50 dark:hover:bg-[#172238] transition-colors ${
+          isRevoked ? 'opacity-65' : ''
+        }`}
+      >
+        {/* Columna 1: Usuario y Correo */}
+        <td className="py-4 px-4 align-top">
+          <div className={options?.isSubordinate ? 'pl-5 border-l-2 border-slate-300 dark:border-slate-700' : ''}>
+            <div className="flex items-center flex-wrap gap-2">
+              {options?.isSubordinate && (
+                <span className="font-mono text-xs text-slate-500 dark:text-slate-400">
+                  {options.isLastSubordinate ? '└─' : '├─'}
+                </span>
+              )}
+              <span
+                className={`font-semibold text-sm ${
+                  isRevoked
+                    ? 'line-through text-slate-500 dark:text-slate-400'
+                    : 'text-slate-900 dark:text-slate-200'
+                }`}
+              >
+                {u.name}
+              </span>
+              <span className="text-[11px] font-medium text-blue-700 dark:text-sky-400">
+                ({u.role})
+              </span>
+              {isRevoked && (
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400">
+                  [REVOCADO]
+                </span>
+              )}
+            </div>
+            <div className={`text-xs text-slate-600 dark:text-slate-400 mt-0.5 ${options?.isSubordinate ? 'pl-5' : ''}`}>
+              {u.email} • <span className="font-mono text-[11px]">ID: {u.id}</span>
+            </div>
+          </div>
+        </td>
+
+        {/* Columna 2: Jerarquía, Equipo y Relación de Reporte */}
+        <td className="py-4 px-4 align-top text-xs text-slate-600 dark:text-slate-400">
+          {u.role === 'TI' && (
+            <div>
+              <span className="font-semibold text-slate-900 dark:text-slate-200 block">
+                Nivel 1 • Puesto Más Alto (Root)
+              </span>
+              <span className="text-[11px] text-slate-600 dark:text-slate-400">
+                Autoridad global sobre toda la estructura
+              </span>
+            </div>
+          )}
+
+          {u.role === 'RH' && (
+            <div className="space-y-2">
+              <div>
+                <span className="font-semibold text-slate-900 dark:text-slate-200 block">
+                  Nivel 2 • Reporta a TI Root
+                </span>
+                <span className="text-[11px] text-slate-600 dark:text-slate-400">
+                  Equipos autorizados para ver checadas:
+                </span>
+              </div>
+              <div className="flex flex-wrap items-center gap-3 pt-0.5">
+                {hierarchyGroups.allSupervisors.map((sup, idx) => {
+                  const checked = allowedSupsForRH.includes(sup.id);
+                  return (
+                    <label
+                      key={sup.id}
+                      className="inline-flex items-center space-x-1.5 text-[11px] cursor-pointer select-none"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        disabled={isRevoked}
+                        onChange={() => toggleTeamForRH(sup.id, sup.name)}
+                        className="w-4 h-4 rounded-sm bg-white dark:bg-slate-900 border border-slate-400 dark:border-slate-600 text-blue-600 accent-blue-600 cursor-pointer"
+                      />
+                      <span className={checked ? 'font-semibold text-slate-900 dark:text-slate-200' : 'text-slate-600 dark:text-slate-400'}>
+                        Equipo #{idx + 1} ({sup.name})
+                      </span>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {u.role === 'Supervisor' && (
+            <div>
+              <span className="font-semibold text-slate-900 dark:text-slate-200 block">
+                Cabeza de Equipo #{resolvedTeamNumber} ({u.team || 'Equipo Prueba'})
+              </span>
+              <span className="text-[11px] text-slate-600 dark:text-slate-400">
+                Socio / Supervisor • Código: <code className="font-mono text-slate-700 dark:text-slate-200">SUP-RB-990{resolvedTeamNumber}</code>
+              </span>
+            </div>
+          )}
+
+          {u.role === 'Empleado' && (
+            <div className="space-y-1">
+              <span className="block text-slate-600 dark:text-slate-400">
+                Integrante de <strong className="text-slate-900 dark:text-slate-200">Equipo #{resolvedTeamNumber}</strong>
+              </span>
+              <span className="text-[11px] block text-slate-600 dark:text-slate-400">
+                Reporta a: <strong className="text-slate-900 dark:text-slate-200">{resolvedSupName}</strong>
+              </span>
+              {hierarchyGroups.allSupervisors.length > 1 && (
+                <select
+                  value={u.supervisor_id || 'admin-99'}
+                  onChange={(e) => {
+                    reassignEmployeeSupervisor(u.id, e.target.value);
+                    addToast(`TI reasignó a ${u.name} de equipo.`, 'info');
+                  }}
+                  className="bg-white dark:bg-[#0B111E] border border-slate-300 dark:border-slate-700 focus:border-sky-400 rounded px-2 py-0.5 text-[11px] text-slate-900 dark:text-slate-100 cursor-pointer"
+                >
+                  {hierarchyGroups.allSupervisors.map((s, sIdx) => (
+                    <option key={s.id} value={s.id} className="bg-white dark:bg-[#101726]">
+                      Mover a Equipo #{sIdx + 1}: {s.name}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
+          )}
+        </td>
+
+        {/* Columnas 3 a 7: Casillas de Verificación (Checkboxes) por Módulo */}
+        {MODULE_COLUMNS.map((col) => {
+          const checked = Boolean(draft[col.key]);
+          const lockedByPolicy =
+            isTI || (isRH && (col.key === 'tasks' || col.key === 'clients'));
+
+          return (
+            <td key={col.key} className="py-4 px-3 text-center align-middle">
+              <label className="inline-flex flex-col items-center justify-center cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={checked}
+                  disabled={lockedByPolicy || isRevoked}
+                  onChange={() => handleToggleModule(u, col.key)}
+                  title={col.hint}
+                  className="w-4 h-4 rounded-sm bg-white dark:bg-slate-900 border border-slate-400 dark:border-slate-600 text-blue-600 accent-blue-600 cursor-pointer disabled:opacity-35 disabled:cursor-not-allowed"
+                />
+                {isRH && (col.key === 'tasks' || col.key === 'clients') && (
+                  <span className="text-[9px] font-mono text-slate-500 dark:text-slate-400 mt-0.5">
+                    403
+                  </span>
+                )}
+              </label>
+            </td>
+          );
+        })}
+
+        {/* Columna 8: Revocación y Guardado */}
+        <td className="py-4 px-4 text-right align-middle">
+          {isTI ? (
+            <span className="text-[11px] font-heading font-semibold uppercase tracking-wider text-blue-700 dark:text-sky-400">
+              Root Activo
+            </span>
+          ) : (
+            <div className="flex flex-wrap items-center justify-end gap-2.5">
+              {!isRevoked && u.role === 'Empleado' && (
+                <button
+                  type="button"
+                  onClick={() => handleApplyPreset(u, 'entry_exit_only')}
+                  className="text-[11px] font-medium text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100 hover:underline cursor-pointer"
+                  title="Palomear únicamente Reloj Checador y Biometría"
+                >
+                  Solo Checador
+                </button>
+              )}
+
+              {dirty && (
+                <button
+                  type="button"
+                  disabled={savingUserId === u.id}
+                  onClick={() => handleSaveUserPermissions(u)}
+                  className="px-3 py-1 rounded bg-[#1D4ED8] hover:bg-[#1E40AF] text-slate-100 text-xs font-heading font-semibold cursor-pointer transition-colors"
+                >
+                  {savingUserId === u.id ? 'Guardando...' : 'Guardar'}
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={() => {
+                  toggleUserAccessRevoked(u.id);
+                  addToast(
+                    isRevoked
+                      ? `Permisos restaurados por TI para ${u.name}.`
+                      : `Permisos REVOCADOS por TI para ${u.name}.`,
+                    isRevoked ? 'success' : 'error'
+                  );
+                }}
+                className={`px-3 py-1 rounded text-xs font-heading font-semibold transition-colors cursor-pointer ${
+                  isRevoked
+                    ? 'bg-[#1D4ED8] hover:bg-[#1E40AF] text-slate-100'
+                    : 'bg-slate-100 dark:bg-[#1E2B45] border border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-200 hover:border-sky-400'
+                }`}
+              >
+                {isRevoked ? 'Restaurar' : 'Revocar'}
+              </button>
+            </div>
+          )}
+        </td>
+      </tr>
     );
   };
 
   return (
-    <div className="bg-[#131D31] rounded-md border border-[#233354] shadow-xs overflow-hidden animate-fade-in text-[#F8FAFC]">
-      {/* Cabecera de Gestión Granular de Módulos */}
-      <div className="p-5 sm:p-6 border-b border-[#233354] bg-[#0F172A] flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-        <div className="flex items-start space-x-3">
-          <div className="w-10 h-10 rounded-md bg-[#1A2742] text-[#38BDF8] border border-[#233354] flex items-center justify-center shrink-0">
-            <Sliders className="w-5 h-5 text-[#38BDF8]" />
-          </div>
-          <div>
-            <div className="flex items-center space-x-2">
-              <span className="text-[10px] font-mono font-bold uppercase bg-[#1E40AF] text-[#F8FAFC] px-2 py-0.5 rounded-sm">
-                /admin/users-permissions
-              </span>
-              <span className="text-[11px] font-mono text-[#94A3B8]">
-                PUT /api/users/:id/modules
-              </span>
-            </div>
-            <h2 className="text-base font-heading font-bold text-[#F8FAFC] mt-1">
-              Matriz de Permisos Granulares y Biometría por Usuario
-            </h2>
-            <p className="text-xs text-[#94A3B8] mt-0.5 max-w-2xl">
-              Habilita o deshabilita módulos específicos por usuario (ej. forzar verificación facial obligatoria a un Supervisor específico, o limitar a un Empleado únicamente a marcar entrada/salida desactivando Tareas).
-            </p>
-          </div>
-        </div>
-
-        {/* Controles de Guardado Reactivo y Botón Guardar Permisos */}
-        <div className="flex flex-wrap items-center gap-3 shrink-0">
-          <label className="flex items-center space-x-2 text-xs font-medium text-[#F8FAFC] bg-[#1A2742] px-3 py-2 rounded-md border border-[#233354] cursor-pointer select-none">
-            <input
-              type="checkbox"
-              checked={autoSaveReactive}
-              onChange={(e) => setAutoSaveReactive(e.target.checked)}
-              className="w-4 h-4 accent-[#1E40AF] rounded cursor-pointer"
-            />
-            <span>Guardado Reactivo Instantáneo</span>
-          </label>
-
-          <button
-            id="btn-save-modules"
-            type="button"
-            onClick={handleSaveAllPermissions}
-            disabled={isSavingAll}
-            className="px-4 py-2 bg-[#1E40AF] hover:bg-[#1D4ED8] text-white rounded-md text-xs font-heading font-semibold tracking-wide shadow-xs transition-colors cursor-pointer flex items-center space-x-1.5 disabled:opacity-50"
-          >
-            <Save className="w-4 h-4 text-white" />
-            <span>
-              {isSavingAll
-                ? 'Guardando...'
-                : dirtyCount > 0
-                ? `Guardar Permisos (${dirtyCount})`
-                : 'Guardar Permisos'}
-            </span>
-          </button>
-        </div>
-      </div>
-
-      {/* Panel de Asignación de Equipos para Recursos Humanos (RH) controlado por TI */}
-      {rhUsersList.length > 0 && (
-        <div className="p-4 sm:p-5 border-b border-[#233354] bg-[#0F172A]/80 space-y-3">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-            <div className="flex items-center space-x-2.5">
-              <div className="w-8 h-8 rounded-md bg-[#F59E0B]/15 border border-[#F59E0B]/40 text-[#F59E0B] flex items-center justify-center shrink-0">
-                <Users className="w-4 h-4" />
-              </div>
-              <div>
-                <h3 className="text-xs font-heading font-bold uppercase tracking-wider text-[#F8FAFC]">
-                  Asignación de Equipos de Checadas para Recursos Humanos (Control Exclusivo TI)
-                </h3>
-                <p className="text-[11px] text-[#94A3B8]">
-                  Selecciona cuáles equipos (Supervisores / Socios y sus subordinados) puede auditar cada perfil de RH en sus reportes de checadas.
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 gap-3">
-            {rhUsersList.map((rhUser) => {
-              const allowedIds = rhUser.allowedSupervisorIds ?? supervisorTeams.map((s) => s.id);
-              return (
-                <div
-                  key={rhUser.id}
-                  className="bg-[#131D31] border border-[#233354] rounded-md p-3.5 flex flex-col md:flex-row md:items-center justify-between gap-3"
-                >
-                  <div>
-                    <div className="flex items-center space-x-2">
-                      <span className="font-heading font-bold text-xs text-[#F8FAFC]">{rhUser.name}</span>
-                      <span className="text-[10px] font-mono text-[#F59E0B] bg-[#1A2742] px-2 py-0.5 rounded-sm border border-[#F59E0B]/30">
-                        {rhUser.email}
-                      </span>
-                    </div>
-                    <span className="text-[11px] text-[#94A3B8] block mt-0.5">
-                      Equipos autorizados para visualizar checadas: <b>{allowedIds.length}</b> de {supervisorTeams.length}
-                    </span>
-                  </div>
-
-                  <div className="flex flex-wrap items-center gap-2">
-                    {supervisorTeams.map((sup) => {
-                      const isChecked = allowedIds.includes(sup.id);
-                      const subCount = teamMembers.filter(
-                        (m) => (m.role === 'Empleado' || !m.role) && (m.supervisor_id === sup.id || m.supervisorId === sup.id)
-                      ).length;
-
-                      return (
-                        <label
-                          key={sup.id}
-                          className={`flex items-center space-x-2 px-3 py-1.5 rounded-md border text-xs cursor-pointer transition-all select-none ${
-                            isChecked
-                              ? 'bg-[#1E40AF]/25 border-[#38BDF8] text-[#F8FAFC] font-semibold'
-                              : 'bg-[#1A2742] border-[#233354] text-[#94A3B8] hover:text-[#F8FAFC]'
-                          }`}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={isChecked}
-                            onChange={() => handleToggleRHSupervisorTeam(rhUser, sup.id)}
-                            className="w-3.5 h-3.5 accent-[#38BDF8] rounded cursor-pointer"
-                          />
-                          <span>
-                            Equipo: {sup.name} ({subCount} {subCount === 1 ? 'usuario' : 'usuarios'})
-                          </span>
-                        </label>
-                      );
-                    })}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* Filtros y Buscador */}
-      <div className="p-4 border-b border-[#233354] bg-[#131D31] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+    <div className="space-y-6 animate-fade-in">
+      {/* Barra de Búsqueda y Filtros de la Matriz */}
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 border-b border-slate-200 dark:border-slate-800">
         <div className="relative flex-1 max-w-md">
-          <Search className="w-4 h-4 text-[#94A3B8] absolute left-3 top-1/2 -translate-y-1/2" />
+          <Search className="w-4 h-4 text-slate-500 dark:text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
           <input
             type="text"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="Buscar usuario por nombre, correo o rol..."
-            className="w-full pl-9 pr-3.5 py-2 bg-[#1A2742] border border-[#233354] rounded-md text-xs text-[#F8FAFC] placeholder:text-[#64748B] focus:border-[#38BDF8]"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Buscar usuario por nombre, correo, equipo o ID..."
+            className="w-full pl-9 pr-3.5 py-2 bg-white dark:bg-[#0B111E] border border-slate-300 dark:border-slate-700 focus:border-blue-600 dark:focus:border-sky-400 rounded-md text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-500"
           />
         </div>
 
-        <div className="flex items-center space-x-1.5 bg-[#1A2742] p-1 rounded-md border border-[#233354] text-xs font-heading font-medium">
-          {(['ALL', 'Supervisor', 'Empleado', 'RH', 'TI'] as const).map((r) => (
-            <button
-              key={r}
-              type="button"
-              onClick={() => setRoleFilter(r)}
-              className={`px-3 py-1 rounded-sm transition-colors cursor-pointer ${
-                roleFilter === r
-                  ? 'bg-[#1E40AF] text-[#F8FAFC] shadow-2xs font-semibold'
-                  : 'text-[#94A3B8] hover:text-[#F8FAFC]'
-              }`}
-            >
-              {r === 'ALL' ? 'Todos' : r}
-            </button>
-          ))}
+        <div className="flex flex-wrap items-center justify-between lg:justify-end gap-6">
+          {/* Filtro por Rol */}
+          <div className="flex items-center space-x-4 text-xs font-heading">
+            {(['ALL', 'TI', 'RH', 'Supervisor', 'Empleado'] as const).map((r) => (
+              <button
+                key={r}
+                type="button"
+                onClick={() => setRoleFilter(r)}
+                className={`pb-1 transition-colors cursor-pointer uppercase tracking-wider ${
+                  roleFilter === r
+                    ? 'font-bold text-slate-900 dark:text-slate-100 border-b-2 border-[#1D4ED8] dark:border-sky-400'
+                    : 'font-medium text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100'
+                }`}
+              >
+                {r === 'ALL' ? 'Todos' : r}
+              </button>
+            ))}
+          </div>
+
+          {/* Agrupar filas por Equipos y Jerarquía dentro de la Tabla Matricial */}
+          <label className="flex items-center space-x-2 text-xs text-slate-600 dark:text-slate-400 border-l border-slate-200 dark:border-slate-800 pl-6 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={groupByHierarchy}
+              onChange={(e) => setGroupByHierarchy(e.target.checked)}
+              className="w-4 h-4 rounded-sm bg-white dark:bg-slate-900 border border-slate-400 dark:border-slate-600 text-blue-600 accent-blue-600 cursor-pointer"
+            />
+            <span className="font-medium text-slate-900 dark:text-slate-200">
+              Separar por Niveles y Equipos
+            </span>
+          </label>
         </div>
       </div>
 
-      {/* Tabla de Asignación de Módulos por Checkboxes con líneas sutiles */}
-      <div className="overflow-x-auto">
-        <table className="w-full text-left text-xs text-[#F8FAFC]">
-          <thead className="bg-[#0B111E] text-[#94A3B8] text-[11px] font-heading font-bold uppercase tracking-wider border-b border-[#233354]">
-            <tr>
-              <th className="py-3.5 px-4">Nombre & Correo</th>
-              <th className="py-3.5 px-3">Rol Base</th>
-              <th className="py-3.5 px-3">Vector Facial</th>
-              <th className="py-3.5 px-3 text-center">Asistencia / Check-in</th>
-              <th className="py-3.5 px-3 text-center">Módulo de Tareas</th>
-              <th className="py-3.5 px-3 text-center bg-[#0F172A] border-x border-[#233354]">
-                Verificación Facial Obligatoria
-              </th>
-              <th className="py-3.5 px-3 text-center">Clientes / Empresas</th>
-              <th className="py-3.5 px-3 text-center">Reportes / Métricas</th>
-              <th className="py-3.5 px-4 text-right">Acciones</th>
+      {/* TABLA MATRICIAL DE PERMISOS (PANEL TI) CON ELEVACIÓN #101726 */}
+      <div className="overflow-x-auto bg-white dark:bg-[#101726] border border-slate-200 dark:border-slate-800 rounded-md">
+        <table className="w-full text-left text-xs border-collapse">
+          <thead className="bg-slate-100 dark:bg-[#0B111E] text-slate-600 dark:text-slate-400 border-b border-slate-200 dark:border-slate-800">
+            <tr className="text-[11px] font-heading font-semibold uppercase tracking-widest">
+              <th className="py-3.5 px-4 min-w-[230px] text-slate-600 dark:text-slate-400">Usuario / Cuenta</th>
+              <th className="py-3.5 px-4 min-w-[250px] text-slate-600 dark:text-slate-400">Jerarquía / Equipo</th>
+              {MODULE_COLUMNS.map((col) => (
+                <th
+                  key={col.key}
+                  className="py-3.5 px-3 text-center min-w-[115px] text-slate-600 dark:text-slate-400"
+                  title={col.hint}
+                >
+                  {col.shortLabel}
+                </th>
+              ))}
+              <th className="py-3.5 px-4 text-right min-w-[170px] text-slate-600 dark:text-slate-400">Acciones TI</th>
             </tr>
           </thead>
 
-          <tbody className="divide-y divide-[#233354]">
-            {filteredUsers.map((u) => {
-              const mods = draftModules[u.id] || u.modules;
-              const isRH = u.role === 'RH';
-              const isTI = u.role === 'TI';
-              const hasVector = Boolean(u.biometrics?.faceDescriptor?.length);
-              const isDirty = Boolean(dirtyIds[u.id]);
-
-              return (
-                <tr
-                  key={u.id}
-                  className={`user-row-checkboxes hover:bg-[#1A2742]/50 transition-colors ${
-                    isDirty ? 'bg-[#1E40AF]/10' : ''
-                  }`}
-                >
-                  {/* Nombre y Correo */}
-                  <td className="py-3.5 px-4">
-                    <div className="flex items-center space-x-2">
-                      <span className={`font-semibold ${u.accessRevoked ? 'line-through text-rose-400' : 'text-[#F8FAFC]'}`}>
-                        {u.name}
-                      </span>
-                      {u.accessRevoked && (
-                        <span className="text-[9px] font-heading font-bold uppercase bg-rose-950/80 text-rose-400 border border-rose-700/50 px-1.5 py-0.5 rounded-sm">
-                          REVOCADO POR TI
-                        </span>
-                      )}
-                    </div>
-                    <div className="text-[11px] text-[#94A3B8] font-mono">{u.email}</div>
-                  </td>
-
-                  {/* Rol */}
-                  <td className="py-3.5 px-3">
-                    <span
-                      className={`inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-heading font-bold border ${getRoleBadge(
-                        u.role
-                      )}`}
-                    >
-                      {u.role === 'Supervisor' ? 'Socio / Supervisor' : u.role}
-                    </span>
-                  </td>
-
-                  {/* Estado del Vector Facial */}
-                  <td className="py-3.5 px-3">
-                    {hasVector ? (
-                      <span className="inline-flex items-center space-x-1 text-[10px] font-semibold text-[#38BDF8] bg-[#0F172A] px-2 py-0.5 rounded-md border border-[#233354]">
-                        <ShieldCheck className="w-3 h-3 text-[#38BDF8]" />
-                        <span>128D Activo</span>
-                      </span>
-                    ) : mods.facialCheckIn ? (
-                      <span className="inline-flex items-center space-x-1 text-[10px] font-semibold text-[#F59E0B] bg-[#1A2742] px-2 py-0.5 rounded-md border border-[#F59E0B]/30">
-                        <ScanFace className="w-3 h-3 text-[#F59E0B]" />
-                        <span>Requerido</span>
-                      </span>
-                    ) : (
-                      <span className="text-[10px] font-medium text-[#64748B]">
-                        Exento
-                      </span>
-                    )}
-                  </td>
-
-                  {/* [x] Asistencia / Check-in */}
-                  <td className="py-3.5 px-3 text-center">
-                    <input
-                      type="checkbox"
-                      checked={Boolean(mods.checkIn)}
-                      disabled={isTI}
-                      onChange={() => handleToggleModule(u, 'checkIn')}
-                      className="w-4 h-4 accent-[#1E40AF] rounded cursor-pointer disabled:opacity-50"
-                      title="Habilitar / Deshabilitar Asistencia Check-in"
-                    />
-                  </td>
-
-                  {/* [ ] Módulo de Tareas */}
-                  <td className="py-3.5 px-3 text-center">
-                    {isRH ? (
-                      <span
-                        className="inline-flex items-center justify-center text-[#E11D48]"
-                        title="Bloqueado por RBAC para RH (403)"
+          <tbody className="divide-y divide-slate-200 dark:divide-slate-800/80">
+            {groupByHierarchy ? (
+              <>
+                {/* SECCIÓN 1: NIVEL MÁS ALTO — TI (ROOT) */}
+                {hierarchyGroups.tiUsers.length > 0 && (
+                  <>
+                    <tr className="bg-slate-50 dark:bg-[#0B111E]">
+                      <td
+                        colSpan={8}
+                        className="py-2.5 px-4 text-[11px] font-heading font-bold uppercase tracking-widest text-blue-700 dark:text-sky-400"
                       >
-                        <Lock className="w-3.5 h-3.5" />
-                      </span>
-                    ) : (
-                      <input
-                        type="checkbox"
-                        checked={Boolean(mods.tasks)}
-                        disabled={isTI}
-                        onChange={() => handleToggleModule(u, 'tasks')}
-                        className="w-4 h-4 accent-[#1E40AF] rounded cursor-pointer disabled:opacity-50"
-                        title="Habilitar / Deshabilitar Módulo de Tareas"
-                      />
-                    )}
-                  </td>
+                        NIVEL 1 — PUESTO MÁS ALTO • ADMINISTRACIÓN TI (ROOT)
+                      </td>
+                    </tr>
+                    {hierarchyGroups.tiUsers.map((tiUser) => renderUserMatrixRow(tiUser))}
+                  </>
+                )}
 
-                  {/* [x] Verificación Facial Obligatoria */}
-                  <td className="py-3.5 px-3 text-center bg-[#0F172A] border-x border-[#233354]">
-                    <div className="flex flex-col items-center justify-center">
-                      <input
-                        type="checkbox"
-                        checked={Boolean(mods.facialCheckIn)}
-                        onChange={() => handleToggleModule(u, 'facialCheckIn')}
-                        className="w-4 h-4 accent-[#1E40AF] rounded cursor-pointer"
-                        title={
-                          u.role === 'Supervisor'
-                            ? 'Supervisor exento por defecto. Activa para forzar biometría a este supervisor.'
-                            : 'Requerir verificación facial con vector 128D'
-                        }
-                      />
-                      {u.role === 'Supervisor' && mods.facialCheckIn && (
-                        <span className="text-[9px] font-bold text-[#38BDF8] mt-0.5">
-                          Forzado por TI
-                        </span>
-                      )}
-                    </div>
-                  </td>
-
-                  {/* [ ] Clientes / Empresas */}
-                  <td className="py-3.5 px-3 text-center">
-                    {isRH ? (
-                      <span
-                        className="inline-flex items-center justify-center text-[#E11D48]"
-                        title="Bloqueado por RBAC para RH (403)"
+                {/* SECCIÓN 2: RECURSOS HUMANOS (RH) */}
+                {hierarchyGroups.rhUsers.length > 0 && (
+                  <>
+                    <tr className="bg-slate-50 dark:bg-[#0B111E]">
+                      <td
+                        colSpan={8}
+                        className="py-2.5 px-4 text-[11px] font-heading font-bold uppercase tracking-widest text-slate-700 dark:text-slate-400"
                       >
-                        <Lock className="w-3.5 h-3.5" />
-                      </span>
-                    ) : (
-                      <input
-                        type="checkbox"
-                        checked={Boolean(mods.clients)}
-                        disabled={isTI}
-                        onChange={() => handleToggleModule(u, 'clients')}
-                        className="w-4 h-4 accent-[#1E40AF] rounded cursor-pointer disabled:opacity-50"
-                        title="Habilitar / Deshabilitar Clientes y Empresas"
-                      />
-                    )}
-                  </td>
+                        NIVEL 2 — RECURSOS HUMANOS (VISUALIZACIÓN DE CHECADAS POR EQUIPO)
+                      </td>
+                    </tr>
+                    {hierarchyGroups.rhUsers.map((rhUser) => renderUserMatrixRow(rhUser))}
+                  </>
+                )}
 
-                  {/* [ ] Reportes / Métricas */}
-                  <td className="py-3.5 px-3 text-center">
-                    <input
-                      type="checkbox"
-                      checked={Boolean(mods.reports)}
-                      disabled={isTI}
-                      onChange={() => handleToggleModule(u, 'reports')}
-                      className="w-4 h-4 accent-[#1E40AF] rounded cursor-pointer disabled:opacity-50"
-                      title="Habilitar / Deshabilitar Acceso a Métricas de Tiempo"
-                    />
-                  </td>
+                {/* SECCIÓN 3: EQUIPOS OPERATIVOS */}
+                {hierarchyGroups.teams.map(({ teamNumber, supervisor, employees }) => {
+                  const isSupRevoked = Boolean(supervisor.accessRevoked);
+                  const allTeamRevoked =
+                    isSupRevoked && employees.every((emp) => Boolean(emp.accessRevoked));
 
-                  {/* Acciones por fila */}
-                  <td className="py-3.5 px-4 text-right">
-                    <div className="flex items-center justify-end space-x-1.5">
-                      {!autoSaveReactive && isDirty && (
-                        <button
-                          type="button"
-                          onClick={() => handleSaveSingleUser(u)}
-                          disabled={savingUserId === u.id}
-                          className="px-2.5 py-1 bg-[#1E40AF] hover:bg-[#1D4ED8] text-white rounded-md text-[10px] font-heading font-semibold cursor-pointer flex items-center space-x-1"
-                        >
-                          <CheckCircle2 className="w-3 h-3 text-[#38BDF8]" />
-                          <span>Guardar</span>
-                        </button>
+                  return (
+                    <Fragment key={supervisor.id}>
+                      <tr className="bg-slate-50 dark:bg-[#0B111E]">
+                        <td colSpan={7} className="py-2.5 px-4">
+                          <div className="flex flex-wrap items-center gap-3">
+                            <span className="text-[11px] font-heading font-bold uppercase tracking-widest text-blue-700 dark:text-sky-400">
+                              NIVEL 3 — EQUIPO #{teamNumber} • {(supervisor.team || 'EQUIPO PRUEBA').toUpperCase()}
+                            </span>
+                            <span className="text-[11px] text-slate-600 dark:text-slate-400">
+                              Código: <code className="font-mono text-slate-800 dark:text-slate-200">SUP-RB-990{teamNumber}</code> • Líder: <strong className="text-slate-900 dark:text-slate-200">{supervisor.name}</strong> ({employees.length} {employees.length === 1 ? 'subordinado' : 'subordinados'})
+                            </span>
+                          </div>
+                        </td>
+                        <td className="py-2.5 px-4 text-right">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              handleRevokeEntireTeam(supervisor, employees, !allTeamRevoked)
+                            }
+                            className="text-[11px] font-heading font-semibold text-blue-700 dark:text-sky-400 hover:underline cursor-pointer"
+                          >
+                            {allTeamRevoked
+                              ? `Restaurar Equipo #${teamNumber}`
+                              : `Revocar Equipo #${teamNumber}`}
+                          </button>
+                        </td>
+                      </tr>
+
+                      {/* Fila del Socio / Supervisor (Cabeza del Equipo) */}
+                      {renderUserMatrixRow(supervisor, {
+                        isSubordinate: false,
+                        teamNumber,
+                        supervisorName: supervisor.name,
+                      })}
+
+                      {/* Filas indentadas de los Empleados Subordinados a este Equipo */}
+                      {employees.map((emp, empIdx) =>
+                        renderUserMatrixRow(emp, {
+                          isSubordinate: true,
+                          isLastSubordinate: empIdx === employees.length - 1,
+                          teamNumber,
+                          supervisorName: supervisor.name,
+                        })
                       )}
-                      <button
-                        type="button"
-                        onClick={() => handleResetRoleDefaults(u)}
-                        title="Restaurar permisos predeterminados del rol"
-                        className="p-1.5 text-[#94A3B8] hover:text-[#F8FAFC] hover:bg-[#1A2742] rounded-md transition-colors cursor-pointer border border-transparent hover:border-[#233354]"
-                      >
-                        <RotateCcw className="w-3.5 h-3.5" />
-                      </button>
-                      {!isTI && (
-                        <button
-                          type="button"
-                          onClick={() => handleToggleRevokeUser(u)}
-                          title={
-                            u.accessRevoked
-                              ? 'Restaurar acceso y permisos de esta cuenta'
-                              : 'Revocar todos los permisos y acceso (incluye Socios / Supervisores)'
-                          }
-                          className={`px-2.5 py-1 rounded-md text-[10px] font-heading font-bold transition-colors cursor-pointer flex items-center space-x-1 border ${
-                            u.accessRevoked
-                              ? 'bg-emerald-950/50 hover:bg-emerald-900/60 text-emerald-300 border-emerald-700/50'
-                              : 'bg-rose-950/50 hover:bg-rose-900/60 text-rose-300 border-rose-700/50'
-                          }`}
-                        >
-                          {u.accessRevoked ? (
-                            <>
-                              <Unlock className="w-3 h-3" />
-                              <span>Restaurar</span>
-                            </>
-                          ) : (
-                            <>
-                              <Ban className="w-3 h-3" />
-                              <span>Revocar</span>
-                            </>
-                          )}
-                        </button>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              );
-            })}
+                    </Fragment>
+                  );
+                })}
+              </>
+            ) : (
+              filteredUsers.map((u) => renderUserMatrixRow(u))
+            )}
           </tbody>
         </table>
-      </div>
-
-      {/* Nota informativa inferior */}
-      <div className="p-4 bg-[#0F172A] border-t border-[#233354] flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-[#94A3B8]">
-        <div className="flex items-center space-x-2">
-          <Sparkles className="w-3.5 h-3.5 text-[#38BDF8] shrink-0" />
-          <span>
-            <strong className="text-[#F8FAFC]">Control de Acceso Reactivo:</strong> Desactivar un módulo restringe inmediatamente su acceso en la barra lateral y bloquea el endpoint backend con <code>403 Forbidden</code>.
-          </span>
-        </div>
       </div>
     </div>
   );

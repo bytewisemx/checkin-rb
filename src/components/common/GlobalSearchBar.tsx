@@ -657,7 +657,7 @@ export function GlobalSearchBar({
               }
             }}
             placeholder="Buscar proyectos, clientes, tareas o fecha de asistencia..."
-            className="w-full bg-slate-50 dark:bg-[#1A2742] text-slate-900 dark:text-[#F8FAFC] placeholder:text-slate-400 dark:placeholder:text-[#64748B] text-xs rounded-md py-2 pl-9 pr-20 border border-slate-300 dark:border-[#233354] focus:border-blue-600 dark:focus:border-[#38BDF8] focus:bg-white dark:focus:bg-[#131D31] focus:outline-none transition-all shadow-inner"
+            className="w-full bg-slate-50 dark:bg-[#0B111E] text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-[#64748B] text-xs rounded-md py-2 pl-9 pr-20 border border-slate-300 dark:border-slate-700 focus:border-blue-600 dark:focus:border-sky-400 focus:bg-white dark:focus:bg-[#0B111E] focus:outline-none transition-all"
             aria-label="Buscar accesos directos, proyectos, clientes o fecha"
           />
 
@@ -670,13 +670,13 @@ export function GlobalSearchBar({
                   setIsOpen(false);
                   inputRef.current?.focus();
                 }}
-                className="p-1 text-slate-400 hover:text-slate-700 dark:text-[#94A3B8] dark:hover:text-white transition-colors cursor-pointer rounded-sm"
+                className="p-1 text-slate-400 hover:text-slate-700 dark:text-slate-400 dark:hover:text-white transition-colors cursor-pointer rounded-sm"
                 title="Limpiar búsqueda"
               >
                 <X className="w-3.5 h-3.5" />
               </button>
             ) : (
-              <kbd className="hidden sm:inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] font-mono text-slate-500 dark:text-[#94A3B8] bg-slate-100 dark:bg-[#0F172A] border border-slate-200 dark:border-[#233354] rounded">
+              <kbd className="hidden sm:inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] font-mono text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-[#1E2B45] border border-slate-200 dark:border-slate-700 rounded">
                 <span className="text-[11px]">⌘</span>K
               </kbd>
             )}
@@ -685,7 +685,7 @@ export function GlobalSearchBar({
 
         {/* Dropdown Flotante de Resultados: ESTRICTAMENTE visible solo con texto tecleado y coincidencias autorizadas */}
         {shouldShowDropdown && (
-          <div className="absolute top-full left-0 right-0 mt-1.5 bg-white dark:bg-[#131D31] text-slate-800 dark:text-[#F8FAFC] border border-slate-200 dark:border-[#233354] rounded-lg shadow-2xl z-50 overflow-hidden animate-fade-in flex flex-col max-h-[75vh]">
+          <div className="absolute top-full left-0 right-0 mt-1.5 bg-white dark:bg-[#101726] text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-800 rounded-lg shadow-2xl shadow-black/60 z-50 overflow-hidden animate-fade-in flex flex-col max-h-[75vh]">
             {/* Pestañas de Filtro Superior - Solo las categorías permitidas con coincidencias */}
             <div className="flex items-center space-x-1 p-2 border-b border-slate-200 dark:border-[#233354] bg-slate-50 dark:bg-[#0F172A]/90 overflow-x-auto text-[11px] font-heading font-semibold scrollbar-thin">
               <button

@@ -1,25 +1,4 @@
 import { useState, useMemo } from 'react';
-import {
-  Shield,
-  UserPlus,
-  Users,
-  Mail,
-  Copy,
-  Check,
-  RefreshCw,
-  XCircle,
-  Trash2,
-  GitFork,
-  CheckCircle2,
-  Clock,
-  Lock,
-  Send,
-  Sparkles,
-  Eye,
-  Sliders,
-  Ban,
-  Unlock,
-} from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useCheckinStore } from '../../store/useCheckinStore';
 import { useRayonerStore } from '../../store/useRayonerStore';
@@ -79,12 +58,10 @@ export function TIDashboard({ initialTab = 'users_permissions' }: TIDashboardPro
   const [recentGenerated, setRecentGenerated] = useState<Invitation[] | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
-  // Filtrar solo invitaciones emitidas por TI dirigidas al rol Supervisor
   const tiSupervisorInvitations = useMemo(() => {
     return invitations.filter((inv) => inv.issuerRole === 'TI' && inv.targetRole === 'Supervisor');
   }, [invitations]);
 
-  // Auditoría jerárquica en tiempo real
   const hierarchyAudit = useMemo(() => {
     const supervisors = teamMembers.filter((m) => m.role === 'Supervisor');
     const employees = teamMembers.filter((m) => m.role === 'Empleado' || !m.role);
@@ -152,48 +129,42 @@ export function TIDashboard({ initialTab = 'users_permissions' }: TIDashboardPro
   };
 
   return (
-    <div className="w-full max-w-7xl mx-auto p-4 lg:p-8 space-y-6 animate-fade-in bg-[#0B111E] text-[#F8FAFC]">
-      {/* Cabecera TI Root */}
-      <div className="bg-[#131D31] text-[#F8FAFC] rounded-md p-6 border border-[#233354] shadow-xs">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div className="flex items-start space-x-4">
-            <div className="w-10 h-10 rounded-md bg-[#1A2742] border border-[#233354] flex items-center justify-center text-[#38BDF8] shrink-0">
-              <Shield className="w-5 h-5 text-[#38BDF8]" />
+    <div className="w-full max-w-7xl mx-auto px-4 lg:px-8 py-8 space-y-10 animate-fade-in bg-[#F8FAFC] dark:bg-[#090E17] text-slate-900 dark:text-slate-200">
+      {/* Cabecera Editorial Abierta de TI Root */}
+      <header className="space-y-6 border-b border-slate-200 dark:border-slate-800 pb-6">
+        <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-6">
+          <div className="space-y-1.5">
+            <div className="flex items-center space-x-3 text-xs font-heading font-semibold uppercase tracking-widest text-[#475569] dark:text-[#94A3B8]">
+              <span className="text-[#1E40AF] dark:text-[#38BDF8]">NIVEL 1 • TI ROOT</span>
+              <span>/</span>
+              <span>ID: {user?.id || 'ti-root-01'}</span>
             </div>
-            <div>
-              <div className="flex items-center space-x-2">
-                <span className="text-[10px] font-heading font-bold uppercase tracking-wider bg-[#1E40AF] text-white px-2 py-0.5 rounded-sm">
-                  NIVEL MÁS ALTO • TI (ROOT)
-                </span>
-                <span className="text-xs text-[#94A3B8]">
-                  ID: {user?.id || 'ti-root-01'}
-                </span>
-              </div>
-              <h1 className="text-xl sm:text-2xl font-heading font-bold tracking-tight mt-1 text-[#F8FAFC]">
-                Consola Central de TI & Auditoría Global RBAC
-              </h1>
-              <p className="text-xs text-[#94A3B8] mt-0.5 max-w-2xl">
-                Genera invitaciones para Supervisores (vinculados con <code>created_by_ti_id</code>) y audita las cuentas de todos los niveles del sistema.
-              </p>
-            </div>
+            <h1 className="text-2xl sm:text-3xl font-heading font-bold tracking-tight text-[#0F172A] dark:text-[#F8FAFC]">
+              Consola Central de TI y Control Jerárquico
+            </h1>
+            <p className="text-sm text-[#475569] dark:text-[#94A3B8] max-w-2xl">
+              Administración de permisos granulares, revocación de cuentas de Socios/Supervisores, RH y Empleados, y asignación de equipos visibles en checadas.
+            </p>
           </div>
 
-          {/* Navegación TI */}
-          <div className="flex flex-wrap bg-[#1A2742] p-1 rounded-md border border-[#233354] gap-1">
+          {/* Navegación Editorial Plana (Sin Iconos Decorativos ni Cajas) */}
+          <nav className="flex flex-wrap items-center gap-6 border-b border-slate-200 dark:border-slate-800 lg:border-b-0 pb-2 lg:pb-0">
             <button
               id="nav-user-permissions"
               onClick={() => {
                 setActiveTab('users_permissions');
                 navigate('/admin/users-permissions');
               }}
-              className={`flex items-center px-3 py-1.5 rounded-sm text-xs font-heading font-semibold transition-colors cursor-pointer ${
+              className={`pb-2 text-xs font-heading font-semibold uppercase tracking-wider transition-colors relative cursor-pointer ${
                 activeTab === 'users_permissions'
-                  ? 'bg-[#1E40AF] text-white shadow-xs'
-                  : 'text-[#94A3B8] hover:text-[#F8FAFC]'
-                }`}
+                  ? 'text-[#0F172A] dark:text-[#F8FAFC]'
+                  : 'text-[#475569] hover:text-[#0F172A] dark:text-[#94A3B8] dark:hover:text-[#F8FAFC]'
+              }`}
             >
-              <Sliders className="w-3.5 h-3.5 mr-1.5 text-current" />
-              Permisos por Usuario
+              Permisos y Equipos
+              {activeTab === 'users_permissions' && (
+                <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#1E40AF] dark:bg-[#38BDF8]" />
+              )}
             </button>
 
             <button
@@ -201,127 +172,128 @@ export function TIDashboard({ initialTab = 'users_permissions' }: TIDashboardPro
                 setActiveTab('invitations');
                 navigate('/');
               }}
-              className={`flex items-center px-3 py-1.5 rounded-sm text-xs font-heading font-semibold transition-colors cursor-pointer ${
+              className={`pb-2 text-xs font-heading font-semibold uppercase tracking-wider transition-colors relative cursor-pointer ${
                 activeTab === 'invitations'
-                  ? 'bg-[#1E40AF] text-white shadow-xs'
-                  : 'text-[#94A3B8] hover:text-[#F8FAFC]'
-                }`}
+                  ? 'text-[#0F172A] dark:text-[#F8FAFC]'
+                  : 'text-[#475569] hover:text-[#0F172A] dark:text-[#94A3B8] dark:hover:text-[#F8FAFC]'
+              }`}
             >
-              <UserPlus className="w-3.5 h-3.5 mr-1.5 text-current" />
               Invitar Supervisores
+              {activeTab === 'invitations' && (
+                <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#1E40AF] dark:bg-[#38BDF8]" />
+              )}
             </button>
 
             <button
               onClick={() => setActiveTab('audit_accounts')}
-              className={`flex items-center px-3 py-1.5 rounded-sm text-xs font-heading font-semibold transition-colors cursor-pointer ${
+              className={`pb-2 text-xs font-heading font-semibold uppercase tracking-wider transition-colors relative cursor-pointer ${
                 activeTab === 'audit_accounts'
-                  ? 'bg-[#1E40AF] text-white shadow-xs'
-                  : 'text-[#94A3B8] hover:text-[#F8FAFC]'
-                }`}
+                  ? 'text-[#0F172A] dark:text-[#F8FAFC]'
+                  : 'text-[#475569] hover:text-[#0F172A] dark:text-[#94A3B8] dark:hover:text-[#F8FAFC]'
+              }`}
             >
-              <Users className="w-3.5 h-3.5 mr-1.5 text-current" />
               Auditar Jerarquía
+              {activeTab === 'audit_accounts' && (
+                <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#1E40AF] dark:bg-[#38BDF8]" />
+              )}
             </button>
 
             <button
               onClick={() => setActiveTab('rbac_matrix')}
-              className={`flex items-center px-3 py-1.5 rounded-sm text-xs font-heading font-semibold transition-colors cursor-pointer ${
+              className={`pb-2 text-xs font-heading font-semibold uppercase tracking-wider transition-colors relative cursor-pointer ${
                 activeTab === 'rbac_matrix'
-                  ? 'bg-[#1E40AF] text-white shadow-xs'
-                  : 'text-[#94A3B8] hover:text-[#F8FAFC]'
-                }`}
+                  ? 'text-[#0F172A] dark:text-[#F8FAFC]'
+                  : 'text-[#475569] hover:text-[#0F172A] dark:text-[#94A3B8] dark:hover:text-[#F8FAFC]'
+              }`}
             >
-              <Lock className="w-3.5 h-3.5 mr-1.5 text-current" />
               Matriz RBAC
+              {activeTab === 'rbac_matrix' && (
+                <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#1E40AF] dark:bg-[#38BDF8]" />
+              )}
             </button>
 
             <button
               onClick={() => setActiveTab('supervisor_view')}
-              className={`flex items-center px-3 py-1.5 rounded-sm text-xs font-heading font-semibold transition-colors cursor-pointer ${
+              className={`pb-2 text-xs font-heading font-semibold uppercase tracking-wider transition-colors relative cursor-pointer ${
                 activeTab === 'supervisor_view'
-                  ? 'bg-[#1E40AF] text-white shadow-xs'
-                  : 'text-[#94A3B8] hover:text-[#F8FAFC]'
-                }`}
+                  ? 'text-[#0F172A] dark:text-[#F8FAFC]'
+                  : 'text-[#475569] hover:text-[#0F172A] dark:text-[#94A3B8] dark:hover:text-[#F8FAFC]'
+              }`}
             >
-              <Eye className="w-3.5 h-3.5 mr-1.5 text-current" />
               Proyectos y Tareas
+              {activeTab === 'supervisor_view' && (
+                <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#1E40AF] dark:bg-[#38BDF8]" />
+              )}
             </button>
-          </div>
+          </nav>
         </div>
 
-        {/* KPIs Globales de Auditoría TI */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-5 pt-4 border-t border-[#233354]">
-          <div className="bg-[#1A2742] rounded-md p-3 border border-[#233354]">
-            <span className="text-[10px] text-[#94A3B8] uppercase font-heading font-semibold tracking-wider">
+        {/* Métricas Editoriales sin Recuadros */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-8 pt-4 border-t border-slate-200 dark:border-slate-800">
+          <div>
+            <span className="text-[11px] text-[#475569] dark:text-[#94A3B8] uppercase font-heading font-semibold tracking-wider block">
               Supervisores Activos
             </span>
-            <div className="text-2xl font-heading font-bold text-[#F8FAFC] metric-value mt-0.5">
+            <div className="text-3xl font-heading font-bold text-[#0F172A] dark:text-[#F8FAFC] metric-value mt-1">
               {hierarchyAudit.supervisors.length}
             </div>
-            <span className="text-[10px] text-[#64748B]">Dados de alta por TI</span>
+            <span className="text-xs text-[#475569] dark:text-[#94A3B8]">Dados de alta por TI</span>
           </div>
 
-          <div className="bg-[#1A2742] rounded-md p-3 border border-[#233354]">
-            <span className="text-[10px] text-[#38BDF8] uppercase font-heading font-semibold tracking-wider">
+          <div>
+            <span className="text-[11px] text-[#475569] dark:text-[#94A3B8] uppercase font-heading font-semibold tracking-wider block">
               Empleados Operativos
             </span>
-            <div className="text-2xl font-heading font-bold text-[#38BDF8] metric-value mt-0.5">
+            <div className="text-3xl font-heading font-bold text-[#0F172A] dark:text-[#F8FAFC] metric-value mt-1">
               {hierarchyAudit.employees.length}
             </div>
-            <span className="text-[10px] text-[#64748B]">Vinculados con supervisor_id</span>
+            <span className="text-xs text-[#475569] dark:text-[#94A3B8]">Vinculados por equipo</span>
           </div>
 
-          <div className="bg-[#1A2742] rounded-md p-3 border border-[#233354]">
-            <span className="text-[10px] text-[#94A3B8] uppercase font-heading font-semibold tracking-wider">
+          <div>
+            <span className="text-[11px] text-[#475569] dark:text-[#94A3B8] uppercase font-heading font-semibold tracking-wider block">
               Tareas Sincronizadas
             </span>
-            <div className="text-2xl font-heading font-bold text-[#F8FAFC] metric-value mt-0.5">
+            <div className="text-3xl font-heading font-bold text-[#0F172A] dark:text-[#F8FAFC] metric-value mt-1">
               {hierarchyAudit.completedTasks} / {hierarchyAudit.totalTasks}
             </div>
-            <span className="text-[10px] text-[#64748B]">Completadas / Totales</span>
+            <span className="text-xs text-[#475569] dark:text-[#94A3B8]">Completadas / Totales</span>
           </div>
 
-          <div className="bg-[#1A2742] rounded-md p-3 border border-[#233354]">
-            <span className="text-[10px] text-[#F59E0B] uppercase font-heading font-semibold tracking-wider">
-              Empresas & Proyectos
+          <div>
+            <span className="text-[11px] text-[#475569] dark:text-[#94A3B8] uppercase font-heading font-semibold tracking-wider block">
+              Empresas y Proyectos
             </span>
-            <div className="text-2xl font-heading font-bold text-[#F59E0B] metric-value mt-0.5">
+            <div className="text-3xl font-heading font-bold text-[#0F172A] dark:text-[#F8FAFC] metric-value mt-1">
               {hierarchyAudit.totalClients} / {hierarchyAudit.totalProjects}
             </div>
-            <span className="text-[10px] text-[#64748B]">Ocultos para RH (403)</span>
+            <span className="text-xs text-[#475569] dark:text-[#94A3B8]">Ocultos para RH (403)</span>
           </div>
         </div>
-      </div>
+      </header>
 
-      {/* PESTAÑA 0: MATRIZ GRANULAR DE MÓDULOS POR USUARIO (/admin/users-permissions) */}
+      {/* PESTAÑA 0: MATRIZ GRANULAR Y ÁRBOL DE EQUIPOS (/admin/users-permissions) */}
       {activeTab === 'users_permissions' && <UserPermissionsTable />}
 
       {/* PESTAÑA 1: GENERACIÓN DE ENLACES DE INVITACIÓN PARA SUPERVISORES */}
       {activeTab === 'invitations' && (
-        <div className="space-y-6 animate-fade-in">
-          <div className="bg-[#131D31] rounded-md border border-[#233354] p-5 sm:p-6 shadow-xs text-[#F8FAFC]">
-            <div className="flex items-center space-x-3 pb-4 border-b border-[#233354] mb-4">
-              <div className="w-9 h-9 rounded-md bg-[#1A2742] text-[#38BDF8] flex items-center justify-center border border-[#233354]">
-                <Mail className="w-4 h-4" />
-              </div>
-              <div>
-                <h2 className="text-sm font-heading font-bold text-[#F8FAFC]">
-                  Generar y Enviar Enlace de Invitación para Alta de Supervisor
-                </h2>
-                <p className="text-xs text-[#94A3B8]">
-                  Los Supervisores se registran únicamente mediante el link generado aquí por TI, vinculados con <code>created_by_ti_id: "{user?.id || 'ti-root-01'}"</code>.
-                </p>
-              </div>
+        <div className="space-y-10 animate-fade-in">
+          <section className="space-y-6 pb-8 border-b border-slate-200 dark:border-slate-800">
+            <div>
+              <h2 className="text-lg font-heading font-bold text-[#0F172A] dark:text-[#F8FAFC]">
+                Generar Enlace de Invitación para Alta de Supervisor
+              </h2>
+              <p className="text-xs text-[#475569] dark:text-[#94A3B8] mt-1">
+                Los Supervisores se registran mediante el enlace emitido por TI, quedando vinculados con <code>created_by_ti_id: "{user?.id || 'ti-root-01'}"</code>.
+              </p>
             </div>
 
-            <form onSubmit={handleGenerateSupervisorInvite} className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="md:col-span-3 space-y-1">
-                  <label className="text-xs font-heading font-semibold text-[#94A3B8] flex items-center justify-between">
-                    <span>Correo(s) Electrónico(s) de los Nuevos Supervisores *</span>
-                    <span className="text-[11px] font-normal text-[#64748B]">
-                      Rol asignado en token: Supervisor
-                    </span>
+            <form onSubmit={handleGenerateSupervisorInvite} className="space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div className="md:col-span-3 space-y-1.5">
+                  <label className="text-xs font-heading font-semibold uppercase tracking-wider text-[#475569] dark:text-[#94A3B8] flex items-center justify-between">
+                    <span>Correo(s) Electrónico(s) de Nuevos Supervisores</span>
+                    <span className="text-[11px] font-normal">Rol en token: Supervisor</span>
                   </label>
                   <textarea
                     required
@@ -329,21 +301,21 @@ export function TIDashboard({ initialTab = 'users_permissions' }: TIDashboardPro
                     value={emailsInput}
                     onChange={(e) => setEmailsInput(e.target.value)}
                     placeholder="nuevo.supervisor@russellbedford.mx, lider.equipo@russellbedford.mx"
-                    className="w-full px-3 py-2 bg-[#1A2742] border border-[#233354] rounded-md text-xs font-medium text-[#F8FAFC] placeholder:text-[#64748B] focus:border-[#38BDF8]"
+                    className="w-full py-2 bg-transparent border-b border-slate-300 dark:border-slate-800 text-sm text-[#0F172A] dark:text-[#F8FAFC] placeholder:text-[#94A3B8] focus:border-[#1E40AF] dark:focus:border-[#38BDF8]"
                   />
                 </div>
 
                 <div>
-                  <label className="text-xs font-heading font-semibold text-[#94A3B8] block mb-1">
-                    Práctica / Área que Liderará
+                  <label className="text-xs font-heading font-semibold uppercase tracking-wider text-[#475569] dark:text-[#94A3B8] block mb-1.5">
+                    Práctica / Equipo que Liderará
                   </label>
                   <select
                     value={selectedTeam}
                     onChange={(e) => setSelectedTeam(e.target.value)}
-                    className="w-full px-3 py-2 bg-[#1A2742] border border-[#233354] rounded-md text-xs font-medium text-[#F8FAFC] focus:border-[#38BDF8]"
+                    className="w-full py-2 bg-transparent border-b border-slate-300 dark:border-slate-800 text-sm text-[#0F172A] dark:text-[#F8FAFC]"
                   >
                     {SUPERVISOR_TEAMS.map((t) => (
-                      <option key={t} value={t} className="bg-[#131D31]">
+                      <option key={t} value={t} className="bg-[#F8FAFC] dark:bg-[#0F172A]">
                         {t}
                       </option>
                     ))}
@@ -351,16 +323,16 @@ export function TIDashboard({ initialTab = 'users_permissions' }: TIDashboardPro
                 </div>
 
                 <div>
-                  <label className="text-xs font-heading font-semibold text-[#94A3B8] block mb-1">
+                  <label className="text-xs font-heading font-semibold uppercase tracking-wider text-[#475569] dark:text-[#94A3B8] block mb-1.5">
                     Cargo Ejecutivo de Supervisor
                   </label>
                   <select
                     value={selectedTitle}
                     onChange={(e) => setSelectedTitle(e.target.value)}
-                    className="w-full px-3 py-2 bg-[#1A2742] border border-[#233354] rounded-md text-xs font-medium text-[#F8FAFC] focus:border-[#38BDF8]"
+                    className="w-full py-2 bg-transparent border-b border-slate-300 dark:border-slate-800 text-sm text-[#0F172A] dark:text-[#F8FAFC]"
                   >
                     {SUPERVISOR_TITLES.map((r) => (
-                      <option key={r} value={r} className="bg-[#131D31]">
+                      <option key={r} value={r} className="bg-[#F8FAFC] dark:bg-[#0F172A]">
                         {r}
                       </option>
                     ))}
@@ -368,174 +340,146 @@ export function TIDashboard({ initialTab = 'users_permissions' }: TIDashboardPro
                 </div>
 
                 <div>
-                  <label className="text-xs font-heading font-semibold text-[#94A3B8] block mb-1">
-                    Vigencia del Enlace Especial
+                  <label className="text-xs font-heading font-semibold uppercase tracking-wider text-[#475569] dark:text-[#94A3B8] block mb-1.5">
+                    Vigencia del Enlace
                   </label>
                   <select
                     value={expiresInHours}
                     onChange={(e) => setExpiresInHours(Number(e.target.value))}
-                    className="w-full px-3 py-2 bg-[#1A2742] border border-[#233354] rounded-md text-xs font-medium text-[#F8FAFC] focus:border-[#38BDF8]"
+                    className="w-full py-2 bg-transparent border-b border-slate-300 dark:border-slate-800 text-sm text-[#0F172A] dark:text-[#F8FAFC]"
                   >
-                    <option value={24} className="bg-[#131D31]">24 Horas</option>
-                    <option value={48} className="bg-[#131D31]">48 Horas</option>
-                    <option value={72} className="bg-[#131D31]">72 Horas (Recomendado)</option>
-                    <option value={168} className="bg-[#131D31]">7 Días</option>
+                    <option value={24} className="bg-[#F8FAFC] dark:bg-[#0F172A]">24 Horas</option>
+                    <option value={48} className="bg-[#F8FAFC] dark:bg-[#0F172A]">48 Horas</option>
+                    <option value={72} className="bg-[#F8FAFC] dark:bg-[#0F172A]">72 Horas (Recomendado)</option>
+                    <option value={168} className="bg-[#F8FAFC] dark:bg-[#0F172A]">7 Días</option>
                   </select>
                 </div>
               </div>
 
-              <div className="pt-2 flex flex-col sm:flex-row items-center justify-between gap-3 border-t border-[#233354]">
-                <div className="flex items-center space-x-2 text-xs text-[#94A3B8]">
-                  <Sparkles className="w-3.5 h-3.5 text-[#38BDF8] shrink-0" />
-                  <span>
-                    El token autorizado por TI registra exclusivamente como <b>Supervisor</b>.
-                  </span>
-                </div>
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pt-2">
+                <span className="text-xs text-[#475569] dark:text-[#94A3B8]">
+                  El token autorizado por TI registra exclusivamente con nivel de Supervisor.
+                </span>
 
                 <button
                   id="btn-new-supervisor-invite"
                   type="submit"
-                  className="px-5 py-2 bg-[#1E40AF] hover:bg-[#1D4ED8] text-white rounded-md text-xs font-heading font-semibold tracking-wide shadow-xs transition-colors cursor-pointer flex items-center space-x-2"
+                  className="px-5 py-2.5 bg-[#1E40AF] hover:bg-[#1D4ED8] text-white text-xs font-heading font-semibold uppercase tracking-wider transition-colors cursor-pointer"
                 >
-                  <Send className="w-4 h-4 text-white" />
-                  <span>Generar y Enviar Link</span>
+                  Generar y Enviar Enlace
                 </button>
               </div>
             </form>
-          </div>
+          </section>
 
           {recentGenerated && (
-            <div className="bg-[#1A2742] border border-[#233354] rounded-md p-4 space-y-3 animate-fade-in">
+            <section className="space-y-3 pb-6 border-b border-slate-200 dark:border-slate-800">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-heading font-bold text-[#38BDF8] flex items-center space-x-2">
-                  <CheckCircle2 className="w-4 h-4 text-[#38BDF8]" />
-                  <span>Enlace(s) de Alta de Supervisor Generados por TI</span>
+                <span className="text-xs font-heading font-bold uppercase tracking-wider text-[#0F172A] dark:text-[#F8FAFC]">
+                  Enlaces de Alta de Supervisor Generados
                 </span>
                 <button
                   onClick={() => setRecentGenerated(null)}
-                  className="text-xs font-medium text-[#94A3B8] hover:text-[#F8FAFC] cursor-pointer"
+                  className="text-xs font-heading font-medium text-[#475569] hover:text-[#0F172A] dark:text-[#94A3B8] dark:hover:text-[#F8FAFC] cursor-pointer"
                 >
                   Cerrar
                 </button>
               </div>
-              <div className="space-y-2">
+              <div className="divide-y divide-slate-200 dark:divide-slate-800">
                 {recentGenerated.map((inv) => {
                   const url = buildInviteUrl(inv.token);
                   return (
                     <div
                       key={inv.id}
-                      className="bg-[#131D31] p-3 rounded-md border border-[#233354] flex items-center justify-between gap-3 text-xs"
+                      className="py-3 flex items-center justify-between gap-4 text-xs"
                     >
                       <div className="min-w-0 flex-1">
-                        <span className="font-semibold text-[#F8FAFC] block">
-                          {inv.email} ({inv.roleTitle})
+                        <span className="font-semibold text-[#0F172A] dark:text-[#F8FAFC] block">
+                          {inv.email} — {inv.roleTitle}
                         </span>
-                        <span className="text-[11px] font-mono text-[#38BDF8] block truncate">
+                        <span className="text-[11px] font-mono text-[#1E40AF] dark:text-[#38BDF8] block truncate mt-0.5">
                           {url}
                         </span>
                       </div>
                       <button
                         onClick={() => handleCopyInviteLink(inv.token, inv.id)}
-                        className="px-3 py-1.5 rounded-md bg-[#1E40AF] hover:bg-[#1D4ED8] text-white font-heading font-semibold text-xs flex items-center space-x-1 shrink-0 cursor-pointer transition-colors"
+                        className="px-3.5 py-1.5 bg-[#1E40AF] hover:bg-[#1D4ED8] text-white font-heading font-semibold text-xs shrink-0 cursor-pointer transition-colors"
                       >
-                        {copiedId === inv.id ? (
-                          <Check className="w-3.5 h-3.5 text-white" />
-                        ) : (
-                          <Copy className="w-3.5 h-3.5 text-white" />
-                        )}
-                        <span>{copiedId === inv.id ? 'Copiado' : 'Copiar Link'}</span>
+                        {copiedId === inv.id ? 'Copiado' : 'Copiar Enlace'}
                       </button>
                     </div>
                   );
                 })}
               </div>
-            </div>
+            </section>
           )}
 
-          {/* Tabla de enlaces emitidos por TI para Supervisores */}
-          <div className="bg-[#131D31] rounded-md border border-[#233354] overflow-hidden shadow-xs text-[#F8FAFC]">
-            <div className="p-4 border-b border-[#233354] bg-[#0F172A] flex items-center justify-between">
-              <h3 className="text-xs font-heading font-bold uppercase tracking-wider text-[#F8FAFC]">
-                Enlaces de Invitación de Supervisores Emitidos por TI ({tiSupervisorInvitations.length})
-              </h3>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs text-[#F8FAFC]">
-                <thead className="bg-[#0B111E] text-[11px] font-heading font-bold uppercase text-[#94A3B8] border-b border-[#233354]">
+          {/* Tabla con Elevación #101726 de enlaces emitidos por TI */}
+          <section className="space-y-4">
+            <h3 className="text-xs font-heading font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400">
+              Enlaces de Invitación de Supervisores Emitidos por TI ({tiSupervisorInvitations.length})
+            </h3>
+            <div className="overflow-x-auto bg-white dark:bg-[#101726] border border-slate-200 dark:border-slate-800 rounded-md">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-slate-100 dark:bg-[#0B111E] text-[11px] font-heading font-semibold uppercase tracking-widest text-slate-600 dark:text-slate-400 border-b border-slate-200 dark:border-slate-800">
                   <tr>
-                    <th className="py-3 px-4">Correo del Supervisor</th>
-                    <th className="py-3 px-4">Área & Cargo</th>
-                    <th className="py-3 px-4">created_by_ti_id</th>
-                    <th className="py-3 px-4">Estado</th>
-                    <th className="py-3 px-4 text-right">Acciones</th>
+                    <th className="py-3.5 px-4 text-slate-600 dark:text-slate-400">Correo del Supervisor</th>
+                    <th className="py-3.5 px-4 text-slate-600 dark:text-slate-400">Área y Cargo</th>
+                    <th className="py-3.5 px-4 text-slate-600 dark:text-slate-400">Autorizado por</th>
+                    <th className="py-3.5 px-4 text-slate-600 dark:text-slate-400">Estado</th>
+                    <th className="py-3.5 px-4 text-right text-slate-600 dark:text-slate-400">Acciones</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-[#233354]">
+                <tbody className="divide-y divide-slate-200 dark:divide-slate-800/80">
                   {tiSupervisorInvitations.map((inv) => (
-                    <tr key={inv.id} className="hover:bg-[#1A2742]/50 transition-colors">
-                      <td className="py-3 px-4 font-semibold text-[#F8FAFC]">
+                    <tr key={inv.id} className="bg-white dark:bg-[#101726] hover:bg-slate-50 dark:hover:bg-[#172238] transition-colors">
+                      <td className="py-3.5 px-4 font-semibold text-slate-900 dark:text-slate-200">
                         {inv.email}
-                        <span className="block text-[10px] font-mono text-[#64748B]">
+                        <span className="block text-[10px] font-mono text-slate-600 dark:text-slate-400">
                           Token: {inv.token.slice(0, 22)}...
                         </span>
                       </td>
-                      <td className="py-3 px-4">
-                        <span className="font-medium text-[#F8FAFC] block">{inv.team}</span>
-                        <span className="text-[11px] text-[#94A3B8]">{inv.roleTitle}</span>
+                      <td className="py-3.5 px-4">
+                        <span className="font-medium text-slate-900 dark:text-slate-200 block">{inv.team}</span>
+                        <span className="text-[11px] text-slate-600 dark:text-slate-400">{inv.roleTitle}</span>
                       </td>
-                      <td className="py-3 px-4 font-mono text-[11px] text-[#38BDF8] font-bold">
+                      <td className="py-3.5 px-4 font-mono text-[11px] text-slate-600 dark:text-slate-400">
                         {inv.created_by_ti_id || 'ti-root-01'}
                       </td>
-                      <td className="py-3 px-4">
-                        {inv.status === 'pending' ? (
-                          <span className="inline-flex items-center px-2 py-0.5 rounded-sm text-[10px] font-heading font-semibold bg-[#1A2742] text-[#F59E0B] border border-[#F59E0B]/30">
-                            <Clock className="w-3 h-3 mr-1 text-[#F59E0B]" /> Pendiente
-                          </span>
-                        ) : inv.status === 'accepted' ? (
-                          <span className="inline-flex items-center px-2 py-0.5 rounded-sm text-[10px] font-heading font-semibold bg-[#0F172A] text-[#38BDF8] border border-[#233354]">
-                            <CheckCircle2 className="w-3 h-3 mr-1 text-[#38BDF8]" /> Aceptada
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center px-2 py-0.5 rounded-sm text-[10px] font-heading font-semibold bg-[#1A2742] text-[#94A3B8]">
-                            {inv.status}
-                          </span>
-                        )}
+                      <td className="py-3.5 px-4 font-heading font-medium text-slate-900 dark:text-slate-200">
+                        {inv.status === 'pending'
+                          ? 'Pendiente'
+                          : inv.status === 'accepted'
+                          ? 'Aceptada'
+                          : inv.status}
                       </td>
-                      <td className="py-3 px-4 text-right">
-                        <div className="flex items-center justify-end space-x-1.5">
+                      <td className="py-3.5 px-4 text-right">
+                        <div className="flex items-center justify-end space-x-4">
                           <button
                             onClick={() => handleCopyInviteLink(inv.token, inv.id)}
-                            className="px-2.5 py-1 rounded-md bg-[#1A2742] hover:bg-[#233354] text-[#38BDF8] font-heading font-semibold text-[11px] flex items-center space-x-1 border border-[#233354] cursor-pointer transition-colors"
+                            className="text-xs font-heading font-semibold text-blue-700 dark:text-sky-400 hover:underline cursor-pointer"
                           >
-                            {copiedId === inv.id ? (
-                              <Check className="w-3.5 h-3.5" />
-                            ) : (
-                              <Copy className="w-3.5 h-3.5" />
-                            )}
-                            <span>Copiar Link</span>
+                            {copiedId === inv.id ? 'Copiado' : 'Copiar'}
                           </button>
                           <button
                             onClick={() => resendInvitation(inv.id)}
-                            title="Reenviar correo"
-                            className="p-1 rounded-md border border-[#233354] hover:bg-[#1A2742] text-[#94A3B8] cursor-pointer"
+                            className="text-xs font-heading font-medium text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100 cursor-pointer"
                           >
-                            <RefreshCw className="w-3.5 h-3.5" />
+                            Reenviar
                           </button>
                           {inv.status === 'pending' && (
                             <button
                               onClick={() => revokeInvitation(inv.id)}
-                              title="Revocar"
-                              className="p-1 rounded-md border border-[#E11D48]/30 hover:bg-[#E11D48]/15 text-[#E11D48] cursor-pointer"
+                              className="text-xs font-heading font-medium text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100 cursor-pointer"
                             >
-                              <XCircle className="w-3.5 h-3.5" />
+                              Revocar
                             </button>
                           )}
                           <button
                             onClick={() => deleteInvitation(inv.id)}
-                            title="Eliminar"
-                            className="p-1 rounded-md text-[#64748B] hover:text-[#E11D48] cursor-pointer"
+                            className="text-xs font-heading font-medium text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100 cursor-pointer"
                           >
-                            <Trash2 className="w-3.5 h-3.5" />
+                            Eliminar
                           </button>
                         </div>
                       </td>
@@ -544,235 +488,212 @@ export function TIDashboard({ initialTab = 'users_permissions' }: TIDashboardPro
                 </tbody>
               </table>
             </div>
-          </div>
+          </section>
         </div>
       )}
 
       {/* PESTAÑA 2: AUDITORÍA Y GESTIÓN DE LA ESTRUCTURA JERÁRQUICA COMPLETA */}
       {activeTab === 'audit_accounts' && (
-        <div className="space-y-6 animate-fade-in">
-          <div className="bg-[#131D31] rounded-md border border-[#233354] p-5 sm:p-6 shadow-xs space-y-5 text-[#F8FAFC]">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-[#233354] pb-3 gap-2">
-              <div className="flex items-center space-x-2.5">
-                <GitFork className="w-5 h-5 text-[#38BDF8]" />
-                <div>
-                  <h2 className="text-sm font-heading font-bold text-[#F8FAFC]">
-                    Estructura Organizacional Gestionada por TI (TI → RH y Equipos de Supervisores → Usuarios)
-                  </h2>
-                  <p className="text-xs text-[#94A3B8]">
-                    TI es el puesto más alto: revoca o restaura permisos incluso de Socios/Supervisores, asigna qué equipos visualiza RH en checadas y supervisa cada equipo.
-                  </p>
-                </div>
-              </div>
-            </div>
+        <div className="space-y-10 animate-fade-in">
+          <div className="border-b border-slate-200 dark:border-slate-800 pb-4">
+            <h2 className="text-lg font-heading font-bold text-[#0F172A] dark:text-[#F8FAFC]">
+              Estructura Organizacional (TI → RH y Equipos de Supervisores → Colaboradores)
+            </h2>
+            <p className="text-xs text-[#475569] dark:text-[#94A3B8] mt-1">
+              TI es el puesto más alto: revoca o restaura permisos de Socios/Supervisores, asigna qué equipos visualiza RH en checadas y supervisa cada equipo.
+            </p>
+          </div>
 
-            {/* 1. NIVEL SUPREMO: TI PRUEBA */}
-            <div className="border border-[#1E40AF]/60 rounded-md p-4 bg-[#0F172A] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div className="flex items-center space-x-3">
-                <div className="w-9 h-9 rounded-md bg-[#1E40AF] text-amber-300 font-heading font-bold text-xs flex items-center justify-center border border-amber-400/30">
-                  TI
+          {/* NIVEL 1: TI PRUEBA */}
+          <section className="space-y-3 pb-8 border-b border-slate-200 dark:border-slate-800">
+            <div className="text-[11px] font-heading font-bold uppercase tracking-widest text-[#1E40AF] dark:text-[#38BDF8]">
+              NIVEL 1 — PUESTO MÁS ALTO (TI ROOT)
+            </div>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 py-2">
+              <div>
+                <div className="flex items-center space-x-3">
+                  <span className="text-base font-heading font-bold text-[#0F172A] dark:text-[#F8FAFC]">
+                    {userPermissionsDirectory['ti-root-01']?.name || 'TI Prueba'}
+                  </span>
+                  <span className="text-xs font-heading font-medium text-[#475569] dark:text-[#94A3B8]">
+                    — Autoridad Global del Sistema
+                  </span>
                 </div>
-                <div>
-                  <div className="flex items-center space-x-2">
-                    <span className="font-heading font-bold text-[#F8FAFC] text-sm">
-                      {userPermissionsDirectory['ti-root-01']?.name || 'TI Prueba'}
-                    </span>
-                    <span className="text-[10px] font-heading font-bold bg-[#1E40AF] text-amber-300 px-2 py-0.5 rounded-sm">
-                      PUESTO MÁS ALTO • ROOT
-                    </span>
-                  </div>
-                  <p className="text-xs text-[#94A3B8] mt-0.5">
-                    {userPermissionsDirectory['ti-root-01']?.email || 'ti.root@russellbedford.mx'} • Control total sobre Socios/Supervisores, RH y Empleados
-                  </p>
-                </div>
+                <p className="text-xs text-[#475569] dark:text-[#94A3B8] mt-0.5">
+                  {userPermissionsDirectory['ti-root-01']?.email || 'ti.root@russellbedford.mx'} • Control sobre Socios/Supervisores, RH y Empleados
+                </p>
               </div>
-              <span className="text-xs font-heading font-semibold text-amber-300 bg-[#1A2742] px-3 py-1 rounded-md border border-[#233354]">
-                Autoridad Global Activa
+              <span className="text-xs font-heading font-semibold uppercase tracking-wider text-[#1E40AF] dark:text-[#38BDF8]">
+                Acceso Permanente Activo
               </span>
             </div>
+          </section>
 
-            {/* 2. PERFIL DE RECURSOS HUMANOS (RH PRUEBA) Y ASIGNACIÓN DE EQUIPOS A VISUALIZAR */}
-            <div className="space-y-3">
-              {hierarchyAudit.rhUsers.map((rh) => {
-                const rhDir = userPermissionsDirectory[rh.id];
-                const isRhRevoked = Boolean(rhDir?.accessRevoked);
-                const allowedSups = rhDir?.allowedSupervisorIds ?? hierarchyAudit.supervisors.map((s) => s.id);
-
-                const toggleTeamForRH = (supId: string) => {
-                  const exists = allowedSups.includes(supId);
-                  const next = exists ? allowedSups.filter((id) => id !== supId) : [...allowedSups, supId];
-                  updateRHAllowedTeams(rh.id, next);
-                  const supName = hierarchyAudit.supervisors.find((s) => s.id === supId)?.name || supId;
-                  addToast(
-                    exists
-                      ? `TI retiró a ${rh.name} el acceso a las checadas del equipo de ${supName}.`
-                      : `TI asignó a ${rh.name} la visualización de checadas del equipo de ${supName}.`,
-                    exists ? 'info' : 'success'
-                  );
-                };
-
-                return (
-                  <div
-                    key={rh.id}
-                    className="border border-[#F59E0B]/40 rounded-md p-4 bg-[#1A2742] space-y-3"
-                  >
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                      <div className="flex items-center space-x-3">
-                        <div className="w-8 h-8 rounded-md bg-[#F59E0B] text-black font-heading font-bold text-xs flex items-center justify-center">
-                          RH
-                        </div>
-                        <div>
-                          <div className="flex items-center space-x-2">
-                            <span className={`font-heading font-bold text-xs ${isRhRevoked ? 'line-through text-rose-400' : 'text-[#F8FAFC]'}`}>
-                              {rh.name} ({rh.email})
-                            </span>
-                            <span className="text-[10px] font-heading font-bold bg-[#131D31] text-[#F59E0B] px-2 py-0.5 rounded-sm border border-[#F59E0B]/30">
-                              Rol: RH (Checadas por Equipo)
-                            </span>
-                            {isRhRevoked && (
-                              <span className="text-[9px] font-heading font-bold uppercase bg-rose-950 text-rose-400 border border-rose-700 px-1.5 py-0.5 rounded-sm">
-                                ACCESO REVOCADO POR TI
-                              </span>
-                            )}
-                          </div>
-                          <p className="text-xs text-[#94A3B8] mt-0.5">
-                            TI asigna a continuación cuáles equipos (Supervisores y sus usuarios) puede visualizar RH en el módulo de checadas:
-                          </p>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center space-x-2">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            toggleUserAccessRevoked(rh.id);
-                            addToast(
-                              isRhRevoked
-                                ? `Permisos restaurados por TI para ${rh.name}.`
-                                : `Permisos revocados por TI para ${rh.name}.`,
-                              isRhRevoked ? 'success' : 'error'
-                            );
-                          }}
-                          className={`px-3 py-1.5 rounded-md text-xs font-heading font-bold cursor-pointer flex items-center space-x-1.5 border transition-colors ${
-                            isRhRevoked
-                              ? 'bg-emerald-950/60 hover:bg-emerald-900/70 text-emerald-300 border-emerald-700/50'
-                              : 'bg-rose-950/60 hover:bg-rose-900/70 text-rose-300 border-rose-700/50'
-                          }`}
-                        >
-                          {isRhRevoked ? <Unlock className="w-3.5 h-3.5" /> : <Ban className="w-3.5 h-3.5" />}
-                          <span>{isRhRevoked ? 'Restaurar RH' : 'Revocar Permisos RH'}</span>
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Selector de Equipos asignados a RH */}
-                    <div className="bg-[#131D31] p-3 rounded-md border border-[#233354] flex flex-wrap items-center gap-2.5">
-                      <span className="text-[11px] font-heading font-semibold text-[#94A3B8]">
-                        Equipos autorizados para checadas:
-                      </span>
-                      {hierarchyAudit.supervisors.map((sup) => {
-                        const checked = allowedSups.includes(sup.id);
-                        const teamCount = hierarchyAudit.employees.filter(
-                          (e) => e.supervisor_id === sup.id || e.supervisorId === sup.id
-                        ).length;
-                        return (
-                          <label
-                            key={sup.id}
-                            className={`flex items-center space-x-2 px-3 py-1 rounded-md border text-xs cursor-pointer transition-all select-none ${
-                              checked
-                                ? 'bg-[#1E40AF]/30 border-[#38BDF8] text-[#F8FAFC] font-semibold'
-                                : 'bg-[#0F172A] border-[#233354] text-[#64748B]'
-                            }`}
-                          >
-                            <input
-                              type="checkbox"
-                              checked={checked}
-                              onChange={() => toggleTeamForRH(sup.id)}
-                              className="w-3.5 h-3.5 accent-[#38BDF8] rounded cursor-pointer"
-                            />
-                            <span>
-                              Equipo de {sup.name} ({teamCount} {teamCount === 1 ? 'usuario' : 'usuarios'})
-                            </span>
-                          </label>
-                        );
-                      })}
-                    </div>
-                  </div>
-                );
-              })}
+          {/* NIVEL 2: RECURSOS HUMANOS (RH PRUEBA) */}
+          <section className="space-y-4 pb-8 border-b border-slate-200 dark:border-slate-800">
+            <div className="text-[11px] font-heading font-bold uppercase tracking-widest text-[#475569] dark:text-[#94A3B8]">
+              NIVEL 2 — RECURSOS HUMANOS (AUDITORÍA DE CHECADAS POR EQUIPO)
             </div>
 
-            {/* 3. EQUIPOS DE SUPERVISORES / SOCIOS Y SUS USUARIOS SUBORDINADOS */}
-            <div className="space-y-3">
-              {hierarchyAudit.supervisors.map((sup) => {
-                const supDir = userPermissionsDirectory[sup.id];
-                const isSupRevoked = Boolean(supDir?.accessRevoked);
-                const subTeam = hierarchyAudit.employees.filter(
-                  (e) => e.supervisor_id === sup.id || e.supervisorId === sup.id
+            {hierarchyAudit.rhUsers.map((rh) => {
+              const rhDir = userPermissionsDirectory[rh.id];
+              const isRhRevoked = Boolean(rhDir?.accessRevoked);
+              const allowedSups = rhDir?.allowedSupervisorIds ?? hierarchyAudit.supervisors.map((s) => s.id);
+
+              const toggleTeamForRH = (supId: string) => {
+                const exists = allowedSups.includes(supId);
+                const next = exists ? allowedSups.filter((id) => id !== supId) : [...allowedSups, supId];
+                updateRHAllowedTeams(rh.id, next);
+                const supName = hierarchyAudit.supervisors.find((s) => s.id === supId)?.name || supId;
+                addToast(
+                  exists
+                    ? `TI retiró a ${rh.name} el acceso a las checadas del equipo de ${supName}.`
+                    : `TI asignó a ${rh.name} la visualización de checadas del equipo de ${supName}.`,
+                  exists ? 'info' : 'success'
                 );
+              };
 
-                return (
-                  <div
-                    key={sup.id}
-                    className="border border-[#233354] rounded-md overflow-hidden bg-[#1A2742]"
-                  >
-                    <div className="p-3.5 bg-[#0F172A] border-b border-[#233354] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              return (
+                <div key={rh.id} className="space-y-4 pl-4 border-l-2 border-slate-300 dark:border-slate-800">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div>
                       <div className="flex items-center space-x-3">
-                        <div className="w-8 h-8 rounded-md bg-[#1E40AF] text-white font-heading font-bold text-xs flex items-center justify-center">
-                          SUP
-                        </div>
-                        <div>
-                          <div className="flex items-center flex-wrap gap-2">
-                            <span className={`font-heading font-bold text-xs ${isSupRevoked ? 'line-through text-rose-400' : 'text-[#F8FAFC]'}`}>
-                              {sup.name}
-                            </span>
-                            <span className="text-[10px] font-heading font-semibold bg-[#0F172A] text-[#38BDF8] px-2 py-0.5 rounded-sm border border-[#233354]">
-                              Socio / Supervisor • {sup.team}
-                            </span>
-                            {isSupRevoked && (
-                              <span className="text-[9px] font-heading font-bold uppercase bg-rose-950 text-rose-400 border border-rose-700 px-1.5 py-0.5 rounded-sm">
-                                PERMISOS REVOCADOS POR TI
-                              </span>
-                            )}
-                          </div>
-                          <p className="text-xs text-[#94A3B8]">
-                            {sup.email} • ID: <code>{sup.id}</code> • Gestionado por TI:{' '}
-                            <code className="text-[#38BDF8] font-bold">
-                              {sup.created_by_ti_id || 'ti-root-01'}
-                            </code>
-                          </p>
-                        </div>
-                      </div>
-
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="text-xs font-medium text-[#94A3B8] bg-[#1A2742] px-3 py-1 rounded-md border border-[#233354]">
-                          Subordinados en su equipo: {subTeam.length}
+                        <span className={`text-base font-heading font-bold ${isRhRevoked ? 'line-through text-[#475569] dark:text-[#94A3B8]' : 'text-[#0F172A] dark:text-[#F8FAFC]'}`}>
+                          {rh.name}
                         </span>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            toggleUserAccessRevoked(sup.id);
-                            addToast(
-                              isSupRevoked
-                                ? `Permisos de Socio / Supervisor restaurados por TI para ${sup.name}.`
-                                : `Permisos de Socio / Supervisor REVOCADOS por TI para ${sup.name}.`,
-                              isSupRevoked ? 'success' : 'error'
-                            );
-                          }}
-                          className={`px-3 py-1 rounded-md text-xs font-heading font-bold cursor-pointer flex items-center space-x-1 border transition-colors ${
-                            isSupRevoked
-                              ? 'bg-emerald-950/60 hover:bg-emerald-900/70 text-emerald-300 border-emerald-700/50'
-                              : 'bg-rose-950/60 hover:bg-rose-900/70 text-rose-300 border-rose-700/50'
-                          }`}
-                        >
-                          {isSupRevoked ? <Unlock className="w-3.5 h-3.5" /> : <Ban className="w-3.5 h-3.5" />}
-                          <span>{isSupRevoked ? 'Restaurar Socio/Supervisor' : 'Revocar Socio/Supervisor'}</span>
-                        </button>
+                        <span className="text-xs text-[#475569] dark:text-[#94A3B8]">
+                          {rh.email}
+                        </span>
+                        {isRhRevoked && (
+                          <span className="text-[10px] font-heading font-bold uppercase tracking-wider text-[#475569] dark:text-[#94A3B8]">
+                            [REVOCADO POR TI]
+                          </span>
+                        )}
                       </div>
+                      <p className="text-xs text-[#475569] dark:text-[#94A3B8] mt-0.5">
+                        Selecciona los equipos cuyas checadas puede visualizar este perfil de Recursos Humanos:
+                      </p>
                     </div>
 
-                    {/* Empleados subordinados a este Supervisor */}
-                    <div className="p-3 grid grid-cols-1 md:grid-cols-2 gap-2.5">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        toggleUserAccessRevoked(rh.id);
+                        addToast(
+                          isRhRevoked
+                            ? `Permisos restaurados por TI para ${rh.name}.`
+                            : `Permisos revocados por TI para ${rh.name}.`,
+                          isRhRevoked ? 'success' : 'error'
+                        );
+                      }}
+                      className={`px-3.5 py-1.5 text-xs font-heading font-semibold uppercase tracking-wider cursor-pointer transition-colors ${
+                        isRhRevoked
+                          ? 'bg-[#1E40AF] hover:bg-[#1D4ED8] text-white'
+                          : 'border border-slate-300 dark:border-slate-700 text-[#0F172A] dark:text-[#F8FAFC] hover:border-[#1E40AF]'
+                      }`}
+                    >
+                      {isRhRevoked ? 'Restaurar RH' : 'Revocar RH'}
+                    </button>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-6 pt-1">
+                    {hierarchyAudit.supervisors.map((sup, idx) => {
+                      const checked = allowedSups.includes(sup.id);
+                      const teamCount = hierarchyAudit.employees.filter(
+                        (e) => e.supervisor_id === sup.id || e.supervisorId === sup.id
+                      ).length;
+                      return (
+                        <label
+                          key={sup.id}
+                          className="flex items-center space-x-2.5 text-xs cursor-pointer select-none"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => toggleTeamForRH(sup.id)}
+                            className="w-4 h-4 cursor-pointer"
+                          />
+                          <span className={checked ? 'font-semibold text-[#0F172A] dark:text-[#F8FAFC]' : 'text-[#475569] dark:text-[#94A3B8]'}>
+                            Equipo #{idx + 1}: {sup.name} ({teamCount} {teamCount === 1 ? 'subordinado' : 'subordinados'})
+                          </span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+          </section>
+
+          {/* NIVEL 3: EQUIPOS OPERATIVOS (SOCIOS/SUPERVISORES Y SUS SUBORDINADOS) */}
+          <section className="space-y-8">
+            <div className="text-[11px] font-heading font-bold uppercase tracking-widest text-[#475569] dark:text-[#94A3B8]">
+              NIVEL 3 — EQUIPOS OPERATIVOS (SOCIOS / SUPERVISORES → EMPLEADOS SUBORDINADOS)
+            </div>
+
+            {hierarchyAudit.supervisors.map((sup, idx) => {
+              const supDir = userPermissionsDirectory[sup.id];
+              const isSupRevoked = Boolean(supDir?.accessRevoked);
+              const subTeam = hierarchyAudit.employees.filter(
+                (e) => e.supervisor_id === sup.id || e.supervisorId === sup.id
+              );
+
+              return (
+                <div
+                  key={sup.id}
+                  className="space-y-4 pb-8 border-b border-slate-200 dark:border-slate-800"
+                >
+                  {/* Cabecera de Equipo y Socio/Supervisor */}
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div>
+                      <div className="text-[11px] font-heading font-bold uppercase tracking-widest text-[#1E40AF] dark:text-[#38BDF8]">
+                        EQUIPO #{idx + 1} • {sup.team.toUpperCase()}
+                      </div>
+                      <div className="flex items-center flex-wrap gap-3 mt-1">
+                        <span className={`text-base font-heading font-bold ${isSupRevoked ? 'line-through text-[#475569] dark:text-[#94A3B8]' : 'text-[#0F172A] dark:text-[#F8FAFC]'}`}>
+                          {sup.name}
+                        </span>
+                        <span className="text-xs font-heading font-medium text-[#475569] dark:text-[#94A3B8]">
+                          Líder de Equipo (Socio / Supervisor)
+                        </span>
+                        {isSupRevoked && (
+                          <span className="text-[10px] font-heading font-bold uppercase tracking-wider text-[#475569] dark:text-[#94A3B8]">
+                            [REVOCADO POR TI]
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-[#475569] dark:text-[#94A3B8] mt-0.5">
+                        {sup.email} • ID: <code>{sup.id}</code> • Subordinados: {subTeam.length}
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        toggleUserAccessRevoked(sup.id);
+                        addToast(
+                          isSupRevoked
+                            ? `Permisos de Socio / Supervisor restaurados por TI para ${sup.name}.`
+                            : `Permisos de Socio / Supervisor REVOCADOS por TI para ${sup.name}.`,
+                          isSupRevoked ? 'success' : 'error'
+                        );
+                      }}
+                      className={`px-3.5 py-1.5 text-xs font-heading font-semibold uppercase tracking-wider cursor-pointer transition-colors self-start sm:self-auto ${
+                        isSupRevoked
+                          ? 'bg-[#1E40AF] hover:bg-[#1D4ED8] text-white'
+                          : 'border border-slate-300 dark:border-slate-700 text-[#0F172A] dark:text-[#F8FAFC] hover:border-[#1E40AF]'
+                      }`}
+                    >
+                      {isSupRevoked ? 'Restaurar Socio / Supervisor' : 'Revocar Socio / Supervisor'}
+                    </button>
+                  </div>
+
+                  {/* Rama Jerárquica de Empleados Subordinados */}
+                  <div className="pl-6 border-l-2 border-slate-300 dark:border-slate-800 space-y-3 pt-2">
+                    <div className="text-[11px] font-heading font-semibold uppercase tracking-wider text-[#475569] dark:text-[#94A3B8]">
+                      Subordinados directos de {sup.name} ({subTeam.length})
+                    </div>
+                    <div className="divide-y divide-slate-200 dark:divide-slate-800">
                       {subTeam.map((emp) => {
                         const empDir = userPermissionsDirectory[emp.id];
                         const isEmpRevoked = Boolean(empDir?.accessRevoked);
@@ -780,27 +701,27 @@ export function TIDashboard({ initialTab = 'users_permissions' }: TIDashboardPro
                         return (
                           <div
                             key={emp.id}
-                            className="bg-[#131D31] p-3 rounded-md border border-[#233354] flex items-center justify-between gap-2"
+                            className="py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
                           >
                             <div>
-                              <div className="flex items-center space-x-2">
-                                <span className={`font-semibold text-xs ${isEmpRevoked ? 'line-through text-rose-400' : 'text-[#F8FAFC]'}`}>
+                              <div className="flex items-center space-x-3">
+                                <span className="text-xs font-mono text-[#475569] dark:text-[#94A3B8]">└─</span>
+                                <span className={`font-heading font-semibold text-sm ${isEmpRevoked ? 'line-through text-[#475569] dark:text-[#94A3B8]' : 'text-[#0F172A] dark:text-[#F8FAFC]'}`}>
                                   {emp.name}
                                 </span>
-                                <span className="text-[10px] font-heading font-semibold bg-[#0F172A] text-[#38BDF8] px-1.5 py-0.2 rounded-sm border border-[#233354]">
-                                  Empleado
+                                <span className="text-xs text-[#475569] dark:text-[#94A3B8]">
+                                  Empleado Subordinado • {emp.email}
                                 </span>
                                 {isEmpRevoked && (
-                                  <span className="text-[9px] font-heading font-bold uppercase bg-rose-950 text-rose-400 border border-rose-700 px-1.5 py-0.5 rounded-sm">
-                                    REVOCADO
+                                  <span className="text-[10px] font-heading font-bold uppercase tracking-wider text-[#475569] dark:text-[#94A3B8]">
+                                    [REVOCADO]
                                   </span>
                                 )}
                               </div>
-                              <span className="text-[11px] text-[#94A3B8] block">{emp.email}</span>
-                              <div className="flex items-center space-x-2 mt-1">
-                                <span className="text-[10px] font-mono text-[#64748B]">
-                                  Equipo: <b>{sup.name}</b>
-                                </span>
+                              <div className="flex items-center space-x-4 pl-6 mt-1 text-xs text-[#475569] dark:text-[#94A3B8]">
+                                <span>Reporta a: <strong>{sup.name}</strong></span>
+                                <span>•</span>
+                                <span>{empTasks.length} tareas asignadas</span>
                                 {hierarchyAudit.supervisors.length > 1 && (
                                   <select
                                     value={emp.supervisor_id || sup.id}
@@ -808,12 +729,11 @@ export function TIDashboard({ initialTab = 'users_permissions' }: TIDashboardPro
                                       reassignEmployeeSupervisor(emp.id, e.target.value);
                                       addToast(`Usuario ${emp.name} reasignado por TI.`, 'info');
                                     }}
-                                    className="bg-[#0F172A] border border-[#233354] text-[10px] text-[#38BDF8] rounded px-1.5 py-0.5"
-                                    title="Cambiar de Supervisor / Equipo"
+                                    className="bg-transparent border-b border-slate-300 dark:border-slate-700 text-xs text-[#0F172A] dark:text-[#F8FAFC] py-0.5"
                                   >
-                                    {hierarchyAudit.supervisors.map((s) => (
-                                      <option key={s.id} value={s.id}>
-                                        Mover a: {s.name}
+                                    {hierarchyAudit.supervisors.map((s, sIdx) => (
+                                      <option key={s.id} value={s.id} className="bg-[#F8FAFC] dark:bg-[#0F172A]">
+                                        Mover a Equipo #{sIdx + 1}: {s.name}
                                       </option>
                                     ))}
                                   </select>
@@ -821,85 +741,68 @@ export function TIDashboard({ initialTab = 'users_permissions' }: TIDashboardPro
                               </div>
                             </div>
 
-                            <div className="text-right flex flex-col items-end space-y-1.5">
-                              <div>
-                                <span className="text-xs font-heading font-bold text-[#38BDF8] block">
-                                  {empTasks.length} tareas
-                                </span>
-                                <span className="text-[10px] text-[#64748B]">
-                                  {Math.floor((emp.workedMinutesToday || 0) / 60)}h{' '}
-                                  {(emp.workedMinutesToday || 0) % 60}m hoy
-                                </span>
-                              </div>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  toggleUserAccessRevoked(emp.id);
-                                  addToast(
-                                    isEmpRevoked
-                                      ? `Permisos restaurados por TI para ${emp.name}.`
-                                      : `Permisos revocados por TI para ${emp.name}.`,
-                                    isEmpRevoked ? 'success' : 'error'
-                                  );
-                                }}
-                                className={`px-2 py-0.5 rounded text-[10px] font-heading font-semibold cursor-pointer border ${
+                            <button
+                              type="button"
+                              onClick={() => {
+                                toggleUserAccessRevoked(emp.id);
+                                addToast(
                                   isEmpRevoked
-                                    ? 'bg-emerald-950/60 text-emerald-300 border-emerald-700/50'
-                                    : 'bg-rose-950/60 text-rose-300 border-rose-700/50'
-                                }`}
-                              >
-                                {isEmpRevoked ? 'Restaurar' : 'Revocar'}
-                              </button>
-                            </div>
+                                    ? `Permisos restaurados por TI para ${emp.name}.`
+                                    : `Permisos revocados por TI para ${emp.name}.`,
+                                  isEmpRevoked ? 'success' : 'error'
+                                );
+                              }}
+                              className={`px-3 py-1 text-xs font-heading font-semibold uppercase tracking-wider cursor-pointer transition-colors self-start sm:self-auto ${
+                                isEmpRevoked
+                                  ? 'bg-[#1E40AF] hover:bg-[#1D4ED8] text-white'
+                                  : 'border border-slate-300 dark:border-slate-700 text-[#0F172A] dark:text-[#F8FAFC] hover:border-[#1E40AF]'
+                              }`}
+                            >
+                              {isEmpRevoked ? 'Restaurar Empleado' : 'Revocar Empleado'}
+                            </button>
                           </div>
                         );
                       })}
                     </div>
                   </div>
-                );
-              })}
-            </div>
-          </div>
+                </div>
+              );
+            })}
+          </section>
         </div>
       )}
 
       {/* PESTAÑA 3: MATRIZ DE ACCESO RBAC */}
       {activeTab === 'rbac_matrix' && (
-        <div className="bg-[#131D31] rounded-md border border-[#233354] p-5 sm:p-6 shadow-xs space-y-3.5 animate-fade-in text-[#F8FAFC]">
-          <h2 className="text-sm font-heading font-bold text-[#F8FAFC]">
-            Política Estricta de Control de Acceso Basada en Roles (RBAC)
+        <section className="space-y-4 animate-fade-in">
+          <h2 className="text-lg font-heading font-bold text-slate-900 dark:text-slate-100">
+            Política de Control de Acceso Basada en Roles (RBAC)
           </h2>
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs border border-[#233354] rounded-md overflow-hidden text-[#F8FAFC]">
-              <thead className="bg-[#0B111E] text-[#94A3B8] text-[11px] uppercase font-heading font-bold border-b border-[#233354]">
+          <div className="overflow-x-auto bg-white dark:bg-[#101726] border border-slate-200 dark:border-slate-800 rounded-md">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-slate-100 dark:bg-[#0B111E] text-[11px] font-heading font-semibold uppercase tracking-widest text-slate-600 dark:text-slate-400 border-b border-slate-200 dark:border-slate-800">
                 <tr>
-                  <th className="py-3 px-4">Recurso / Entidad</th>
-                  <th className="py-3 px-4">TI (Root)</th>
-                  <th className="py-3 px-4">Supervisor</th>
-                  <th className="py-3 px-4">Empleado</th>
-                  <th className="py-3 px-4 bg-[#0F172A] border-l border-[#233354]">RH (Restringido)</th>
+                  <th className="py-3.5 px-4 text-slate-600 dark:text-slate-400">Recurso / Entidad</th>
+                  <th className="py-3.5 px-4 text-slate-600 dark:text-slate-400">TI (Root)</th>
+                  <th className="py-3.5 px-4 text-slate-600 dark:text-slate-400">Supervisor</th>
+                  <th className="py-3.5 px-4 text-slate-600 dark:text-slate-400">Empleado</th>
+                  <th className="py-3.5 px-4 text-slate-600 dark:text-slate-400">RH (Restringido)</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-[#233354]">
+              <tbody className="divide-y divide-slate-200 dark:divide-slate-800/80">
                 {(Object.keys(RBAC_MATRIX) as Array<keyof typeof RBAC_MATRIX>).map((resource) => (
-                  <tr key={resource} className="hover:bg-[#1A2742]/50 transition-colors">
-                    <td className="py-3 px-4 font-mono font-bold text-[#F8FAFC]">{resource}</td>
-                    <td className="py-3 px-4 text-[#38BDF8] font-medium">
+                  <tr key={resource} className="bg-white dark:bg-[#101726] hover:bg-slate-50 dark:hover:bg-[#172238] transition-colors">
+                    <td className="py-3.5 px-4 font-mono font-semibold text-slate-900 dark:text-slate-200">{resource}</td>
+                    <td className="py-3.5 px-4 text-slate-900 dark:text-slate-200">
                       {RBAC_MATRIX[resource].TI.description}
                     </td>
-                    <td className="py-3 px-4 text-[#94A3B8]">
+                    <td className="py-3.5 px-4 text-slate-600 dark:text-slate-400">
                       {RBAC_MATRIX[resource].Supervisor.description}
                     </td>
-                    <td className="py-3 px-4 text-[#94A3B8]">
+                    <td className="py-3.5 px-4 text-slate-600 dark:text-slate-400">
                       {RBAC_MATRIX[resource].Empleado.description}
                     </td>
-                    <td
-                      className={`py-3 px-4 font-semibold border-l border-[#233354] ${
-                        RBAC_MATRIX[resource].RH.read === 'DENIED_403'
-                          ? 'bg-[#E11D48]/10 text-[#E11D48]'
-                          : 'bg-[#0F172A] text-[#38BDF8]'
-                        }`}
-                    >
+                    <td className="py-3.5 px-4 text-slate-600 dark:text-slate-400">
                       {RBAC_MATRIX[resource].RH.description}
                     </td>
                   </tr>
@@ -907,7 +810,7 @@ export function TIDashboard({ initialTab = 'users_permissions' }: TIDashboardPro
               </tbody>
             </table>
           </div>
-        </div>
+        </section>
       )}
 
       {/* PESTAÑA 4: AUDITAR PANEL DE SUPERVISIÓN */}

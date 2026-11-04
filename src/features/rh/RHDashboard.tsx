@@ -1,619 +1,606 @@
 import { useState, useMemo, useEffect } from 'react';
-import {
-  Users,
-  Clock,
-  Calendar,
-  ShieldAlert,
-  Search,
-  CheckCircle2,
-  UserCheck,
-  UserX,
-  Lock,
-  Activity,
-  FileSpreadsheet,
-  ScanFace,
-  ShieldCheck,
-} from 'lucide-react';
 import { useRayonerStore } from '../../store/useRayonerStore';
 import { useCheckinStore } from '../../store/useCheckinStore';
-import { probeRBACEndpoint, getEffectiveModules } from '../../services/rbac';
+import {
+  fetchRHAttendanceRecords,
+  getEffectiveModules,
+  type RHAttendanceRecord,
+} from '../../services/rbac';
 import { FacialEnrollmentModal } from '../checkin/FacialEnrollmentModal';
 import { CheckinPanel } from '../checkin/CheckinPanel';
+import { UserAttendanceDrawer } from './UserAttendanceDrawer';
 
-/**
- * Panel Exclusivo de Recursos Humanos (RH - Perfil Restringido)
- * - Permisos estrictos: Solo lectura de métricas operativas (headcount, listas de personal y time_logs).
- * - BLOQUEADO (403 Forbidden): Sin ningún acceso ni renderizado de empresas/clientes, proyectos ni tareas.
- * - Paleta monocromática/análoga oscura corporativa con acentos celestes y azul rey.
- */
+type DateRangePreset = 'all' | 'today' | 'week' | 'custom';
+
+function formatCheckTimestamp(isoString?: string | null): string {
+  if (!isoString) return 'En turno';
+  const dateObj = new Date(isoString);
+  if (Number.isNaN(dateObj.getTime())) return isoString;
+
+  const day = String(dateObj.getDate()).padStart(2, '0');
+  const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+  const year = dateObj.getFullYear();
+  const hours = String(dateObj.getHours()).padStart(2, '0');
+  const minutes = String(dateObj.getMinutes()).padStart(2, '0');
+
+  return `${day}/${month}/${year} • ${hours}:${minutes} hrs`;
+}
+
+function formatLocationSummary(label: string, lat: number, lng: number): string {
+  const cleanLabel = label.split(',')[0].trim() || 'Oficina Central';
+  return `${cleanLabel} (${lat.toFixed(2)}, ${lng.toFixed(2)})`;
+}
+
 export function RHDashboard() {
-  const { user, userPermissionsDirectory, getEffectiveUserModules, mockEmployeesData, addToast } = useCheckinStore();
+  const { user, getEffectiveUserModules, mockEmployeesData, history, activeCheckin } = useCheckinStore();
   const { teamMembers } = useRayonerStore();
 
   const effectiveModules = getEffectiveUserModules(user?.id) || getEffectiveModules(user);
-  const hasVector = Boolean(
-    user?.biometrics?.faceDescriptor?.length || user?.faceDescriptor?.length
-  );
-
-  // Equipos (Supervisores) que TI autorizó visualizar a este perfil de RH
-  const rhPermissionEntry = userPermissionsDirectory[user?.id || 'rh-01'] || userPermissionsDirectory['rh-01'];
-  const allowedSupervisorIds = useMemo(() => {
-    if (rhPermissionEntry?.allowedSupervisorIds) {
-      return rhPermissionEntry.allowedSupervisorIds;
-    }
-    return teamMembers.filter((m) => m.role === 'Supervisor').map((m) => m.id);
-  }, [rhPermissionEntry, teamMembers]);
-
-  const authorizedSupervisors = useMemo(() => {
-    return teamMembers.filter((m) => m.role === 'Supervisor' && allowedSupervisorIds.includes(m.id));
-  }, [teamMembers, allowedSupervisorIds]);
 
   const [rhTab, setRhTab] = useState<'metrics' | 'my_checkin'>('metrics');
   const [isRecalibrateOpen, setIsRecalibrateOpen] = useState(false);
 
-  const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
-  const [startDate, setStartDate] = useState('2026-10-01');
-  const [endDate, setEndDate] = useState('2026-10-31');
+  // Estado del Drawer lateral de detalle de colaborador y mapa
+  const [drawerState, setDrawerState] = useState<{
+    isOpen: boolean;
+    collaboratorEmail: string | null;
+    initialRecordId: string | null;
+  }>({
+    isOpen: false,
+    collaboratorEmail: null,
+    initialRecordId: null,
+  });
 
-  // Estado de prueba de endpoints API RBAC (/api/rh/work-summary vs /api/tasks y /api/clients)
-  const [rbacAuditResults, setRbacAuditResults] = useState<{
-    workSummaryStatus?: number;
-    tasksStatus?: number;
-    tasksError?: string;
-    clientsStatus?: number;
-    clientsError?: string;
-  }>({});
+  // Filtros limpios de la vista global de asistencias
+  const [searchQuery, setSearchQuery] = useState('');
+  const [teamFilter, setTeamFilter] = useState<string>('');
+  const [datePreset, setDatePreset] = useState<DateRangePreset>('all');
+  const [customStartDate, setCustomStartDate] = useState('2026-10-01');
+  const [customEndDate, setCustomEndDate] = useState('2026-11-30');
+
+  const [apiAttendanceRecords, setApiAttendanceRecords] = useState<RHAttendanceRecord[]>([]);
 
   useEffect(() => {
-    async function verifyRHRBACBoundaries() {
-      const [summaryRes, tasksRes, clientsRes] = await Promise.all([
-        probeRBACEndpoint('/api/rh/work-summary', 'RH', user?.id, { startDate, endDate }),
-        probeRBACEndpoint('/api/tasks', 'RH', user?.id),
-        probeRBACEndpoint('/api/clients', 'RH', user?.id),
-      ]);
-
-      setRbacAuditResults({
-        workSummaryStatus: summaryRes.status,
-        tasksStatus: tasksRes.status,
-        tasksError: String(tasksRes.body?.error || '403 Forbidden'),
-        clientsStatus: clientsRes.status,
-        clientsError: String(clientsRes.body?.error || '403 Forbidden'),
-      });
-    }
-    verifyRHRBACBoundaries();
-  }, [user?.id, startDate, endDate]);
-
-  // Vista limpia equivalente a rh_work_time_view:
-  // Filtra únicamente los equipos asignados por TI a RH y omite cualquier campo de clientes, proyectos o tareas
-  const sanitizedPersonnel = useMemo(() => {
-    return teamMembers
-      .filter((m) => {
-        if (m.role === 'RH') return false;
-        if (m.role === 'Supervisor') return allowedSupervisorIds.includes(m.id);
-        const supId = m.supervisor_id || m.supervisorId || 'admin-99';
-        return allowedSupervisorIds.includes(supId);
-      })
-      .map((m) => {
-        const mockEmp = mockEmployeesData.find(
-          (e) => e.id === m.id || e.email.toLowerCase() === m.email.toLowerCase()
-        );
-        const historyLogs = (mockEmp?.history || []).filter((h) => {
-          if (startDate && h.date < startDate) return false;
-          if (endDate && h.date > endDate) return false;
-          return true;
-        });
-
-        const historyHours = historyLogs.reduce(
-          (sum, h) => sum + (h.totalDurationMinutes || 480) / 60,
-          0
-        );
-        const todayHours = Number(((m.workedMinutesToday || 0) / 60).toFixed(2));
-        const totalPeriodHours = Number((historyHours + todayHours).toFixed(2));
-
-        return {
-          user_id: m.id,
-          user_name: m.name,
-          email: m.email,
-          role: m.role || 'Empleado',
-          department: m.team,
-          status: m.status,
-          check_in: m.entryTime || '09:00',
-          check_out: m.checkOutTime || (m.status === 'active' ? 'En jornada' : '18:00'),
-          hours_today: todayHours,
-          hours_worked_period: totalPeriodHours,
-          is_late: m.isLate,
-          minutes_late: m.minutesLate,
-        };
-      });
-  }, [teamMembers, mockEmployeesData, startDate, endDate, allowedSupervisorIds]);
-
-  const filteredPersonnel = useMemo(() => {
-    return sanitizedPersonnel.filter((p) => {
-      if (statusFilter !== 'all' && p.status !== statusFilter) return false;
-      if (searchQuery.trim()) {
-        const q = searchQuery.toLowerCase();
-        return (
-          p.user_name.toLowerCase().includes(q) ||
-          p.user_id.toLowerCase().includes(q) ||
-          p.department.toLowerCase().includes(q)
-        );
+    let active = true;
+    fetchRHAttendanceRecords({ id: user?.id, role: user?.role }).then((data) => {
+      if (active) {
+        setApiAttendanceRecords(data);
       }
+    });
+    return () => {
+      active = false;
+    };
+  }, [user?.id, user?.role]);
+
+  // Lista global de equipos / supervisores para el filtro opcional
+  const availableTeams = useMemo(() => {
+    const supervisors = teamMembers.filter((m) => m.role === 'Supervisor');
+    const options: Array<{ value: string; label: string }> = [];
+    const seen = new Set<string>();
+
+    supervisors.forEach((sup) => {
+      const label = sup.team ? `${sup.team} — ${sup.name}` : `Equipo de ${sup.name}`;
+      if (!seen.has(sup.name)) {
+        seen.add(sup.name);
+        options.push({ value: sup.name, label });
+      }
+    });
+
+    return options;
+  }, [teamMembers]);
+
+  // Consolidación global de registros de asistencia (API + actividad en vivo + historial) sin división forzada
+  const consolidatedAttendance = useMemo(() => {
+    const mapById = new Map<string, RHAttendanceRecord>();
+
+    // 1. Registros provenientes de GET /api/rh/attendance
+    apiAttendanceRecords.forEach((rec) => {
+      mapById.set(rec.id, rec);
+    });
+
+    // 2. Registros en vivo del usuario activo (si realizó check-in durante la sesión)
+    const liveRecords = activeCheckin ? [activeCheckin, ...history] : history;
+    liveRecords.forEach((rec) => {
+      const checkInMs = rec.checkInTimeMs ?? Date.now();
+      const checkInIso = new Date(checkInMs).toISOString();
+      const checkOutIso = rec.checkOutTimeMs ? new Date(rec.checkOutTimeMs).toISOString() : null;
+      const totalHrs = rec.totalDurationMinutes
+        ? Number((rec.totalDurationMinutes / 60).toFixed(1))
+        : Number(((Date.now() - checkInMs) / 3600000).toFixed(1));
+
+      const confidence =
+        typeof rec.biometricMatchScore === 'number'
+          ? rec.biometricMatchScore > 1
+            ? Number((rec.biometricMatchScore / 100).toFixed(2))
+            : rec.biometricMatchScore
+          : 0.97;
+
+      const hasFacialMatch = Boolean(rec.biometricMatchScore && rec.biometricMatchScore > 0);
+
+      mapById.set(`live-${rec.id}`, {
+        id: `live-${rec.id}`,
+        userName: user?.name || 'Colaborador Activo',
+        userEmail: user?.email || 'colaborador.prueba@russellbedford.mx',
+        teamName: 'Equipo Prueba (Auditoría Fiscal)',
+        supervisorName: 'Supervisor Prueba',
+        checkIn: {
+          timestamp: checkInIso,
+          facialMatch: hasFacialMatch,
+          confidenceScore: confidence,
+          location: {
+            label: rec.address || 'Oficina Central',
+            latitude: rec.location?.lat ?? 21.8853,
+            longitude: rec.location?.lng ?? -102.2915,
+          },
+        },
+        checkOut: checkOutIso
+          ? {
+              timestamp: checkOutIso,
+              facialMatch: hasFacialMatch,
+              location: {
+                label: rec.address || 'Oficina Central',
+                latitude: rec.location?.lat ?? 21.8853,
+                longitude: rec.location?.lng ?? -102.2915,
+              },
+            }
+          : null,
+        totalHours: Math.max(0.1, totalHrs),
+      });
+    });
+
+    // 3. Historial y estado actual de colaboradores registrados en el sistema
+    mockEmployeesData.forEach((emp) => {
+      const memberInfo = teamMembers.find(
+        (m) => m.id === emp.id || m.email.toLowerCase() === emp.email.toLowerCase()
+      );
+      const supervisorMember = teamMembers.find(
+        (s) => s.id === (emp.supervisor_id || memberInfo?.supervisor_id || 'admin-99')
+      );
+      const supervisorName = supervisorMember?.name || 'Supervisor Prueba';
+      const teamName = memberInfo?.team || emp.team || 'Equipo Operaciones';
+      const empRequiresFacial = emp.role !== 'Supervisor' && emp.role !== 'TI';
+
+      emp.history.slice(0, 5).forEach((h) => {
+        const recordId = `hist-${emp.id}-${h.id}`;
+        if (mapById.has(recordId)) return;
+
+        const inMs = h.checkInTimeMs ?? Date.now();
+        const inIso = new Date(inMs).toISOString();
+        const outIso = h.checkOutTimeMs ? new Date(h.checkOutTimeMs).toISOString() : null;
+        const hrs = Number(((h.totalDurationMinutes || 540) / 60).toFixed(1));
+        const rawScore = h.biometricMatchScore
+          ? h.biometricMatchScore > 1
+            ? h.biometricMatchScore / 100
+            : h.biometricMatchScore
+          : empRequiresFacial
+          ? 0.96
+          : 0;
+
+        mapById.set(recordId, {
+          id: recordId,
+          userName: emp.name,
+          userEmail: emp.email,
+          teamName,
+          supervisorName,
+          checkIn: {
+            timestamp: inIso,
+            facialMatch: empRequiresFacial,
+            confidenceScore: Number(rawScore.toFixed(2)),
+            location: {
+              label: h.address || 'Oficina Central',
+              latitude: h.location?.lat ?? 21.8853,
+              longitude: h.location?.lng ?? -102.2915,
+            },
+          },
+          checkOut: outIso
+            ? {
+                timestamp: outIso,
+                facialMatch: empRequiresFacial,
+                location: {
+                  label: h.address || 'Oficina Central',
+                  latitude: h.location?.lat ?? 21.8853,
+                  longitude: h.location?.lng ?? -102.2915,
+                },
+              }
+            : null,
+          totalHours: hrs,
+        });
+      });
+    });
+
+    return Array.from(mapById.values()).sort(
+      (a, b) => new Date(b.checkIn.timestamp).getTime() - new Date(a.checkIn.timestamp).getTime()
+    );
+  }, [apiAttendanceRecords, activeCheckin, history, mockEmployeesData, teamMembers, user?.name, user?.email]);
+
+  // Aplicación de filtros de búsqueda, equipo/supervisor y rango de fechas
+  const filteredAttendance = useMemo(() => {
+    const now = new Date();
+    const todayStr = now.toISOString().split('T')[0];
+    const sevenDaysAgoMs = now.getTime() - 7 * 24 * 60 * 60 * 1000;
+
+    return consolidatedAttendance.filter((item) => {
+      // Filtro por equipo / supervisor (por defecto "" muestra todos los colaboradores)
+      if (teamFilter) {
+        const matchesTeamOrSup =
+          item.supervisorName.toLowerCase().includes(teamFilter.toLowerCase()) ||
+          item.teamName.toLowerCase().includes(teamFilter.toLowerCase());
+        if (!matchesTeamOrSup) return false;
+      }
+
+      // Filtro por rango de fechas
+      const itemDate = new Date(item.checkIn.timestamp);
+      const itemDateStr = Number.isNaN(itemDate.getTime())
+        ? ''
+        : itemDate.toISOString().split('T')[0];
+
+      if (datePreset === 'today') {
+        if (itemDateStr !== todayStr) return false;
+      } else if (datePreset === 'week') {
+        if (itemDate.getTime() < sevenDaysAgoMs) return false;
+      } else if (datePreset === 'custom') {
+        if (customStartDate && itemDateStr < customStartDate) return false;
+        if (customEndDate && itemDateStr > customEndDate) return false;
+      }
+
+      // Filtro por búsqueda de nombre o correo
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase().trim();
+        const matchesSearch =
+          item.userName.toLowerCase().includes(q) ||
+          item.userEmail.toLowerCase().includes(q) ||
+          item.teamName.toLowerCase().includes(q) ||
+          item.supervisorName.toLowerCase().includes(q);
+        if (!matchesSearch) return false;
+      }
+
       return true;
     });
-  }, [sanitizedPersonnel, statusFilter, searchQuery]);
+  }, [
+    consolidatedAttendance,
+    teamFilter,
+    datePreset,
+    customStartDate,
+    customEndDate,
+    searchQuery,
+  ]);
 
-  // Registros detallados de tiempo de trabajo (time_logs) sin referencias a tareas ni clientes
-  const sanitizedTimeLogs = useMemo(() => {
-    const logs: Array<{
-      id: string;
-      user_id: string;
-      user_name: string;
-      status: 'active' | 'inactive';
-      date: string;
-      check_in: string;
-      check_out: string;
-      hours_worked: number;
-    }> = [];
+  // Métricas operativas globales
+  const totalCollaborators = useMemo(() => {
+    return teamMembers.filter((m) => m.role !== 'TI').length;
+  }, [teamMembers]);
 
-    sanitizedPersonnel.forEach((p) => {
-      logs.push({
-        id: `tl-today-${p.user_id}`,
-        user_id: p.user_id,
-        user_name: p.user_name,
-        status: p.status,
-        date: new Date().toISOString().split('T')[0],
-        check_in: p.check_in,
-        check_out: p.check_out,
-        hours_worked: p.hours_today,
-      });
-    });
+  const activeCollaboratorsCount = useMemo(() => {
+    return teamMembers.filter((m) => m.role !== 'TI' && m.status === 'active').length;
+  }, [teamMembers]);
 
-    mockEmployeesData.forEach((emp) => {
-      const empSupId = emp.supervisor_id || 'admin-99';
-      if (!allowedSupervisorIds.includes(empSupId)) return;
+  const biometricVerifiedCount = useMemo(() => {
+    return filteredAttendance.filter((r) => r.checkIn.facialMatch).length;
+  }, [filteredAttendance]);
 
-      emp.history.slice(0, 6).forEach((h) => {
-        if (startDate && h.date < startDate) return;
-        if (endDate && h.date > endDate) return;
-
-        const inDate = h.checkInTimeMs ? new Date(h.checkInTimeMs) : null;
-        const outDate = h.checkOutTimeMs ? new Date(h.checkOutTimeMs) : null;
-        logs.push({
-          id: h.id,
-          user_id: emp.id,
-          user_name: emp.name,
-          status: emp.status,
-          date: h.date,
-          check_in: inDate
-            ? inDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-            : '09:00',
-          check_out: outDate
-            ? outDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-            : '18:00',
-          hours_worked: Number(((h.totalDurationMinutes || 480) / 60).toFixed(2)),
-        });
-      });
-    });
-
-    return logs.filter((l) => {
-      if (!searchQuery.trim()) return true;
-      const q = searchQuery.toLowerCase();
-      return l.user_name.toLowerCase().includes(q) || l.user_id.toLowerCase().includes(q);
-    });
-  }, [sanitizedPersonnel, mockEmployeesData, startDate, endDate, searchQuery, allowedSupervisorIds]);
-
-  const totalUsers = sanitizedPersonnel.length;
-  const activeUsers = sanitizedPersonnel.filter((p) => p.status === 'active').length;
-  const inactiveUsers = totalUsers - activeUsers;
-  const totalHoursToday = Number(
-    sanitizedPersonnel.reduce((acc, p) => acc + p.hours_today, 0).toFixed(2)
-  );
-
-  const handleTestForbiddenAccess = async (endpoint: '/api/tasks' | '/api/clients') => {
-    const res = await probeRBACEndpoint(endpoint, 'RH', user?.id);
-    addToast(
-      `[${res.status} Forbidden] ${endpoint}: ${res.body?.error || 'Acceso denegado por RBAC'}`,
-      'error'
+  const totalConsolidatedHours = useMemo(() => {
+    return Number(
+      filteredAttendance.reduce((acc, r) => acc + (r.totalHours || 0), 0).toFixed(1)
     );
-  };
+  }, [filteredAttendance]);
 
   const resolvedRhTab =
     rhTab === 'my_checkin' && !effectiveModules.checkIn ? 'metrics' : rhTab;
 
   return (
-    <div className="w-full max-w-7xl mx-auto p-4 lg:p-8 space-y-6 animate-fade-in bg-[#0B111E] text-[#F8FAFC]">
-      {/* 1. Cabecera de Recursos Humanos (Perfil Restringido) */}
-      <div className="bg-[#131D31] text-[#F8FAFC] rounded-md p-5 sm:p-6 border border-[#233354] shadow-xs">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div className="flex items-start space-x-4">
-            <div className="w-10 h-10 rounded-md bg-[#1A2742] border border-[#233354] flex items-center justify-center text-[#38BDF8] shrink-0">
-              <FileSpreadsheet className="w-5 h-5" />
+    <div className="w-full max-w-7xl mx-auto px-4 lg:px-8 py-8 space-y-8 animate-fade-in bg-[#F8FAFC] dark:bg-[#090E17] text-slate-900 dark:text-slate-200">
+      {/* Cabecera Corporativa de Recursos Humanos */}
+      <header className="space-y-6 border-b border-slate-200 dark:border-slate-800 pb-6">
+        <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-6">
+          <div className="space-y-1.5">
+            <div className="flex flex-wrap items-center gap-3 text-xs font-heading font-semibold uppercase tracking-widest text-slate-600 dark:text-slate-400">
+              <span className="text-[#1E40AF] dark:text-[#38BDF8]">RECURSOS HUMANOS</span>
+              <span>/</span>
+              <span>Auditoría Global de Asistencia y Biometría</span>
             </div>
-            <div>
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-[10px] font-heading font-bold uppercase tracking-wider bg-[#1A2742] text-[#F59E0B] border border-[#F59E0B]/30 px-2 py-0.5 rounded-sm">
-                  RECURSOS HUMANOS (RH) • PERFIL RESTRINGIDO
-                </span>
-                <span className="text-xs text-[#94A3B8]">Vista: rh_work_time_view</span>
-                <span
-                  className={`inline-flex items-center gap-1 text-[10px] font-heading font-semibold px-2 py-0.5 rounded-md border ${
-                    hasVector
-                      ? 'bg-[#0F172A] text-[#38BDF8] border-[#233354]'
-                      : 'bg-[#1A2742] text-[#F59E0B] border-[#F59E0B]/30'
-                  }`}
-                >
-                  <ShieldCheck className="w-3 h-3 text-current" />
-                  {hasVector ? 'Vector 128D Activo' : 'Vector Facial Pendiente'}
-                </span>
-              </div>
-              <h1 className="text-xl sm:text-2xl font-heading font-bold text-[#F8FAFC] tracking-tight mt-1">
-                Métricas Operativas de Personal y Registros de Tiempo
-              </h1>
-              <p className="text-xs text-[#94A3B8] mt-0.5 max-w-2xl">
-                Acceso exclusivo de solo lectura a conteo de personal activo (<code>headcount</code>) y checadas (<code>time_logs</code>) de los equipos asignados por TI:{' '}
-                <strong className="text-[#38BDF8]">
-                  {authorizedSupervisors.length > 0
-                    ? authorizedSupervisors.map((s) => `Equipo de ${s.name}`).join(', ')
-                    : 'Sin equipos asignados por TI'}
-                </strong>.
-              </p>
-            </div>
+            <h1 className="text-2xl sm:text-3xl font-heading font-bold text-slate-900 dark:text-slate-100 tracking-tight">
+              Control General de Asistencias y Jornadas
+            </h1>
+            <p className="text-xs text-slate-600 dark:text-slate-400 max-w-2xl">
+              Vista centralizada de entradas, salidas, validación biométrica facial y ubicación de marcación de todo el personal.
+            </p>
           </div>
 
-          {/* Acciones rápidas de Biometría y Selector de Vista RH */}
-          <div className="flex flex-col sm:items-end gap-2.5">
-            <div className="flex flex-wrap items-center gap-2">
-              <div className="bg-[#1A2742] p-1 rounded-md border border-[#233354] flex items-center gap-1 text-xs font-heading font-semibold">
-                <button
-                  id="nav-metrics-time"
-                  type="button"
-                  onClick={() => setRhTab('metrics')}
-                  className={`px-3 py-1.5 rounded-sm transition-colors cursor-pointer ${
-                    resolvedRhTab === 'metrics'
-                      ? 'bg-[#1E40AF] text-white shadow-xs'
-                      : 'text-[#94A3B8] hover:text-[#F8FAFC]'
-                  }`}
-                >
-                  Métricas de Personal
-                </button>
-                {effectiveModules.checkIn && (
-                  <button
-                    type="button"
-                    onClick={() => setRhTab('my_checkin')}
-                    className={`px-3 py-1.5 rounded-sm transition-colors cursor-pointer flex items-center gap-1.5 ${
-                      resolvedRhTab === 'my_checkin'
-                        ? 'bg-[#1E40AF] text-white shadow-xs'
-                        : 'text-[#94A3B8] hover:text-[#F8FAFC]'
-                    }`}
-                  >
-                    <Clock className="w-3.5 h-3.5" />
-                    Mi Asistencia
-                  </button>
-                )}
-              </div>
+          <div className="flex flex-wrap items-center gap-6">
+            <button
+              id="nav-metrics-time"
+              type="button"
+              onClick={() => setRhTab('metrics')}
+              className={`pb-2 text-xs font-heading font-semibold uppercase tracking-wider transition-colors relative cursor-pointer ${
+                resolvedRhTab === 'metrics'
+                  ? 'text-slate-900 dark:text-slate-100'
+                  : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100'
+              }`}
+            >
+              Tablero de Asistencias
+              {resolvedRhTab === 'metrics' && (
+                <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#1D4ED8] dark:bg-[#38BDF8]" />
+              )}
+            </button>
 
+            {effectiveModules.checkIn && (
               <button
                 type="button"
-                onClick={() => setIsRecalibrateOpen(true)}
-                className="px-3.5 py-1.5 rounded-md bg-[#1E40AF] hover:bg-[#1D4ED8] text-white text-xs font-heading font-semibold flex items-center gap-1.5 cursor-pointer transition-colors border border-[#1E40AF]"
+                onClick={() => setRhTab('my_checkin')}
+                className={`pb-2 text-xs font-heading font-semibold uppercase tracking-wider transition-colors relative cursor-pointer ${
+                  resolvedRhTab === 'my_checkin'
+                    ? 'text-slate-900 dark:text-slate-100'
+                    : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100'
+                }`}
               >
-                <ScanFace className="w-3.5 h-3.5 text-white" />
-                <span>Actualizar Registro Facial</span>
+                Mi Asistencia
+                {resolvedRhTab === 'my_checkin' && (
+                  <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#1D4ED8] dark:bg-[#38BDF8]" />
+                )}
               </button>
-            </div>
-
-            {resolvedRhTab === 'metrics' && (
-              <div className="bg-[#1A2742] p-2 rounded-md border border-[#233354] flex flex-wrap items-center gap-2 text-xs">
-                <div className="flex items-center space-x-1.5 text-[#38BDF8] font-heading font-semibold">
-                  <Calendar className="w-3.5 h-3.5" />
-                  <span>Periodo:</span>
-                </div>
-                <input
-                  type="date"
-                  value={startDate}
-                  onChange={(e) => setStartDate(e.target.value)}
-                  className="bg-[#131D31] text-[#F8FAFC] border border-[#233354] rounded-sm px-2 py-0.5 text-xs font-medium"
-                />
-                <span className="text-[#64748B]">a</span>
-                <input
-                  type="date"
-                  value={endDate}
-                  onChange={(e) => setEndDate(e.target.value)}
-                  className="bg-[#131D31] text-[#F8FAFC] border border-[#233354] rounded-sm px-2 py-0.5 text-xs font-medium"
-                />
-              </div>
             )}
+
+            <button
+              type="button"
+              onClick={() => setIsRecalibrateOpen(true)}
+              className="px-4 py-1.5 bg-[#1D4ED8] hover:bg-blue-600 text-white text-xs font-heading font-semibold uppercase tracking-wider rounded cursor-pointer transition-colors"
+            >
+              Actualizar Registro Facial
+            </button>
           </div>
         </div>
 
-        {/* KPIs de Métricas Operativas Permitidas para RH */}
+        {/* Resumen de Indicadores Globales */}
         {effectiveModules.reports && (
-          <div id="nav-headcount" className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-5 pt-4 border-t border-[#233354]">
-            <div className="bg-[#1A2742] rounded-md p-3 border border-[#233354]">
-              <span className="text-[10px] text-[#94A3B8] uppercase font-heading font-semibold tracking-wider flex items-center justify-between">
-                <span>Total Personal</span>
-                <Users className="w-3.5 h-3.5 text-[#38BDF8]" />
+          <div
+            id="nav-headcount"
+            className="grid grid-cols-2 sm:grid-cols-4 gap-8 pt-4 border-t border-slate-200 dark:border-slate-800"
+          >
+            <div>
+              <span className="text-[11px] text-slate-600 dark:text-slate-400 uppercase font-heading font-semibold tracking-wider block">
+                Total Colaboradores
               </span>
-              <div className="text-2xl font-heading font-bold text-[#F8FAFC] metric-value mt-1">{totalUsers}</div>
-              <span className="text-[10px] text-[#64748B]">Colaboradores</span>
+              <div className="text-3xl font-heading font-bold text-slate-900 dark:text-slate-100 metric-value mt-1">
+                {totalCollaborators}
+              </div>
+              <span className="text-xs text-slate-600 dark:text-slate-400">Personal registrado</span>
             </div>
 
-            <div className="bg-[#1A2742] rounded-md p-3 border border-[#233354]">
-              <span className="text-[10px] text-[#38BDF8] uppercase font-heading font-semibold tracking-wider flex items-center justify-between">
-                <span>Usuarios Activos Hoy</span>
-                <UserCheck className="w-3.5 h-3.5 text-[#38BDF8]" />
+            <div>
+              <span className="text-[11px] text-slate-600 dark:text-slate-400 uppercase font-heading font-semibold tracking-wider block">
+                En Turno Activo
               </span>
-              <div className="text-2xl font-heading font-bold text-[#38BDF8] metric-value mt-1">{activeUsers}</div>
-              <span className="text-[10px] text-[#64748B]">En jornada</span>
+              <div className="text-3xl font-heading font-bold text-slate-900 dark:text-slate-100 metric-value mt-1">
+                {activeCollaboratorsCount}
+              </div>
+              <span className="text-xs text-slate-600 dark:text-slate-400">Con jornada abierta</span>
             </div>
 
-            <div className="bg-[#1A2742] rounded-md p-3 border border-[#233354]">
-              <span className="text-[10px] text-[#94A3B8] uppercase font-heading font-semibold tracking-wider flex items-center justify-between">
-                <span>Fuera de Turno</span>
-                <UserX className="w-3.5 h-3.5 text-[#64748B]" />
+            <div>
+              <span className="text-[11px] text-slate-600 dark:text-slate-400 uppercase font-heading font-semibold tracking-wider block">
+                Validaciones Biométricas
               </span>
-              <div className="text-2xl font-heading font-bold text-[#94A3B8] metric-value mt-1">{inactiveUsers}</div>
-              <span className="text-[10px] text-[#64748B]">Sin sesión</span>
+              <div className="text-3xl font-heading font-bold text-slate-900 dark:text-slate-100 metric-value mt-1">
+                {biometricVerifiedCount}
+              </div>
+              <span className="text-xs text-slate-600 dark:text-slate-400">Marcaciones con Facial OK</span>
             </div>
 
-            <div className="bg-[#1A2742] rounded-md p-3 border border-[#233354]">
-              <span className="text-[10px] text-[#38BDF8] uppercase font-heading font-semibold tracking-wider flex items-center justify-between">
-                <span>Horas Hoy</span>
-                <Clock className="w-3.5 h-3.5 text-[#38BDF8]" />
+            <div>
+              <span className="text-[11px] text-slate-600 dark:text-slate-400 uppercase font-heading font-semibold tracking-wider block">
+                Horas Consolidadas
               </span>
-              <div className="text-2xl font-heading font-bold text-[#F8FAFC] metric-value mt-1">{totalHoursToday} hrs</div>
-              <span className="text-[10px] text-[#64748B]">Asistencia diaria</span>
+              <div className="text-3xl font-heading font-bold text-slate-900 dark:text-slate-100 metric-value mt-1">
+                {totalConsolidatedHours} hrs
+              </div>
+              <span className="text-xs text-slate-600 dark:text-slate-400">En la vista actual</span>
             </div>
           </div>
         )}
-      </div>
+      </header>
 
-      {/* Vista de Asistencia Personal de RH */}
+      {/* Contenido Principal */}
       {resolvedRhTab === 'my_checkin' && effectiveModules.checkIn ? (
         <CheckinPanel />
       ) : !effectiveModules.reports ? (
-        <div className="bg-[#131D31] rounded-md border border-[#233354] p-8 text-center shadow-xs text-[#F8FAFC]">
-          <div className="w-12 h-12 rounded-md bg-[#1A2742] border border-[#233354] text-[#F59E0B] flex items-center justify-center mx-auto mb-3">
-            <Lock className="w-6 h-6" />
-          </div>
-          <h2 className="text-base font-heading font-bold text-[#F8FAFC]">
+        <div className="py-12 border-b border-slate-200 dark:border-slate-800">
+          <h2 className="text-lg font-heading font-bold text-slate-900 dark:text-slate-100">
             Módulo de Reportes Deshabilitado por Administración TI
           </h2>
-          <p className="text-xs text-[#94A3B8] mt-1 max-w-md mx-auto">
-            El administrador de TI desactivó temporalmente el permiso <code>modules.reports</code> para tu cuenta.
+          <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">
+            El administrador de TI desactivó temporalmente la visualización de reportes para tu cuenta.
           </p>
         </div>
       ) : (
-        <>
-          {/* 2. Guardia de Seguridad RBAC Activa */}
-          <div className="bg-[#131D31] rounded-md border border-[#233354] p-4 shadow-xs flex flex-col lg:flex-row lg:items-center justify-between gap-4 text-[#F8FAFC]">
-            <div className="flex items-start space-x-3">
-              <div className="w-8 h-8 rounded-md bg-[#1A2742] border border-[#233354] text-[#38BDF8] flex items-center justify-center shrink-0 mt-0.5">
-                <ShieldAlert className="w-4 h-4" />
-              </div>
-              <div>
-                <h3 className="text-xs font-heading font-bold uppercase tracking-wider text-[#F8FAFC]">
-                  Guardia de Seguridad RBAC Activa (Middleware Backend & Capa de Datos)
-                </h3>
-                <p className="text-xs text-[#94A3B8] mt-0.5">
-                  Endpoint autorizado: <code>GET /api/rh/work-summary</code> ({rbacAuditResults.workSummaryStatus || 200} OK) • Endpoints denegados para RH:{' '}
-                  <code>GET /api/tasks</code> ({rbacAuditResults.tasksStatus || 403} Forbidden) y{' '}
-                  <code>GET /api/clients</code> ({rbacAuditResults.clientsStatus || 403} Forbidden).
-                </p>
-              </div>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-2 shrink-0">
-              <button
-                type="button"
-                onClick={() => handleTestForbiddenAccess('/api/tasks')}
-                className="px-3 py-1.5 rounded-md bg-[#1A2742] hover:bg-[#E11D48]/15 text-[#E11D48] border border-[#E11D48]/30 text-xs font-heading font-semibold flex items-center space-x-1.5 cursor-pointer transition-colors"
-              >
-                <Lock className="w-3.5 h-3.5" />
-                <span>Verificar /api/tasks (403)</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => handleTestForbiddenAccess('/api/clients')}
-                className="px-3 py-1.5 rounded-md bg-[#1A2742] hover:bg-[#E11D48]/15 text-[#E11D48] border border-[#E11D48]/30 text-xs font-heading font-semibold flex items-center space-x-1.5 cursor-pointer transition-colors"
-              >
-                <Lock className="w-3.5 h-3.5" />
-                <span>Verificar /api/clients (403)</span>
-              </button>
-            </div>
-          </div>
-
-          {/* 3. Barra de Búsqueda y Filtro de Personal */}
-          <div id="filter-user-select" className="bg-[#131D31] rounded-md border border-[#233354] p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-[#F8FAFC]">
-            <div className="relative flex-1 max-w-md">
-              <Search className="w-4 h-4 text-[#94A3B8] absolute left-3 top-1/2 -translate-y-1/2" />
+        <section id="time-summary-view" className="w-full">
+          {/* Barra de Filtros Limpia */}
+          <div
+            id="filter-user-select"
+            className="flex flex-wrap items-center justify-between gap-4 pb-6 border-b border-slate-200 dark:border-slate-800"
+          >
+            <div className="flex flex-wrap items-center gap-4">
               <input
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Buscar colaborador por ID, nombre o departamento..."
-                className="w-full pl-9 pr-3.5 py-1.5 bg-[#1A2742] border border-[#233354] rounded-md text-xs font-medium text-[#F8FAFC] placeholder:text-[#64748B] focus:border-[#38BDF8]"
+                placeholder="Buscar por nombre o correo..."
+                className="bg-white dark:bg-[#0B111E] text-slate-900 dark:text-slate-200 text-sm border border-slate-300 dark:border-slate-700 px-3 py-1.5 rounded focus:outline-none focus:border-blue-600 dark:focus:border-sky-400 placeholder:text-slate-500 min-w-[240px]"
               />
+
+              <select
+                value={teamFilter}
+                onChange={(e) => setTeamFilter(e.target.value)}
+                className="bg-white dark:bg-[#0B111E] text-slate-700 dark:text-slate-300 text-sm border border-slate-300 dark:border-slate-700 px-3 py-1.5 rounded focus:outline-none focus:border-blue-600 dark:focus:border-sky-400"
+              >
+                <option value="">Todos los equipos</option>
+                {availableTeams.map((team) => (
+                  <option key={team.value} value={team.value}>
+                    {team.label}
+                  </option>
+                ))}
+              </select>
+
+              <select
+                value={datePreset}
+                onChange={(e) => setDatePreset(e.target.value as DateRangePreset)}
+                className="bg-white dark:bg-[#0B111E] text-slate-700 dark:text-slate-300 text-sm border border-slate-300 dark:border-slate-700 px-3 py-1.5 rounded focus:outline-none focus:border-blue-600 dark:focus:border-sky-400"
+              >
+                <option value="all">Todos los registros</option>
+                <option value="today">Hoy</option>
+                <option value="week">Esta semana</option>
+                <option value="custom">Personalizado</option>
+              </select>
+
+              {datePreset === 'custom' && (
+                <div className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-400">
+                  <input
+                    type="date"
+                    value={customStartDate}
+                    onChange={(e) => setCustomStartDate(e.target.value)}
+                    className="bg-white dark:bg-[#0B111E] text-slate-900 dark:text-slate-200 border border-slate-300 dark:border-slate-700 px-2.5 py-1 rounded text-xs"
+                  />
+                  <span>a</span>
+                  <input
+                    type="date"
+                    value={customEndDate}
+                    onChange={(e) => setCustomEndDate(e.target.value)}
+                    className="bg-white dark:bg-[#0B111E] text-slate-900 dark:text-slate-200 border border-slate-300 dark:border-slate-700 px-2.5 py-1 rounded text-xs"
+                  />
+                </div>
+              )}
             </div>
 
-            <div className="flex items-center space-x-2">
-              <span className="text-xs font-heading font-semibold text-[#94A3B8]">Estado:</span>
-              <div className="flex bg-[#1A2742] p-1 rounded-md border border-[#233354] text-xs font-heading font-semibold">
-                <button
-                  onClick={() => setStatusFilter('all')}
-                  className={`px-3 py-1 rounded-sm transition-colors cursor-pointer ${
-                    statusFilter === 'all' ? 'bg-[#1E40AF] text-white shadow-2xs' : 'text-[#94A3B8]'
-                  }`}
-                >
-                  Todos ({totalUsers})
-                </button>
-                <button
-                  onClick={() => setStatusFilter('active')}
-                  className={`px-3 py-1 rounded-sm transition-colors cursor-pointer ${
-                    statusFilter === 'active'
-                      ? 'bg-[#1E40AF] text-white shadow-2xs'
-                      : 'text-[#94A3B8]'
-                  }`}
-                >
-                  Activos ({activeUsers})
-                </button>
-                <button
-                  onClick={() => setStatusFilter('inactive')}
-                  className={`px-3 py-1 rounded-sm transition-colors cursor-pointer ${
-                    statusFilter === 'inactive'
-                      ? 'bg-[#1E40AF] text-white shadow-2xs'
-                      : 'text-[#94A3B8]'
-                  }`}
-                >
-                  Inactivos ({inactiveUsers})
-                </button>
-              </div>
+            <div className="text-xs text-slate-600 dark:text-slate-400">
+              Mostrando registros consolidados de asistencia ({filteredAttendance.length})
             </div>
           </div>
 
-          {/* 4. Tabla 1: Lista de Colaboradores y Resumen de Horas */}
-          <div id="time-summary-view" className="bg-[#131D31] rounded-md border border-[#233354] shadow-xs overflow-hidden text-[#F8FAFC]">
-            <div className="p-4 border-b border-[#233354] bg-[#0F172A] flex items-center justify-between">
-              <div className="flex items-center space-x-2">
-                <Users className="w-4 h-4 text-[#38BDF8]" />
-                <h2 className="text-xs font-heading font-bold uppercase tracking-wider text-[#F8FAFC]">
-                  1. Lista de Personal y Horas Laboradas por Periodo
-                </h2>
-              </div>
-              <span className="text-[11px] text-[#94A3B8]">
-                Datos sanitizados (Sin proyectos ni tareas)
-              </span>
-            </div>
-
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs text-[#F8FAFC]">
-                <thead className="bg-[#0B111E] text-[11px] font-heading font-bold uppercase text-[#94A3B8] border-b border-[#233354]">
+          {/* Tabla General de Asistencias */}
+          <div className="overflow-x-auto mt-4">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="border-b border-slate-200 dark:border-slate-800 text-[11px] font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400">
+                  <th className="py-3 px-4">Colaborador</th>
+                  <th className="py-3 px-4">Equipo</th>
+                  <th className="py-3 px-4">Entrada</th>
+                  <th className="py-3 px-4">Salida</th>
+                  <th className="py-3 px-4 text-center">Biometría</th>
+                  <th className="py-3 px-4">Ubicación</th>
+                  <th className="py-3 px-4 text-right">Jornada</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-200 dark:divide-slate-800/60 text-sm">
+                {filteredAttendance.length === 0 ? (
                   <tr>
-                    <th className="py-3 px-4">ID Colaborador</th>
-                    <th className="py-3 px-4">Nombre Completo</th>
-                    <th className="py-3 px-4">Estado</th>
-                    <th className="py-3 px-4">Check-In / Out</th>
-                    <th className="py-3 px-4">Puntualidad</th>
-                    <th className="py-3 px-4 text-right">Horas Hoy</th>
-                    <th className="py-3 px-4 text-right">Horas Periodo</th>
+                    <td
+                      colSpan={7}
+                      className="py-8 px-4 text-center text-xs text-slate-600 dark:text-slate-400"
+                    >
+                      No se encontraron registros de asistencia con los criterios seleccionados.
+                    </td>
                   </tr>
-                </thead>
-                <tbody className="divide-y divide-[#233354]">
-                  {filteredPersonnel.map((person) => (
-                    <tr key={person.user_id} className="hover:bg-[#1A2742]/50 transition-colors">
-                      <td className="py-3 px-4 font-mono font-semibold text-[#94A3B8]">
-                        {person.user_id}
-                      </td>
-                      <td className="py-3 px-4">
-                        <span className="font-semibold text-[#F8FAFC] block">{person.user_name}</span>
-                        <span className="text-[11px] text-[#94A3B8]">{person.department}</span>
-                      </td>
-                      <td className="py-3 px-4">
-                        {person.status === 'active' ? (
-                          <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-heading font-semibold bg-[#0F172A] text-[#38BDF8] border border-[#233354]">
-                            <CheckCircle2 className="w-3 h-3 mr-1 text-[#38BDF8]" /> Activo
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-heading font-semibold bg-[#1A2742] text-[#94A3B8] border border-[#233354]">
-                            Inactivo
-                          </span>
-                        )}
-                      </td>
-                      <td className="py-3 px-4 font-mono text-[11px]">
-                        <span className="text-[#F8FAFC] font-semibold">{person.check_in}</span>
-                        <span className="mx-1.5 text-[#64748B]">→</span>
-                        <span className="text-[#94A3B8]">{person.check_out}</span>
-                      </td>
-                      <td className="py-3 px-4">
-                        {person.is_late ? (
-                          <span className="text-[10px] font-heading font-semibold text-[#F59E0B] bg-[#1A2742] px-2 py-0.5 rounded-sm border border-[#F59E0B]/30">
-                            Retardo (+{person.minutes_late}m)
-                          </span>
-                        ) : (
-                          <span className="text-[10px] font-heading font-semibold text-[#38BDF8] bg-[#0F172A] px-2 py-0.5 rounded-sm border border-[#233354]">
-                            Puntual
-                          </span>
-                        )}
-                      </td>
-                      <td className="py-3 px-4 text-right font-heading font-bold text-[#F8FAFC]">
-                        {person.hours_today} hrs
-                      </td>
-                      <td className="py-3 px-4 text-right font-heading font-bold text-[#38BDF8]">
-                        {person.hours_worked_period} hrs
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
+                ) : (
+                  filteredAttendance.map((record) => {
+                    const confidencePct = record.checkIn.confidenceScore
+                      ? Math.round(
+                          record.checkIn.confidenceScore <= 1
+                            ? record.checkIn.confidenceScore * 100
+                            : record.checkIn.confidenceScore
+                        )
+                      : 96;
 
-          {/* 5. Tabla 2: Registros Detallados de Tiempo (time_logs) */}
-          <div className="bg-[#131D31] rounded-md border border-[#233354] shadow-xs overflow-hidden text-[#F8FAFC]">
-            <div className="p-4 border-b border-[#233354] bg-[#0F172A] flex items-center justify-between">
-              <div className="flex items-center space-x-2">
-                <Activity className="w-4 h-4 text-[#38BDF8]" />
-                <h2 className="text-xs font-heading font-bold uppercase tracking-wider text-[#F8FAFC]">
-                  2. Bitácora de Registros de Tiempo de Trabajo (time_logs)
-                </h2>
-              </div>
-              <span className="text-[11px] font-mono text-[#64748B]">
-                rh_work_time_view
-              </span>
-            </div>
-
-            <div className="overflow-x-auto max-h-96">
-              <table className="w-full text-left text-xs text-[#F8FAFC]">
-                <thead className="bg-[#0B111E] text-[11px] font-heading font-bold uppercase text-[#94A3B8] border-b border-[#233354] sticky top-0">
-                  <tr>
-                    <th className="py-3 px-4">Fecha</th>
-                    <th className="py-3 px-4">ID Usuario</th>
-                    <th className="py-3 px-4">Colaborador</th>
-                    <th className="py-3 px-4">Estado</th>
-                    <th className="py-3 px-4">Check-In</th>
-                    <th className="py-3 px-4">Check-Out</th>
-                    <th className="py-3 px-4 text-right">Horas</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[#233354]">
-                  {sanitizedTimeLogs.map((log) => (
-                    <tr key={log.id} className="hover:bg-[#1A2742]/50 transition-colors">
-                      <td className="py-2.5 px-4 font-mono font-medium text-[#94A3B8]">{log.date}</td>
-                      <td className="py-2.5 px-4 font-mono text-[#64748B]">{log.user_id}</td>
-                      <td className="py-2.5 px-4 font-semibold text-[#F8FAFC]">{log.user_name}</td>
-                      <td className="py-2.5 px-4">
-                        <span
-                          className={`text-[10px] font-heading font-semibold px-2 py-0.5 rounded-sm border ${
-                            log.status === 'active'
-                              ? 'bg-[#0F172A] text-[#38BDF8] border-[#233354]'
-                              : 'bg-[#1A2742] text-[#94A3B8] border-[#233354]'
-                          }`}
-                        >
-                          {log.status}
-                        </span>
-                      </td>
-                      <td className="py-2.5 px-4 font-mono">{log.check_in}</td>
-                      <td className="py-2.5 px-4 font-mono">{log.check_out}</td>
-                      <td className="py-2.5 px-4 text-right font-heading font-bold text-[#F8FAFC]">
-                        {log.hours_worked} hrs
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                    return (
+                      <tr
+                        key={record.id}
+                        onClick={() =>
+                          setDrawerState({
+                            isOpen: true,
+                            collaboratorEmail: record.userEmail,
+                            initialRecordId: record.id,
+                          })
+                        }
+                        title="Haz clic para abrir el expediente de asistencia y ubicación en mapa"
+                        className="hover:bg-slate-100/70 dark:hover:bg-[#172238]/60 transition-colors cursor-pointer group"
+                      >
+                        <td className="py-3.5 px-4">
+                          <div className="font-medium text-slate-900 dark:text-slate-100 group-hover:text-[#1D4ED8] dark:group-hover:text-sky-400 transition-colors">
+                            {record.userName}
+                          </div>
+                          <div className="text-xs text-slate-600 dark:text-slate-400">
+                            {record.userEmail}
+                          </div>
+                        </td>
+                        <td className="py-3.5 px-4 text-slate-600 dark:text-slate-400 text-xs">
+                          <div className="text-slate-800 dark:text-slate-200 font-medium">
+                            {record.teamName}
+                          </div>
+                          <div className="text-[11px] text-slate-600 dark:text-slate-400">
+                            Sup: {record.supervisorName}
+                          </div>
+                        </td>
+                        <td className="py-3.5 px-4 text-xs font-mono text-slate-800 dark:text-slate-200">
+                          {formatCheckTimestamp(record.checkIn.timestamp)}
+                        </td>
+                        <td className="py-3.5 px-4 text-xs font-mono text-slate-800 dark:text-slate-200">
+                          {record.checkOut ? (
+                            formatCheckTimestamp(record.checkOut.timestamp)
+                          ) : (
+                            <span className="inline-block px-2 py-0.5 text-[11px] font-sans font-medium bg-slate-100 dark:bg-[#1E2B45] text-[#1D4ED8] dark:text-sky-400 border border-slate-300 dark:border-slate-700 rounded">
+                              En turno
+                            </span>
+                          )}
+                        </td>
+                        <td className="py-3.5 px-4 text-center">
+                          {record.checkIn.facialMatch ? (
+                            <span className="inline-block px-2 py-0.5 text-[11px] font-medium bg-slate-100 dark:bg-slate-800 text-[#1D4ED8] dark:text-sky-400 border border-slate-300 dark:border-slate-700 rounded">
+                              Facial OK ({confidencePct}%)
+                            </span>
+                          ) : (
+                            <span className="inline-block px-2 py-0.5 text-[11px] font-medium bg-slate-100 dark:bg-[#1E2B45] text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-700 rounded">
+                              Manual / Sin coincidencia
+                            </span>
+                          )}
+                        </td>
+                        <td className="py-3.5 px-4 text-xs text-slate-600 dark:text-slate-400">
+                          {formatLocationSummary(
+                            record.checkIn.location.label,
+                            record.checkIn.location.latitude,
+                            record.checkIn.location.longitude
+                          )}
+                        </td>
+                        <td className="py-3.5 px-4 text-right font-mono text-slate-900 dark:text-slate-100 font-semibold">
+                          {record.totalHours.toFixed(1)} hrs
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
           </div>
-        </>
+        </section>
       )}
 
-      {/* Modal para recalibrar / actualizar el vector facial */}
       <FacialEnrollmentModal
         isOpen={isRecalibrateOpen}
         onClose={() => setIsRecalibrateOpen(false)}
         mode="recalibrate"
         endpointTarget="me"
         onEnrollmentComplete={() => setIsRecalibrateOpen(false)}
+      />
+
+      <UserAttendanceDrawer
+        isOpen={drawerState.isOpen}
+        onClose={() =>
+          setDrawerState({
+            isOpen: false,
+            collaboratorEmail: null,
+            initialRecordId: null,
+          })
+        }
+        collaboratorEmail={drawerState.collaboratorEmail}
+        allRecords={consolidatedAttendance}
+        initialRecordId={drawerState.initialRecordId}
       />
     </div>
   );

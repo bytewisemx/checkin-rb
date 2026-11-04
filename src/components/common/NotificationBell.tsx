@@ -109,18 +109,18 @@ export function NotificationBell() {
 
   return (
     <div className="relative" ref={dropdownRef}>
-      {/* Botón Campana en el Header (Limpio sin recuadro) */}
+      {/* Botón Campana en el Header (Monocromático sobrio) */}
       <button
         onClick={() => setIsOpen(!isOpen)}
         title="Bandeja de notificaciones en tiempo real"
-        className="relative p-1.5 text-slate-400 hover:text-slate-800 dark:hover:text-white transition-colors cursor-pointer rounded-md"
+        className="relative p-1.5 text-slate-400 hover:text-[#1E40AF] dark:text-[#94A3B8] dark:hover:text-[#38BDF8] transition-colors cursor-pointer"
         aria-label="Notificaciones"
       >
         <Bell className="w-4 h-4" />
 
-        {/* Badge indicador de no leídas */}
+        {/* Indicador de no leídas */}
         {userUnreadCount > 0 && (
-          <span className="absolute -top-1 -right-1 min-w-[16px] h-[16px] px-1 bg-blue-700 dark:bg-[#38BDF8] text-white dark:text-[#0F172A] text-[9px] font-bold rounded-full flex items-center justify-center shadow-xs">
+          <span className="absolute -top-0.5 -right-0.5 min-w-[15px] h-[15px] px-1 bg-[#1E40AF] dark:bg-[#38BDF8] text-white dark:text-[#0F172A] text-[9px] font-bold rounded-full flex items-center justify-center">
             {userUnreadCount > 9 ? '9+' : userUnreadCount}
           </span>
         )}

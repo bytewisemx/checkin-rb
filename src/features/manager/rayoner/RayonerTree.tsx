@@ -1,13 +1,5 @@
 import { useState, useMemo } from 'react';
-import { 
-  Folder, FolderOpen, Building2, Briefcase, 
-  CheckSquare, CornerDownRight, ChevronRight, ChevronDown, 
-  MoreHorizontal, Plus, Search, Edit2, 
-  Copy, ClipboardPaste, Link as LinkIcon, Power, 
-  Trash2, Play, RotateCcw, CheckCircle2,
-  FileText, Users,
-  Maximize2, Minimize2, X
-} from 'lucide-react';
+import { ChevronRight, ChevronDown, Search } from 'lucide-react';
 import { useRayonerStore } from '../../../store/useRayonerStore';
 import type { TaskNode, Project } from '../../../types/rayoner';
 import { useCheckinStore } from '../../../store/useCheckinStore';
@@ -21,37 +13,34 @@ interface RayonerTreeProps {
 }
 
 export function RayonerTree({ onOpenTaskModal, onSelectProjectForReport }: RayonerTreeProps) {
-  const { 
-    groups, 
-    clients, 
-    projects, 
-    tasks, 
+  const {
+    groups,
+    clients,
+    projects,
+    tasks,
     assignments,
     teamMembers,
-    taskActualHours, 
-    activeWorkers, 
+    taskActualHours,
+    activeWorkers,
     clipboardTask,
-    addSubtask, 
-    deleteTask, 
-    toggleTaskActive, 
-    copyTask, 
+    addSubtask,
+    deleteTask,
+    toggleTaskActive,
+    copyTask,
     pasteTask,
     requestTaskRevision,
     approveTaskRevision,
   } = useRayonerStore();
 
-  const addToast = useCheckinStore(state => state.addToast);
+  const addToast = useCheckinStore((state) => state.addToast);
 
-  // Estados de UI y Filtros Avanzados para Alta Concurrencia / Escala
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedGroupId, setSelectedGroupId] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<'all' | 'alert' | 'overbudget' | 'active_timer' | 'completed'>('all');
   const [selectedCollaboratorId, setSelectedCollaboratorId] = useState<string>('all');
 
-  // Estado para el Modal de Informe Ejecutivo con descarga PDF y Excel
   const [reportModalProject, setReportModalProject] = useState<Project | null>(null);
 
-  // Nodos expandidos / colapsados
   const [expandedNodes, setExpandedNodes] = useState<Record<string, boolean>>({
     'grp-corp': true,
     'grp-part': true,
@@ -62,26 +51,33 @@ export function RayonerTree({ onOpenTaskModal, onSelectProjectForReport }: Rayon
     'tsk-sust': true,
   });
 
-  // Expandir / Colapsar todo
   const handleExpandAll = () => {
     const nextState: Record<string, boolean> = {};
-    groups.forEach(g => { nextState[g.id] = true; });
-    clients.forEach(c => { nextState[c.id] = true; });
-    projects.forEach(p => { nextState[p.id] = true; });
-    tasks.forEach(t => { nextState[t.id] = true; });
+    groups.forEach((g) => {
+      nextState[g.id] = true;
+    });
+    clients.forEach((c) => {
+      nextState[c.id] = true;
+    });
+    projects.forEach((p) => {
+      nextState[p.id] = true;
+    });
+    tasks.forEach((t) => {
+      nextState[t.id] = true;
+    });
     setExpandedNodes(nextState);
     addToast('Todas las carteras y proyectos expandidos', 'info');
   };
 
   const handleCollapseAll = () => {
     const nextState: Record<string, boolean> = {};
-    // Solo dejamos las carteras visibles abiertas pero colapsamos clientes, proyectos y tareas
-    groups.forEach(g => { nextState[g.id] = true; });
+    groups.forEach((g) => {
+      nextState[g.id] = true;
+    });
     setExpandedNodes(nextState);
     addToast('Estructura colapsada a nivel de carteras', 'info');
   };
 
-  // Estado del menú contextual flotante para tareas
   const [contextMenu, setContextMenu] = useState<{
     visible: boolean;
     x: number;
@@ -94,7 +90,6 @@ export function RayonerTree({ onOpenTaskModal, onSelectProjectForReport }: Rayon
     targetTask: null,
   });
 
-  // Estados de modales para Clientes y Proyectos
   const [clientModalState, setClientModalState] = useState<{
     isOpen: boolean;
     clientId?: string | null;
@@ -116,7 +111,7 @@ export function RayonerTree({ onOpenTaskModal, onSelectProjectForReport }: Rayon
   });
 
   const toggleExpand = (nodeId: string) => {
-    setExpandedNodes(prev => ({ ...prev, [nodeId]: !prev[nodeId] }));
+    setExpandedNodes((prev) => ({ ...prev, [nodeId]: !prev[nodeId] }));
   };
 
   const handleOpenContextMenu = (e: React.MouseEvent, task: TaskNode) => {
@@ -124,8 +119,8 @@ export function RayonerTree({ onOpenTaskModal, onSelectProjectForReport }: Rayon
     e.stopPropagation();
     setContextMenu({
       visible: true,
-      x: Math.min(e.clientX, window.innerWidth - 220),
-      y: Math.min(e.clientY, window.innerHeight - 300),
+      x: Math.min(e.clientX, window.innerWidth - 240),
+      y: Math.min(e.clientY, window.innerHeight - 280),
       targetTask: task,
     });
   };
@@ -136,7 +131,6 @@ export function RayonerTree({ onOpenTaskModal, onSelectProjectForReport }: Rayon
     }
   };
 
-  // Acciones del Menú Contextual
   const handleActionEdit = () => {
     if (contextMenu.targetTask) {
       onOpenTaskModal(contextMenu.targetTask.id, contextMenu.targetTask.projectId);
@@ -146,11 +140,13 @@ export function RayonerTree({ onOpenTaskModal, onSelectProjectForReport }: Rayon
 
   const handleActionAddSubtask = () => {
     if (contextMenu.targetTask) {
-      const subtaskName = window.prompt('Nombre de la nueva subtarea:', 'Subtarea de control');
-      if (subtaskName) {
-        addSubtask(contextMenu.targetTask.id, subtaskName, 4);
-        addToast('Subtarea añadida al árbol con éxito', 'success');
-        setExpandedNodes(prev => ({ ...prev, [contextMenu.targetTask!.id]: true }));
+      const name = window.prompt(`Nombre de la nueva subtarea dentro de "${contextMenu.targetTask.name}":`);
+      if (name && name.trim()) {
+        const hoursStr = window.prompt('Horas presupuestadas para esta subtarea:', '5');
+        const hours = parseFloat(hoursStr || '5') || 5;
+        addSubtask(contextMenu.targetTask.id, name.trim(), hours);
+        setExpandedNodes((prev) => ({ ...prev, [contextMenu.targetTask!.id]: true }));
+        addToast(`Subtarea "${name.trim()}" agregada correctamente`, 'success');
       }
     }
     closeContextMenu();
@@ -159,7 +155,7 @@ export function RayonerTree({ onOpenTaskModal, onSelectProjectForReport }: Rayon
   const handleActionCopy = () => {
     if (contextMenu.targetTask) {
       copyTask(contextMenu.targetTask.id);
-      addToast(`Tarea "${contextMenu.targetTask.name}" copiada al portapapeles`, 'info');
+      addToast(`Tarea "${contextMenu.targetTask.name}" copiada`, 'info');
     }
     closeContextMenu();
   };
@@ -167,16 +163,16 @@ export function RayonerTree({ onOpenTaskModal, onSelectProjectForReport }: Rayon
   const handleActionPaste = () => {
     if (contextMenu.targetTask && clipboardTask) {
       pasteTask(contextMenu.targetTask.projectId, contextMenu.targetTask.id);
-      addToast(`Tarea pegada bajo "${contextMenu.targetTask.name}"`, 'success');
-      setExpandedNodes(prev => ({ ...prev, [contextMenu.targetTask!.id]: true }));
+      setExpandedNodes((prev) => ({ ...prev, [contextMenu.targetTask!.id]: true }));
+      addToast(`Tarea "${clipboardTask.name}" pegada como subtarea`, 'success');
     }
     closeContextMenu();
   };
 
   const handleActionCopyLink = () => {
     if (contextMenu.targetTask) {
-      const url = `${window.location.origin}/checkin-rb/?task=${contextMenu.targetTask.id}`;
-      navigator.clipboard.writeText(url);
+      const url = `${window.location.origin}/?task=${contextMenu.targetTask.id}`;
+      navigator.clipboard?.writeText(url);
       addToast('Enlace de la tarea copiado al portapapeles', 'success');
     }
     closeContextMenu();
@@ -185,7 +181,7 @@ export function RayonerTree({ onOpenTaskModal, onSelectProjectForReport }: Rayon
   const handleActionToggleActive = () => {
     if (contextMenu.targetTask) {
       toggleTaskActive(contextMenu.targetTask.id);
-      addToast(`Estado de tarea actualizado`, 'info');
+      addToast('Estado de tarea actualizado', 'info');
     }
     closeContextMenu();
   };
@@ -207,7 +203,7 @@ export function RayonerTree({ onOpenTaskModal, onSelectProjectForReport }: Rayon
         'Favor de volver a revisar los cálculos y entregables correspondientes.'
       );
       addToast(
-        `Tarea "${contextMenu.targetTask.name}" enviada a "Favor de Volver a Revisar" para el colaborador`,
+        `Tarea "${contextMenu.targetTask.name}" enviada a revisión para el colaborador`,
         'info'
       );
     }
@@ -225,35 +221,36 @@ export function RayonerTree({ onOpenTaskModal, onSelectProjectForReport }: Rayon
     closeContextMenu();
   };
 
-  // Cálculo de horas y estado de rentabilidad por proyecto
   const projectStatsMap = useMemo(() => {
-    const map = new Map<string, {
-      totalActual: number;
-      budgetHours: number;
-      percent: number;
-      isOverbudget: boolean;
-      isAlert: boolean;
-      hasActiveTimer: boolean;
-      activeWorkerNames: string[];
-      assignedMemberIds: Set<string>;
-      completedCount: number;
-      totalTasksCount: number;
-    }>();
+    const map = new Map<
+      string,
+      {
+        totalActual: number;
+        budgetHours: number;
+        percent: number;
+        isOverbudget: boolean;
+        isAlert: boolean;
+        hasActiveTimer: boolean;
+        activeWorkerNames: string[];
+        assignedMemberIds: Set<string>;
+        completedCount: number;
+        totalTasksCount: number;
+      }
+    >();
 
-    projects.forEach(p => {
-      const pTasks = tasks.filter(t => t.projectId === p.id);
+    projects.forEach((p) => {
+      const pTasks = tasks.filter((t) => t.projectId === p.id);
       let totalActual = 0;
       let completedCount = 0;
       const assignedIds = new Set<string>();
 
-      pTasks.forEach(t => {
-        totalActual += (taskActualHours[t.id] || 0);
+      pTasks.forEach((t) => {
+        totalActual += taskActualHours[t.id] || 0;
         if (t.status === 'completed') completedCount++;
         if (t.assigned_to) assignedIds.add(t.assigned_to);
 
-        // Asignaciones multinivel
-        const asgs = assignments.filter(a => a.taskId === t.id);
-        asgs.forEach(a => assignedIds.add(a.userId));
+        const asgs = assignments.filter((a) => a.taskId === t.id);
+        asgs.forEach((a) => assignedIds.add(a.userId));
       });
 
       const budget = p.totalBudgetHours || 1;
@@ -261,9 +258,8 @@ export function RayonerTree({ onOpenTaskModal, onSelectProjectForReport }: Rayon
       const isOverbudget = percent >= 100;
       const isAlert = percent >= 80 && percent < 100;
 
-      // Colaboradores con cronómetro activo en este proyecto
-      const activeInProject = activeWorkers.filter(w => 
-        pTasks.some(t => t.id === w.taskId)
+      const activeInProject = activeWorkers.filter((w) =>
+        pTasks.some((t) => t.id === w.taskId)
       );
 
       map.set(p.id, {
@@ -273,7 +269,7 @@ export function RayonerTree({ onOpenTaskModal, onSelectProjectForReport }: Rayon
         isOverbudget,
         isAlert,
         hasActiveTimer: activeInProject.length > 0,
-        activeWorkerNames: activeInProject.map(w => w.userName),
+        activeWorkerNames: activeInProject.map((w) => w.userName),
         assignedMemberIds: assignedIds,
         completedCount,
         totalTasksCount: pTasks.length,
@@ -283,18 +279,15 @@ export function RayonerTree({ onOpenTaskModal, onSelectProjectForReport }: Rayon
     return map;
   }, [projects, tasks, taskActualHours, activeWorkers, assignments]);
 
-  // Filtrado de Proyectos por criterios avanzados
   const filterProject = (project: Project): boolean => {
     const stats = projectStatsMap.get(project.id);
 
-    // 1. Filtro por Colaborador
     if (selectedCollaboratorId !== 'all') {
       if (!stats?.assignedMemberIds.has(selectedCollaboratorId)) {
         return false;
       }
     }
 
-    // 2. Filtro por Estado Presupuestal / Rentabilidad
     if (statusFilter === 'alert') {
       if (!stats || stats.percent < 80) return false;
     } else if (statusFilter === 'overbudget') {
@@ -305,306 +298,277 @@ export function RayonerTree({ onOpenTaskModal, onSelectProjectForReport }: Rayon
       if (!stats || stats.totalTasksCount === 0 || stats.completedCount < stats.totalTasksCount) return false;
     }
 
-    // 3. Filtro de Texto (nombre, código, o tareas)
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       const matchName = project.name.toLowerCase().includes(q);
       const matchCode = (project.code || '').toLowerCase().includes(q);
-      const matchTasks = tasks.some(t => t.projectId === project.id && (
-        t.name.toLowerCase().includes(q) ||
-        (t.assigned_to && t.assigned_to.toLowerCase().includes(q))
-      ));
+      const matchTasks = tasks.some(
+        (t) =>
+          t.projectId === project.id &&
+          (t.name.toLowerCase().includes(q) ||
+            (t.assigned_to && t.assigned_to.toLowerCase().includes(q)))
+      );
       if (!matchName && !matchCode && !matchTasks) return false;
     }
 
     return true;
   };
 
-  // Filtrado reactivo de Clientes
   const filteredGroups = useMemo(() => {
-    return groups.filter(g => {
+    return groups.filter((g) => {
       if (selectedGroupId !== 'all' && g.id !== selectedGroupId) return false;
       return true;
     });
   }, [groups, selectedGroupId]);
 
-  // Métricas para los contadores rápidos del header
   const totalAlertProjectsCount = useMemo(() => {
-    return Array.from(projectStatsMap.values()).filter(s => s.percent >= 80).length;
+    return Array.from(projectStatsMap.values()).filter((s) => s.percent >= 80).length;
   }, [projectStatsMap]);
 
   const totalActiveTimersCount = useMemo(() => {
-    return Array.from(projectStatsMap.values()).filter(s => s.hasActiveTimer).length;
+    return Array.from(projectStatsMap.values()).filter((s) => s.hasActiveTimer).length;
   }, [projectStatsMap]);
 
   return (
-    <div className="w-full flex flex-col bg-white rounded-2xl shadow-xs border border-slate-200 overflow-hidden" onClick={closeContextMenu}>
-      
-      {/* 1. Barra de Herramientas y Filtros para Escalabilidad */}
-      <div className="border-b border-slate-200 bg-slate-50/90 p-4 space-y-3">
-        
-        {/* Fila 1: Pestañas de Carteras / Grupos con Contador */}
-        <div className="flex items-center justify-between gap-2 overflow-x-auto pb-1 scrollbar-none">
-          <div className="flex items-center space-x-1.5 shrink-0">
+    <div className="w-full space-y-8" onClick={closeContextMenu}>
+      {/* 1. Barra de Herramientas y Filtros Plana (Sin Cajas Envolventes) */}
+      <div className="space-y-6 pb-6 border-b border-slate-200 dark:border-slate-800">
+        {/* Fila 1: Pestañas de Carteras y Controles de Expansión */}
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="flex flex-wrap items-center gap-6">
             <button
               onClick={() => setSelectedGroupId('all')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+              className={`pb-1.5 text-xs font-heading uppercase tracking-wider cursor-pointer transition-colors ${
                 selectedGroupId === 'all'
-                  ? 'bg-[#0D5C75] text-white shadow-xs'
-                  : 'bg-white hover:bg-slate-100 text-slate-700 border border-slate-200'
+                  ? 'font-bold text-[#0F172A] dark:text-[#F8FAFC] border-b-2 border-[#1E40AF] dark:border-[#38BDF8]'
+                  : 'font-medium text-[#475569] dark:text-[#94A3B8] hover:text-[#0F172A] dark:hover:text-[#F8FAFC]'
               }`}
             >
               Todas las Carteras ({clients.length})
             </button>
-            {groups.map(group => {
-              const count = clients.filter(c => c.groupId === group.id).length;
+
+            {groups.map((group) => {
+              const count = clients.filter((c) => c.groupId === group.id).length;
               const isActive = selectedGroupId === group.id;
               return (
                 <button
                   key={group.id}
                   onClick={() => setSelectedGroupId(group.id)}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center space-x-1.5 ${
+                  className={`pb-1.5 text-xs font-heading uppercase tracking-wider cursor-pointer transition-colors ${
                     isActive
-                      ? 'bg-[#0D5C75] text-white shadow-xs'
-                      : 'bg-white hover:bg-slate-100 text-slate-700 border border-slate-200'
+                      ? 'font-bold text-[#0F172A] dark:text-[#F8FAFC] border-b-2 border-[#1E40AF] dark:border-[#38BDF8]'
+                      : 'font-medium text-[#475569] dark:text-[#94A3B8] hover:text-[#0F172A] dark:hover:text-[#F8FAFC]'
                   }`}
                 >
-                  <span>{group.name}</span>
-                  <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${isActive ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-500'}`}>
-                    {count}
-                  </span>
+                  {group.name} ({count})
                 </button>
               );
             })}
           </div>
 
-          {/* Botones de Colapso / Expansión Masiva */}
-          <div className="flex items-center space-x-1.5 shrink-0">
+          <div className="flex items-center space-x-4 text-xs font-heading">
             <button
               onClick={handleExpandAll}
-              title="Expandir todo el árbol de clientes y proyectos"
-              className="flex items-center space-x-1 px-2.5 py-1.5 bg-white hover:bg-slate-100 text-slate-600 rounded-xl text-xs font-semibold border border-slate-200 transition-colors shadow-2xs"
+              className="text-[#475569] hover:text-[#0F172A] dark:text-[#94A3B8] dark:hover:text-[#F8FAFC] uppercase tracking-wider cursor-pointer"
             >
-              <Maximize2 className="w-3.5 h-3.5 text-slate-500" />
-              <span className="hidden sm:inline">Expandir Todo</span>
+              Expandir Todo
             </button>
+            <span className="text-slate-300 dark:text-slate-800">/</span>
             <button
               onClick={handleCollapseAll}
-              title="Colapsar todo a nivel de carteras"
-              className="flex items-center space-x-1 px-2.5 py-1.5 bg-white hover:bg-slate-100 text-slate-600 rounded-xl text-xs font-semibold border border-slate-200 transition-colors shadow-2xs"
+              className="text-[#475569] hover:text-[#0F172A] dark:text-[#94A3B8] dark:hover:text-[#F8FAFC] uppercase tracking-wider cursor-pointer"
             >
-              <Minimize2 className="w-3.5 h-3.5 text-slate-500" />
-              <span className="hidden sm:inline">Colapsar</span>
+              Colapsar
             </button>
           </div>
         </div>
 
-        {/* Fila 2: Buscador + Filtros de Rentabilidad + Filtro de Colaborador + Botones de Creación */}
-        <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3">
-          
-          <div className="flex flex-wrap items-center gap-2 flex-1">
-            {/* Buscador de Texto */}
-            <div className="relative flex-1 min-w-[200px] max-w-sm">
-              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+        {/* Fila 2: Buscador + Filtros + Acciones Primarias */}
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+          <div className="flex flex-wrap items-center gap-6 flex-1">
+            <div className="relative flex-1 min-w-[220px] max-w-sm">
+              <Search className="w-4 h-4 absolute left-0 top-1/2 -translate-y-1/2 text-[#475569] dark:text-[#94A3B8]" />
               <input
                 type="text"
                 placeholder="Buscar cliente, proyecto o tarea..."
                 value={searchQuery}
-                onChange={e => setSearchQuery(e.target.value)}
-                className="w-full pl-9 pr-8 py-1.5 text-xs bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#0D5C75]/20 focus:border-[#0D5C75] outline-none text-slate-800 placeholder-slate-400"
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-6 pr-4 py-1.5 text-xs bg-transparent border-b border-slate-300 dark:border-slate-800 text-[#0F172A] dark:text-[#F8FAFC] placeholder:text-[#94A3B8]"
               />
-              {searchQuery && (
-                <button 
-                  onClick={() => setSearchQuery('')}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              )}
             </div>
 
-            {/* Filtro por Estado de Rentabilidad y Desviación */}
             <select
               value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value as any)}
-              className="border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 focus:ring-2 focus:ring-[#0D5C75]/20 outline-none"
+              onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)}
+              className="bg-transparent border-b border-slate-300 dark:border-slate-800 py-1.5 text-xs text-[#0F172A] dark:text-[#F8FAFC] cursor-pointer"
             >
-              <option value="all">Todos los Estados Presupuestales</option>
-              <option value="alert">⚠️ En Alerta / Riesgo (≥ 80% consumo) {totalAlertProjectsCount > 0 ? `(${totalAlertProjectsCount})` : ''}</option>
-              <option value="overbudget">🚨 Excedidos / Desviación (≥ 100%)</option>
-              <option value="active_timer">⏱️ Con Cronómetro Activo {totalActiveTimersCount > 0 ? `(${totalActiveTimersCount})` : ''}</option>
-              <option value="completed">✅ Tareas Completadas</option>
+              <option value="all" className="bg-[#F8FAFC] dark:bg-[#0F172A]">Todos los Estados Presupuestales</option>
+              <option value="alert" className="bg-[#F8FAFC] dark:bg-[#0F172A]">En Observación (≥ 80% consumo) {totalAlertProjectsCount > 0 ? `(${totalAlertProjectsCount})` : ''}</option>
+              <option value="overbudget" className="bg-[#F8FAFC] dark:bg-[#0F172A]">Excedidos (≥ 100%)</option>
+              <option value="active_timer" className="bg-[#F8FAFC] dark:bg-[#0F172A]">Con Cronómetro Activo {totalActiveTimersCount > 0 ? `(${totalActiveTimersCount})` : ''}</option>
+              <option value="completed" className="bg-[#F8FAFC] dark:bg-[#0F172A]">Tareas Completadas</option>
             </select>
 
-            {/* Filtro por Colaborador Asignado */}
-            <div className="flex items-center space-x-1 bg-white border border-slate-200 rounded-xl px-2 py-0.5">
-              <Users className="w-3.5 h-3.5 text-slate-400" />
-              <select
-                value={selectedCollaboratorId}
-                onChange={(e) => setSelectedCollaboratorId(e.target.value)}
-                className="text-xs font-semibold text-slate-700 bg-transparent py-1 pr-1 outline-none cursor-pointer"
-              >
-                <option value="all">Todos los Colaboradores</option>
-                {teamMembers.map(m => (
-                  <option key={m.id} value={m.id}>{m.name}</option>
-                ))}
-              </select>
-            </div>
+            <select
+              value={selectedCollaboratorId}
+              onChange={(e) => setSelectedCollaboratorId(e.target.value)}
+              className="bg-transparent border-b border-slate-300 dark:border-slate-800 py-1.5 text-xs text-[#0F172A] dark:text-[#F8FAFC] cursor-pointer"
+            >
+              <option value="all" className="bg-[#F8FAFC] dark:bg-[#0F172A]">Todos los Colaboradores</option>
+              {teamMembers.map((m) => (
+                <option key={m.id} value={m.id} className="bg-[#F8FAFC] dark:bg-[#0F172A]">
+                  {m.name}
+                </option>
+              ))}
+            </select>
           </div>
 
-          {/* Botones de Creación Rápida */}
-          <div className="flex items-center space-x-2 shrink-0">
-            {/* Botón Nuevo Cliente */}
+          <div className="flex items-center space-x-3 shrink-0">
             <button
               onClick={() => setClientModalState({ isOpen: true, clientId: null })}
-              className="flex items-center px-3 py-1.5 bg-[#0D5C75] hover:bg-[#0A485C] text-white rounded-xl text-xs font-bold transition-all shadow-2xs"
+              className="px-3.5 py-1.5 bg-[#1E40AF] hover:bg-[#1D4ED8] text-white text-xs font-heading font-semibold uppercase tracking-wider transition-colors cursor-pointer"
             >
-              <Plus className="w-3.5 h-3.5 mr-1" />
-              Cliente
+              + Cliente
             </button>
 
-            {/* Botón Nuevo Proyecto */}
             <button
-              onClick={() => setProjectModalState({ isOpen: true, projectId: null, initialClientId: clients[0]?.id || null })}
-              className="flex items-center px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-2xs"
+              onClick={() =>
+                setProjectModalState({
+                  isOpen: true,
+                  projectId: null,
+                  initialClientId: clients[0]?.id || null,
+                })
+              }
+              className="px-3.5 py-1.5 border border-slate-300 dark:border-slate-700 hover:border-[#1E40AF] text-[#0F172A] dark:text-[#F8FAFC] text-xs font-heading font-semibold uppercase tracking-wider transition-colors cursor-pointer"
             >
-              <Plus className="w-3.5 h-3.5 mr-1" />
-              Proyecto
+              + Proyecto
             </button>
 
-            {/* Botón Nueva Tarea */}
             <button
               onClick={() => onOpenTaskModal(null, projects[0]?.id)}
-              className="flex items-center px-3 py-1.5 bg-[#FF6B35] hover:bg-[#e05622] text-white rounded-xl text-xs font-bold transition-all shadow-2xs"
+              className="px-3.5 py-1.5 border border-slate-300 dark:border-slate-700 hover:border-[#1E40AF] text-[#0F172A] dark:text-[#F8FAFC] text-xs font-heading font-semibold uppercase tracking-wider transition-colors cursor-pointer"
             >
-              <Plus className="w-3.5 h-3.5 mr-1" />
-              Tarea
+              + Tarea
             </button>
           </div>
-
         </div>
-
       </div>
 
-      {/* 2. Cuerpo del Árbol Jerárquico Escalable */}
-      <div className="p-4 sm:p-6 overflow-x-auto min-h-[450px] divide-y divide-slate-100">
+      {/* 2. Cuerpo del Árbol Jerárquico Abierto */}
+      <div className="divide-y divide-slate-200 dark:divide-slate-800">
         {filteredGroups.length === 0 ? (
-          <div className="py-12 text-center text-slate-400">
-            <Folder className="w-12 h-12 mx-auto mb-2 opacity-40 text-slate-400" />
-            <p className="text-sm font-semibold">No se encontraron carteras con los filtros actuales</p>
-            <p className="text-xs text-slate-400 mt-1">Prueba restableciendo los filtros o el buscador</p>
+          <div className="py-12 text-center text-[#475569] dark:text-[#94A3B8]">
+            <p className="text-sm font-heading font-semibold">No se encontraron carteras con los filtros actuales</p>
           </div>
         ) : (
-          filteredGroups.map(group => {
-            // Filtrar clientes dentro de este grupo
-            const groupClients = clients.filter(c => {
+          filteredGroups.map((group) => {
+            const groupClients = clients.filter((c) => {
               if (c.groupId !== group.id) return false;
-              
-              // Si hay búsqueda por texto de cliente
               if (searchQuery.trim()) {
                 const q = searchQuery.toLowerCase();
-                const matchClient = c.name.toLowerCase().includes(q) || (c.taxId || '').toLowerCase().includes(q);
-                const hasMatchingProjects = projects.some(p => p.clientId === c.id && filterProject(p));
+                const matchClient =
+                  c.name.toLowerCase().includes(q) ||
+                  (c.taxId || '').toLowerCase().includes(q);
+                const hasMatchingProjects = projects.some(
+                  (p) => p.clientId === c.id && filterProject(p)
+                );
                 return matchClient || hasMatchingProjects;
               }
-
-              // Si hay filtro de estado presupuestal o colaborador
               if (statusFilter !== 'all' || selectedCollaboratorId !== 'all') {
-                const hasMatchingProjects = projects.some(p => p.clientId === c.id && filterProject(p));
-                return hasMatchingProjects;
+                return projects.some((p) => p.clientId === c.id && filterProject(p));
               }
-
               return true;
             });
 
             const isGroupExpanded = expandedNodes[group.id] ?? true;
 
             return (
-              <div key={group.id} className="py-2.5">
-                
+              <div key={group.id} className="py-4 space-y-3">
                 {/* Nivel 0: Grupo de Clientes (Cartera) */}
-                <div 
+                <div
                   onClick={() => toggleExpand(group.id)}
-                  className="flex items-center justify-between py-1.5 px-2.5 rounded-xl hover:bg-slate-100/70 cursor-pointer text-slate-800 font-bold text-xs select-none group transition-colors"
+                  className="flex items-center justify-between py-1 cursor-pointer select-none group"
                 >
-                  <div className="flex items-center space-x-2">
-                    {isGroupExpanded ? <ChevronDown className="w-4 h-4 text-slate-400" /> : <ChevronRight className="w-4 h-4 text-slate-400" />}
-                    {isGroupExpanded ? <FolderOpen className="w-4 h-4 text-amber-500" /> : <Folder className="w-4 h-4 text-amber-500" />}
-                    <span className="uppercase tracking-wider text-[11px] font-black text-slate-800">{group.name}</span>
-                    <span className="text-[10px] bg-slate-100 text-slate-500 font-bold px-2 py-0.5 rounded-full border border-slate-200">
-                      {groupClients.length} {groupClients.length === 1 ? 'cliente' : 'clientes'}
+                  <div className="flex items-center space-x-2.5">
+                    {isGroupExpanded ? (
+                      <ChevronDown className="w-4 h-4 text-[#475569] dark:text-[#94A3B8]" />
+                    ) : (
+                      <ChevronRight className="w-4 h-4 text-[#475569] dark:text-[#94A3B8]" />
+                    )}
+                    <span className="uppercase tracking-widest text-xs font-heading font-bold text-[#0F172A] dark:text-[#F8FAFC]">
+                      {group.name}
+                    </span>
+                    <span className="text-xs text-[#475569] dark:text-[#94A3B8]">
+                      ({groupClients.length} {groupClients.length === 1 ? 'cliente' : 'clientes'})
                     </span>
                   </div>
 
-                  {/* Botón rápido para añadir cliente a la cartera */}
                   <button
                     type="button"
                     onClick={(e) => {
                       e.stopPropagation();
                       setClientModalState({ isOpen: true, clientId: null, initialGroupId: group.id });
                     }}
-                    className="opacity-0 group-hover:opacity-100 flex items-center space-x-1 text-[11px] font-semibold text-[#0D5C75] hover:bg-[#0D5C75]/10 px-2 py-0.5 rounded-lg transition-all"
+                    className="text-xs font-heading font-semibold text-[#1E40AF] dark:text-[#38BDF8] hover:underline"
                   >
-                    <Plus className="w-3 h-3" />
-                    <span>Añadir Cliente</span>
+                    + Añadir Cliente
                   </button>
                 </div>
 
                 {/* Contenido del Grupo: Clientes */}
                 {isGroupExpanded && (
-                  <div className="pl-5 border-l-2 border-slate-200 ml-3.5 mt-1 space-y-2">
+                  <div className="pl-6 border-l border-slate-200 dark:border-slate-800 space-y-4">
                     {groupClients.length === 0 ? (
-                      <div className="text-[11px] text-slate-400 py-1 italic pl-2">
+                      <div className="text-xs text-[#475569] dark:text-[#94A3B8] py-1">
                         Sin clientes coincidentes en esta cartera
                       </div>
                     ) : (
-                      groupClients.map(client => {
-                        const clientProjects = projects.filter(p => p.clientId === client.id && filterProject(p));
+                      groupClients.map((client) => {
+                        const clientProjects = projects.filter(
+                          (p) => p.clientId === client.id && filterProject(p)
+                        );
                         const isClientExpanded = expandedNodes[client.id] ?? true;
 
-                        // Estadísticas consolidadas del cliente
-                        const allClientProjects = projects.filter(p => p.clientId === client.id);
-                        const totalBudget = allClientProjects.reduce((acc, p) => acc + p.totalBudgetHours, 0);
+                        const allClientProjects = projects.filter((p) => p.clientId === client.id);
+                        const totalBudget = allClientProjects.reduce(
+                          (acc, p) => acc + p.totalBudgetHours,
+                          0
+                        );
                         const totalActual = allClientProjects.reduce((acc, p) => {
                           const stats = projectStatsMap.get(p.id);
                           return acc + (stats?.totalActual || 0);
                         }, 0);
 
                         return (
-                          <div key={client.id} className="py-1">
-                            
+                          <div key={client.id} className="space-y-3 pt-2">
                             {/* Nivel 1: Fila del Cliente / Empresa */}
-                            <div 
-                              className="flex items-center justify-between py-2 px-3 rounded-xl bg-slate-50/60 hover:bg-slate-100/80 text-slate-700 font-semibold text-xs select-none group border border-slate-200/80 transition-colors"
-                            >
-                              <div 
+                            <div className="flex items-center justify-between py-1.5 border-b border-slate-200 dark:border-slate-800">
+                              <div
                                 onClick={() => toggleExpand(client.id)}
-                                className="flex items-center space-x-2.5 cursor-pointer flex-1 min-w-0"
+                                className="flex items-center space-x-3 cursor-pointer flex-1 min-w-0"
                               >
-                                {isClientExpanded ? <ChevronDown className="w-3.5 h-3.5 text-slate-400 shrink-0" /> : <ChevronRight className="w-3.5 h-3.5 text-slate-400 shrink-0" />}
-                                <Building2 className="w-4 h-4 text-[#0D5C75] shrink-0" />
-                                <span className="font-bold text-slate-800 truncate text-[13px]">{client.name}</span>
-                                
+                                {isClientExpanded ? (
+                                  <ChevronDown className="w-3.5 h-3.5 text-[#475569] dark:text-[#94A3B8] shrink-0" />
+                                ) : (
+                                  <ChevronRight className="w-3.5 h-3.5 text-[#475569] dark:text-[#94A3B8] shrink-0" />
+                                )}
+                                <span className="font-heading font-bold text-[#0F172A] dark:text-[#F8FAFC] truncate text-sm">
+                                  {client.name}
+                                </span>
+
                                 {client.taxId && (
-                                  <span className="text-[10px] text-slate-500 font-mono bg-white px-2 py-0.5 rounded border border-slate-200 hidden sm:inline shrink-0">
+                                  <span className="text-xs text-[#475569] dark:text-[#94A3B8] font-mono hidden sm:inline shrink-0">
                                     {client.taxId}
                                   </span>
                                 )}
 
-                                {!client.isActive && (
-                                  <span className="text-[9px] font-bold bg-slate-200 text-slate-600 px-2 py-0.5 rounded shrink-0">
-                                    Inactivo
-                                  </span>
-                                )}
-
-                                {/* Pastilla con conteo de proyectos y horas consolidadas */}
-                                <span className="text-[10px] text-slate-500 font-medium hidden md:inline shrink-0 bg-white px-2 py-0.5 rounded-full border border-slate-200">
-                                  {clientProjects.length} {clientProjects.length === 1 ? 'proyecto' : 'proyectos'} • {totalActual.toFixed(1)}h / {totalBudget}h
+                                <span className="text-xs text-[#475569] dark:text-[#94A3B8] hidden md:inline shrink-0">
+                                  • {clientProjects.length}{' '}
+                                  {clientProjects.length === 1 ? 'proyecto' : 'proyectos'} ({totalActual.toFixed(1)}h / {totalBudget}h)
                                 </span>
                               </div>
 
-                              {/* Acciones de Cliente: Crear Proyecto y Editar Cliente */}
-                              <div className="flex items-center space-x-1.5 shrink-0 pl-2">
+                              <div className="flex items-center space-x-4 shrink-0 pl-2">
                                 <button
                                   type="button"
                                   onClick={(e) => {
@@ -615,11 +579,9 @@ export function RayonerTree({ onOpenTaskModal, onSelectProjectForReport }: Rayon
                                       initialClientId: client.id,
                                     });
                                   }}
-                                  className="flex items-center space-x-1 text-[11px] font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 px-2.5 py-1 rounded-lg transition-colors"
-                                  title="Crear nuevo proyecto para este cliente"
+                                  className="text-xs font-heading font-semibold text-[#1E40AF] dark:text-[#38BDF8] hover:underline cursor-pointer"
                                 >
-                                  <Plus className="w-3 h-3" />
-                                  <span>Proyecto</span>
+                                  + Proyecto
                                 </button>
 
                                 <button
@@ -632,31 +594,25 @@ export function RayonerTree({ onOpenTaskModal, onSelectProjectForReport }: Rayon
                                       initialGroupId: client.groupId,
                                     });
                                   }}
-                                  className="p-1.5 text-slate-400 hover:text-[#0D5C75] hover:bg-white rounded-lg border border-transparent hover:border-slate-200 transition-colors"
-                                  title="Editar datos del cliente"
+                                  className="text-xs font-heading font-medium text-[#475569] hover:text-[#0F172A] dark:text-[#94A3B8] dark:hover:text-[#F8FAFC] cursor-pointer"
                                 >
-                                  <Edit2 className="w-3.5 h-3.5" />
+                                  Editar
                                 </button>
                               </div>
                             </div>
 
                             {/* Nivel 2: Proyectos del Cliente */}
                             {isClientExpanded && (
-                              <div className="pl-5 border-l border-slate-200 ml-3.5 mt-1.5 space-y-2">
+                              <div className="pl-6 border-l border-slate-200 dark:border-slate-800 space-y-4">
                                 {clientProjects.length === 0 ? (
-                                  <div className="text-[11px] text-slate-400 py-1.5 italic pl-2 flex items-center justify-between">
-                                    <span>Sin proyectos que coincidan con los filtros</span>
-                                    <button
-                                      onClick={() => setProjectModalState({ isOpen: true, projectId: null, initialClientId: client.id })}
-                                      className="text-[10px] font-bold text-emerald-700 hover:underline flex items-center"
-                                    >
-                                      <Plus className="w-3 h-3 mr-0.5" />
-                                      Crear Proyecto
-                                    </button>
+                                  <div className="text-xs text-[#475569] dark:text-[#94A3B8] py-1">
+                                    Sin proyectos que coincidan con los filtros
                                   </div>
                                 ) : (
-                                  clientProjects.map(project => {
-                                    const projectTasks = tasks.filter(t => t.projectId === project.id && !t.parentTaskId);
+                                  clientProjects.map((project) => {
+                                    const projectTasks = tasks.filter(
+                                      (t) => t.projectId === project.id && !t.parentTaskId
+                                    );
                                     const isProjectExpanded = expandedNodes[project.id] ?? true;
                                     const stats = projectStatsMap.get(project.id);
                                     const percent = stats?.percent || 0;
@@ -664,67 +620,45 @@ export function RayonerTree({ onOpenTaskModal, onSelectProjectForReport }: Rayon
                                     const budgetH = project.totalBudgetHours || 1;
 
                                     return (
-                                      <div key={project.id} className="py-1">
-                                        
+                                      <div key={project.id} className="space-y-2 py-1">
                                         {/* Fila Ejecutiva del Proyecto */}
-                                        <div className="flex flex-col md:flex-row md:items-center justify-between py-2 px-3 rounded-xl bg-white hover:bg-slate-50/90 transition-all group border border-slate-200 shadow-2xs gap-2">
-                                          
-                                          {/* Columna Izquierda: Nombre, Código y Cronómetro en Vivo */}
-                                          <div 
+                                        <div className="flex flex-col md:flex-row md:items-center justify-between py-1.5 border-b border-slate-200/70 dark:border-slate-800/70 gap-2">
+                                          <div
                                             onClick={() => toggleExpand(project.id)}
                                             className="flex items-center space-x-2.5 cursor-pointer flex-1 min-w-0 select-none"
                                           >
-                                            {isProjectExpanded ? <ChevronDown className="w-3.5 h-3.5 text-slate-400 shrink-0" /> : <ChevronRight className="w-3.5 h-3.5 text-slate-400 shrink-0" />}
-                                            <Briefcase className="w-4 h-4 text-emerald-600 shrink-0" />
-                                            <div className="flex items-center space-x-2 truncate">
-                                              <span className="font-bold text-xs text-slate-900 truncate">{project.name}</span>
-                                              <span className="text-[10px] text-slate-500 font-mono bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200 shrink-0">
-                                                {project.code}
-                                              </span>
-                                            </div>
+                                            {isProjectExpanded ? (
+                                              <ChevronDown className="w-3.5 h-3.5 text-[#475569] dark:text-[#94A3B8] shrink-0" />
+                                            ) : (
+                                              <ChevronRight className="w-3.5 h-3.5 text-[#475569] dark:text-[#94A3B8] shrink-0" />
+                                            )}
+                                            <span className="font-heading font-bold text-xs text-[#0F172A] dark:text-[#F8FAFC] truncate">
+                                              {project.name}
+                                            </span>
+                                            <span className="text-xs text-[#475569] dark:text-[#94A3B8] font-mono shrink-0">
+                                              [{project.code}]
+                                            </span>
 
-                                            {/* Indicador en Vivo: si hay alguien cronometrando en este proyecto */}
                                             {stats?.hasActiveTimer && (
-                                              <div className="flex items-center space-x-1 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full text-[10px] text-amber-800 font-bold animate-pulse shrink-0">
-                                                <Play className="w-2.5 h-2.5 fill-current text-[#FF6B35]" />
-                                                <span>En vivo ({stats.activeWorkerNames.length})</span>
-                                              </div>
+                                              <span className="text-[11px] font-heading font-semibold text-[#1E40AF] dark:text-[#38BDF8] shrink-0">
+                                                • En vivo ({stats.activeWorkerNames.length})
+                                              </span>
                                             )}
                                           </div>
 
-                                          {/* Columna Derecha: Barra de Avance, Semáforo de Rentabilidad y Acciones */}
-                                          <div className="flex items-center space-x-3 text-[11px] shrink-0">
-                                            
-                                            {/* Semáforo y Métricas de Presupuesto */}
-                                            <div className="flex items-center space-x-2">
-                                              <div className="w-24 bg-slate-100 rounded-full h-2 overflow-hidden border border-slate-200 hidden sm:block">
-                                                <div 
-                                                  className={`h-full rounded-full transition-all ${
-                                                    percent >= 100 
-                                                      ? 'bg-red-500' 
-                                                      : percent >= 80 
-                                                        ? 'bg-amber-500' 
-                                                        : 'bg-emerald-500'
-                                                  }`}
+                                          <div className="flex items-center space-x-5 text-xs shrink-0">
+                                            <div className="flex items-center space-x-3">
+                                              <div className="w-20 bg-slate-200 dark:bg-slate-800 h-1 overflow-hidden hidden sm:block">
+                                                <div
+                                                  className="h-full bg-[#1E40AF] dark:bg-[#38BDF8]"
                                                   style={{ width: `${Math.min(100, percent)}%` }}
                                                 />
                                               </div>
-                                              
-                                              <div className="text-right">
-                                                <span className="text-slate-600 font-semibold">{actualH.toFixed(1)}h / {budgetH}h</span>
-                                                <span className={`ml-1.5 px-1.5 py-0.2 rounded font-bold text-[10px] ${
-                                                  percent >= 100 
-                                                    ? 'bg-red-100 text-red-700' 
-                                                    : percent >= 80 
-                                                      ? 'bg-amber-100 text-amber-800' 
-                                                      : 'bg-emerald-50 text-emerald-700'
-                                                }`}>
-                                                  {percent.toFixed(0)}%
-                                                </span>
-                                              </div>
+                                              <span className="text-[#475569] dark:text-[#94A3B8] font-mono">
+                                                {actualH.toFixed(1)}h / {budgetH}h ({percent.toFixed(0)}%)
+                                              </span>
                                             </div>
 
-                                            {/* Botón Destacado: INFORME EJECUTIVO (Abre Recuadro con PDF / Excel) */}
                                             <button
                                               onClick={(e) => {
                                                 e.stopPropagation();
@@ -733,28 +667,22 @@ export function RayonerTree({ onOpenTaskModal, onSelectProjectForReport }: Rayon
                                                   onSelectProjectForReport(project.id);
                                                 }
                                               }}
-                                              className="flex items-center space-x-1.5 px-2.5 py-1 bg-[#0D5C75]/10 hover:bg-[#0D5C75] text-[#0D5C75] hover:text-white rounded-lg border border-[#0D5C75]/30 text-xs font-bold transition-all shadow-2xs"
-                                              title="Ver informe ejecutivo completo, rentabilidad y descargar PDF o Excel"
+                                              className="font-heading font-semibold text-[#1E40AF] dark:text-[#38BDF8] hover:underline cursor-pointer"
                                             >
-                                              <FileText className="w-3.5 h-3.5" />
-                                              <span>Informe</span>
+                                              Informe
                                             </button>
 
-                                            {/* Botón + Tarea */}
                                             <button
                                               type="button"
                                               onClick={(e) => {
                                                 e.stopPropagation();
                                                 onOpenTaskModal(null, project.id);
                                               }}
-                                              className="flex items-center space-x-1 text-[10px] font-bold text-[#FF6B35] bg-[#FF6B35]/10 hover:bg-[#FF6B35]/20 border border-[#FF6B35]/30 px-2 py-1 rounded-lg transition-colors"
-                                              title="Crear nueva tarea en este proyecto"
+                                              className="font-heading font-semibold text-[#475569] hover:text-[#0F172A] dark:text-[#94A3B8] dark:hover:text-[#F8FAFC] cursor-pointer"
                                             >
-                                              <Plus className="w-3 h-3" />
-                                              <span>Tarea</span>
+                                              + Tarea
                                             </button>
 
-                                            {/* Botón Editar Proyecto */}
                                             <button
                                               type="button"
                                               onClick={(e) => {
@@ -765,182 +693,158 @@ export function RayonerTree({ onOpenTaskModal, onSelectProjectForReport }: Rayon
                                                   initialClientId: project.clientId,
                                                 });
                                               }}
-                                              className="p-1 text-slate-400 hover:text-emerald-700 hover:bg-slate-100 rounded-lg transition-colors"
-                                              title="Editar proyecto (presupuesto, líder, tarifas)"
+                                              className="font-heading font-medium text-[#475569] hover:text-[#0F172A] dark:text-[#94A3B8] dark:hover:text-[#F8FAFC] cursor-pointer"
                                             >
-                                              <Edit2 className="w-3.5 h-3.5" />
+                                              Editar
                                             </button>
-
                                           </div>
-
                                         </div>
 
                                         {/* Nivel 3 y 4: Tareas y Subtareas del Proyecto */}
                                         {isProjectExpanded && (
-                                          <div className="pl-5 border-l border-slate-200 ml-3.5 mt-1.5 space-y-1.5">
+                                          <div className="pl-6 border-l border-slate-200 dark:border-slate-800 space-y-1.5">
                                             {projectTasks.length === 0 ? (
-                                              <div className="text-[11px] text-slate-400 py-1 italic pl-2 flex items-center justify-between">
-                                                <span>Sin tareas en este proyecto</span>
-                                                <button
-                                                  onClick={() => onOpenTaskModal(null, project.id)}
-                                                  className="text-[10px] font-bold text-[#FF6B35] hover:underline flex items-center"
-                                                >
-                                                  <Plus className="w-3 h-3 mr-0.5" />
-                                                  Crear Tarea
-                                                </button>
+                                              <div className="text-xs text-[#475569] dark:text-[#94A3B8] py-1">
+                                                Sin tareas en este proyecto
                                               </div>
                                             ) : (
-                                              projectTasks.map(task => {
-                                                const subtasks = tasks.filter(t => t.parentTaskId === task.id);
+                                              projectTasks.map((task) => {
+                                                const subtasks = tasks.filter(
+                                                  (t) => t.parentTaskId === task.id
+                                                );
                                                 const isTaskExpanded = expandedNodes[task.id] ?? false;
-                                                const actualH = taskActualHours[task.id] || 0;
-                                                const percent = task.plannedHours > 0 ? (actualH / task.plannedHours) * 100 : 0;
-                                                const activeInTask = activeWorkers.filter(w => w.taskId === task.id || subtasks.some(st => st.id === w.taskId));
+                                                const taskActualH = taskActualHours[task.id] || 0;
+                                                const taskPercent =
+                                                  task.plannedHours > 0
+                                                    ? (taskActualH / task.plannedHours) * 100
+                                                    : 0;
+                                                const activeInTask = activeWorkers.filter(
+                                                  (w) =>
+                                                    w.taskId === task.id ||
+                                                    subtasks.some((st) => st.id === w.taskId)
+                                                );
 
                                                 return (
-                                                  <div key={task.id} className="py-0.5">
-                                                    
-                                                    {/* Fila de Tarea Principal */}
-                                                    <div 
+                                                  <div key={task.id} className="py-1">
+                                                    <div
                                                       onContextMenu={(e) => handleOpenContextMenu(e, task)}
-                                                      className="flex items-center justify-between py-1.5 px-2 rounded-xl hover:bg-slate-50 transition-colors group relative border border-transparent hover:border-slate-200"
+                                                      className="flex items-center justify-between py-1 hover:bg-slate-100/50 dark:hover:bg-[#0F172A]/60 transition-colors"
                                                     >
-                                                      <div className="flex items-center space-x-2 flex-1 min-w-0">
+                                                      <div className="flex items-center space-x-2.5 flex-1 min-w-0">
                                                         {subtasks.length > 0 ? (
-                                                          <button 
+                                                          <button
                                                             onClick={() => toggleExpand(task.id)}
-                                                            className="p-0.5 rounded hover:bg-slate-200 text-slate-400"
+                                                            className="text-[#475569] dark:text-[#94A3B8]"
                                                           >
-                                                            {isTaskExpanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+                                                            {isTaskExpanded ? (
+                                                              <ChevronDown className="w-3.5 h-3.5" />
+                                                            ) : (
+                                                              <ChevronRight className="w-3.5 h-3.5" />
+                                                            )}
                                                           </button>
                                                         ) : (
-                                                          <span className="w-3" />
+                                                          <span className="font-mono text-xs text-[#475569] dark:text-[#94A3B8]">
+                                                            └─
+                                                          </span>
                                                         )}
 
-                                                        <CheckSquare className={`w-3.5 h-3.5 shrink-0 ${task.status === 'completed' ? 'text-emerald-600' : task.isActive ? 'text-[#0D5C75]' : 'text-slate-300'}`} />
-                                                        
-                                                        <span className={`text-xs font-medium truncate ${!task.isActive ? 'text-slate-400 line-through' : task.status === 'completed' ? 'text-emerald-800 font-bold' : 'text-slate-800'}`}>
+                                                        <span
+                                                          className={`text-xs truncate ${
+                                                            !task.isActive
+                                                              ? 'text-[#475569] dark:text-[#94A3B8] line-through'
+                                                              : 'font-medium text-[#0F172A] dark:text-[#F8FAFC]'
+                                                          }`}
+                                                        >
                                                           {task.title || task.name}
                                                         </span>
 
-                                                        {/* Empleado asignado */}
                                                         {task.assigned_to && (
-                                                          <span className="text-[10px] font-semibold bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded border border-slate-200 shrink-0 hidden sm:inline">
-                                                            👤 {teamMembers.find(m => m.id === task.assigned_to)?.name || task.assigned_to}
+                                                          <span className="text-[11px] text-[#475569] dark:text-[#94A3B8] shrink-0 hidden sm:inline">
+                                                            — {teamMembers.find((m) => m.id === task.assigned_to)?.name || task.assigned_to}
                                                           </span>
                                                         )}
 
-                                                        {/* Estado de la tarea */}
                                                         {task.status === 'completed' && (
-                                                          <span className="flex items-center text-[10px] font-black bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full border border-emerald-200 shrink-0">
-                                                            <CheckCircle2 className="w-3 h-3 mr-1 text-emerald-600" />
-                                                            Completada
-                                                          </span>
-                                                        )}
-                                                        {(task.status === 'in_progress' || task.status === 'progress') && (
-                                                          <span className="text-[10px] font-bold bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded border border-blue-200 shrink-0">
-                                                            En Progreso
+                                                          <span className="text-[10px] font-heading font-semibold uppercase tracking-wider text-[#1E40AF] dark:text-[#38BDF8] shrink-0">
+                                                            [Completada]
                                                           </span>
                                                         )}
 
-                                                        {/* Badge si el supervisor pidió revisión */}
                                                         {task.status === 'review' && (
-                                                          <span className="flex items-center text-[10px] font-bold bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded border border-amber-200 shrink-0">
-                                                            <RotateCcw className="w-2.5 h-2.5 mr-1 text-amber-600" />
-                                                            Revisión solicitada
+                                                          <span className="text-[10px] font-heading font-semibold uppercase tracking-wider text-[#475569] dark:text-[#94A3B8] shrink-0">
+                                                            [Revisión solicitada]
                                                           </span>
                                                         )}
 
-                                                        {/* Indicador en Vivo: Colaborador cronometrando */}
                                                         {activeInTask.length > 0 && (
-                                                          <div className="flex items-center space-x-1 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full text-[10px] text-amber-800 font-bold animate-pulse">
-                                                            <Play className="w-2.5 h-2.5 fill-current text-[#FF6B35]" />
-                                                            <span>{activeInTask[0].userName}: {activeInTask[0].currentDurationStr}</span>
-                                                          </div>
+                                                          <span className="text-[10px] font-heading font-semibold text-[#1E40AF] dark:text-[#38BDF8]">
+                                                            • {activeInTask[0].userName}: {activeInTask[0].currentDurationStr}
+                                                          </span>
                                                         )}
                                                       </div>
 
-                                                      {/* Métricas y Acciones Directas de la Tarea */}
-                                                      <div className="flex items-center space-x-2 text-[11px] shrink-0 pl-2">
-                                                        <div className="flex items-center space-x-1.5">
-                                                          <span className="text-slate-500 font-medium">{actualH.toFixed(1)}h / {task.plannedHours}h</span>
-                                                          <span className={`px-1.5 py-0.2 rounded font-bold text-[10px] ${
-                                                            percent >= 100 
-                                                              ? 'bg-red-100 text-red-700' 
-                                                              : percent >= 80 
-                                                                ? 'bg-amber-100 text-amber-800' 
-                                                                : 'bg-emerald-50 text-emerald-700'
-                                                          }`}>
-                                                            {percent.toFixed(0)}%
-                                                          </span>
-                                                        </div>
+                                                      <div className="flex items-center space-x-4 text-xs shrink-0 pl-2">
+                                                        <span className="text-[#475569] dark:text-[#94A3B8] font-mono">
+                                                          {taskActualH.toFixed(1)}h / {task.plannedHours}h ({taskPercent.toFixed(0)}%)
+                                                        </span>
 
-                                                        {/* Botón Editar Tarea Directo */}
                                                         <button
                                                           type="button"
                                                           onClick={() => onOpenTaskModal(task.id, task.projectId)}
-                                                          className="p-1 text-slate-400 hover:text-[#0D5C75] hover:bg-slate-200 rounded-lg transition-colors"
-                                                          title="Editar tarea y asignaciones"
+                                                          className="text-xs font-heading font-medium text-[#475569] hover:text-[#0F172A] dark:text-[#94A3B8] dark:hover:text-[#F8FAFC] cursor-pointer"
                                                         >
-                                                          <Edit2 className="w-3.5 h-3.5" />
+                                                          Editar
                                                         </button>
 
-                                                        {/* Menú Contextual */}
                                                         <button
                                                           onClick={(e) => handleOpenContextMenu(e, task)}
-                                                          className="p-1 rounded text-slate-400 hover:text-slate-700 hover:bg-slate-200 transition-colors"
-                                                          title="Más opciones de tarea"
+                                                          className="text-xs font-heading font-medium text-[#475569] hover:text-[#0F172A] dark:text-[#94A3B8] dark:hover:text-[#F8FAFC] cursor-pointer"
                                                         >
-                                                          <MoreHorizontal className="w-4 h-4" />
+                                                          Opciones
                                                         </button>
                                                       </div>
                                                     </div>
 
                                                     {/* Subtareas (Nivel 4) */}
                                                     {isTaskExpanded && subtasks.length > 0 && (
-                                                      <div className="pl-6 border-l border-dashed border-slate-200 ml-4 mt-1 space-y-1">
-                                                        {subtasks.map(subtask => {
+                                                      <div className="pl-6 border-l border-slate-200 dark:border-slate-800 mt-1 space-y-1">
+                                                        {subtasks.map((subtask) => {
                                                           const subActualH = taskActualHours[subtask.id] || 0;
-                                                          const subPercent = subtask.plannedHours > 0 ? (subActualH / subtask.plannedHours) * 100 : 0;
-                                                          const activeInSub = activeWorkers.filter(w => w.taskId === subtask.id);
-
+                                                          const subPercent =
+                                                            subtask.plannedHours > 0
+                                                              ? (subActualH / subtask.plannedHours) * 100
+                                                              : 0;
                                                           return (
-                                                            <div 
+                                                            <div
                                                               key={subtask.id}
                                                               onContextMenu={(e) => handleOpenContextMenu(e, subtask)}
-                                                              className="flex items-center justify-between py-1 px-2 rounded-lg hover:bg-slate-50 text-xs transition-colors group"
+                                                              className="flex items-center justify-between py-1 text-xs"
                                                             >
                                                               <div className="flex items-center space-x-2 flex-1 min-w-0">
-                                                                <CornerDownRight className="w-3 h-3 text-slate-300 shrink-0" />
-                                                                <span className={`text-[11px] font-normal truncate ${subtask.isActive ? 'text-slate-700' : 'text-slate-400 line-through'}`}>
+                                                                <span className="font-mono text-[#475569] dark:text-[#94A3B8]">
+                                                                  └─
+                                                                </span>
+                                                                <span
+                                                                  className={`text-xs truncate ${
+                                                                    subtask.isActive
+                                                                      ? 'text-[#0F172A] dark:text-[#F8FAFC]'
+                                                                      : 'text-[#475569] dark:text-[#94A3B8] line-through'
+                                                                  }`}
+                                                                >
                                                                   {subtask.name}
                                                                 </span>
-
-                                                                {activeInSub.length > 0 && (
-                                                                  <div className="flex items-center space-x-1 bg-amber-50 border border-amber-200 px-1.5 py-0.2 rounded-full text-[9px] text-amber-800 font-bold animate-pulse">
-                                                                    <Play className="w-2 h-2 fill-current text-[#FF6B35]" />
-                                                                    <span>{activeInSub[0].userName}</span>
-                                                                  </div>
-                                                                )}
                                                               </div>
 
-                                                              <div className="flex items-center space-x-2 text-[10px] text-slate-400 shrink-0">
-                                                                <span>{subActualH.toFixed(1)}h / {subtask.plannedHours}h ({subPercent.toFixed(0)}%)</span>
-                                                                
+                                                              <div className="flex items-center space-x-4 text-xs text-[#475569] dark:text-[#94A3B8] shrink-0">
+                                                                <span className="font-mono">
+                                                                  {subActualH.toFixed(1)}h / {subtask.plannedHours}h ({subPercent.toFixed(0)}%)
+                                                                </span>
                                                                 <button
                                                                   type="button"
                                                                   onClick={() => onOpenTaskModal(subtask.id, subtask.projectId)}
-                                                                  className="p-0.5 text-slate-400 hover:text-[#0D5C75] rounded transition-colors"
-                                                                  title="Editar subtarea"
+                                                                  className="font-heading hover:text-[#0F172A] dark:hover:text-[#F8FAFC]"
                                                                 >
-                                                                  <Edit2 className="w-3 h-3" />
-                                                                </button>
-
-                                                                <button
-                                                                  onClick={(e) => handleOpenContextMenu(e, subtask)}
-                                                                  className="p-1 rounded text-slate-400 hover:text-slate-700"
-                                                                >
-                                                                  <MoreHorizontal className="w-3.5 h-3.5" />
+                                                                  Editar
                                                                 </button>
                                                               </div>
                                                             </div>
@@ -954,14 +858,12 @@ export function RayonerTree({ onOpenTaskModal, onSelectProjectForReport }: Rayon
                                             )}
                                           </div>
                                         )}
-
                                       </div>
                                     );
                                   })
                                 )}
                               </div>
                             )}
-
                           </div>
                         );
                       })
@@ -974,107 +876,95 @@ export function RayonerTree({ onOpenTaskModal, onSelectProjectForReport }: Rayon
         )}
       </div>
 
-      {/* 3. Menú Contextual Flotante de la Tarea (7 Acciones) */}
+      {/* 3. Menú Contextual Sobrio */}
       {contextMenu.visible && contextMenu.targetTask && (
-        <div 
+        <div
           style={{ top: contextMenu.y, left: contextMenu.x }}
-          className="fixed z-[200] w-56 bg-white rounded-xl shadow-2xl border border-slate-200 py-1.5 animate-fade-in text-xs font-semibold text-slate-700"
+          className="fixed z-[200] w-56 bg-[#F8FAFC] dark:bg-[#0F172A] border border-slate-300 dark:border-slate-700 py-1.5 text-xs font-heading font-medium text-[#0F172A] dark:text-[#F8FAFC]"
           onClick={(e) => e.stopPropagation()}
         >
-          <div className="px-3 py-1.5 text-[10px] text-slate-400 uppercase tracking-wider border-b border-slate-100 truncate">
+          <div className="px-3 py-1.5 text-[10px] text-[#475569] dark:text-[#94A3B8] uppercase tracking-wider border-b border-slate-200 dark:border-slate-800 truncate">
             {contextMenu.targetTask.name}
           </div>
 
           <button
             onClick={handleActionEdit}
-            className="w-full flex items-center px-3 py-2 hover:bg-slate-50 transition-colors text-slate-700"
+            className="w-full text-left px-3 py-2 hover:bg-slate-200/60 dark:hover:bg-slate-800 transition-colors"
           >
-            <Edit2 className="w-3.5 h-3.5 mr-2.5 text-[#0D5C75]" />
             Editar tarea
           </button>
 
           <button
             onClick={handleActionAddSubtask}
-            className="w-full flex items-center px-3 py-2 hover:bg-slate-50 transition-colors text-slate-700"
+            className="w-full text-left px-3 py-2 hover:bg-slate-200/60 dark:hover:bg-slate-800 transition-colors"
           >
-            <Plus className="w-3.5 h-3.5 mr-2.5 text-blue-600" />
             Añadir subtarea
           </button>
 
           <button
             onClick={handleActionCopy}
-            className="w-full flex items-center px-3 py-2 hover:bg-slate-50 transition-colors text-slate-700"
+            className="w-full text-left px-3 py-2 hover:bg-slate-200/60 dark:hover:bg-slate-800 transition-colors"
           >
-            <Copy className="w-3.5 h-3.5 mr-2.5 text-slate-500" />
             Copiar tarea
           </button>
 
           <button
             onClick={handleActionPaste}
             disabled={!clipboardTask}
-            className={`w-full flex items-center px-3 py-2 transition-colors ${
-              clipboardTask ? 'hover:bg-slate-50 text-slate-700' : 'text-slate-300 cursor-not-allowed'
+            className={`w-full text-left px-3 py-2 transition-colors ${
+              clipboardTask ? 'hover:bg-slate-200/60 dark:hover:bg-slate-800' : 'opacity-40 cursor-not-allowed'
             }`}
           >
-            <ClipboardPaste className="w-3.5 h-3.5 mr-2.5 text-slate-500" />
             Pegar {clipboardTask ? `(${clipboardTask.name.substring(0, 10)}...)` : ''}
           </button>
 
           <button
             onClick={handleActionCopyLink}
-            className="w-full flex items-center px-3 py-2 hover:bg-slate-50 transition-colors text-slate-700"
+            className="w-full text-left px-3 py-2 hover:bg-slate-200/60 dark:hover:bg-slate-800 transition-colors"
           >
-            <LinkIcon className="w-3.5 h-3.5 mr-2.5 text-slate-500" />
             Copiar enlace
           </button>
 
-          <div className="border-t border-slate-100 my-1" />
+          <div className="border-t border-slate-200 dark:border-slate-800 my-1" />
 
-          {/* Acción exclusiva del supervisor: Enviar a "Favor de volver a revisar" */}
           {contextMenu.targetTask.status !== 'review' ? (
             <button
               onClick={handleActionRequestRevision}
-              className="w-full flex items-center px-3 py-2 hover:bg-amber-50 transition-colors text-amber-800 font-semibold"
+              className="w-full text-left px-3 py-2 hover:bg-slate-200/60 dark:hover:bg-slate-800 transition-colors"
             >
-              <RotateCcw className="w-3.5 h-3.5 mr-2.5 text-amber-600" />
-              <span>Pedir que se revise de nuevo</span>
+              Pedir revisión
             </button>
           ) : (
             <button
               onClick={handleActionApproveRevision}
-              className="w-full flex items-center px-3 py-2 hover:bg-emerald-50 transition-colors text-emerald-700 font-semibold"
+              className="w-full text-left px-3 py-2 hover:bg-slate-200/60 dark:hover:bg-slate-800 transition-colors"
             >
-              <CheckCircle2 className="w-3.5 h-3.5 mr-2.5 text-emerald-600" />
-              <span>Aprobar revisión</span>
+              Aprobar revisión
             </button>
           )}
 
           <button
             onClick={handleActionToggleActive}
-            className="w-full flex items-center px-3 py-2 hover:bg-slate-50 transition-colors text-amber-700"
+            className="w-full text-left px-3 py-2 hover:bg-slate-200/60 dark:hover:bg-slate-800 transition-colors"
           >
-            <Power className="w-3.5 h-3.5 mr-2.5 text-amber-500" />
             {contextMenu.targetTask.isActive ? 'Desactivar / Pausar' : 'Activar Tarea'}
           </button>
 
           <button
             onClick={handleActionDelete}
-            className="w-full flex items-center px-3 py-2 hover:bg-red-50 transition-colors text-red-600"
+            className="w-full text-left px-3 py-2 hover:bg-slate-200/60 dark:hover:bg-slate-800 transition-colors text-[#475569] dark:text-[#94A3B8]"
           >
-            <Trash2 className="w-3.5 h-3.5 mr-2.5 text-red-500" />
             Borrar
           </button>
         </div>
       )}
 
-      {/* 4. Modal de Informe Ejecutivo con Descarga PDF y Excel */}
       <ProjectExecutiveReportModal
         isOpen={Boolean(reportModalProject)}
         onClose={() => setReportModalProject(null)}
         project={reportModalProject}
       />
 
-      {/* 5. Modal para Crear / Editar Cliente */}
       <RayonerClientModal
         isOpen={clientModalState.isOpen}
         onClose={() => setClientModalState({ isOpen: false, clientId: null })}
@@ -1082,14 +972,12 @@ export function RayonerTree({ onOpenTaskModal, onSelectProjectForReport }: Rayon
         initialGroupId={clientModalState.initialGroupId}
       />
 
-      {/* 6. Modal para Crear / Editar Proyecto */}
       <RayonerProjectModal
         isOpen={projectModalState.isOpen}
         onClose={() => setProjectModalState({ isOpen: false, projectId: null, initialClientId: null })}
         projectId={projectModalState.projectId}
         initialClientId={projectModalState.initialClientId}
       />
-
     </div>
   );
 }

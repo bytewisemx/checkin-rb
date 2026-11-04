@@ -15,7 +15,6 @@ import { RHDashboard } from './features/rh/RHDashboard';
 import { KanbanBoard } from './features/projects/KanbanBoard';
 
 // Componentes UI Globales
-import { Clock, LayoutGrid, Bell, CheckCircle2, ShieldCheck } from 'lucide-react';
 import { ToastContainer } from './components/common/ToastContainer';
 import { GlobalHeader } from './components/common/GlobalHeader';
 
@@ -42,64 +41,59 @@ function EmployeeDashboard({ initialTab = 'checkin' }: EmployeeDashboardProps) {
   const unreadTaskAlerts = canAccessTasks ? myNotifications.filter((n) => !n.read).slice(0, 3) : [];
 
   return (
-    <main className="w-full pb-12 px-4 lg:px-8 animate-fade-in bg-slate-50 dark:bg-[#0B111E] text-slate-800 dark:text-[#F8FAFC]">
-      {/* Bandeja en vivo de Notificaciones de Tareas Asignadas */}
+    <main className="w-full pb-12 px-4 lg:px-8 animate-fade-in bg-[#F8FAFC] dark:bg-[#090E17] text-slate-900 dark:text-slate-200">
+      {/* Aviso editorial de notificación de tarea */}
       {canAccessTasks && unreadTaskAlerts.length > 0 && (
-        <div className="max-w-[1600px] mx-auto mt-4 bg-white dark:bg-[#131D31] text-slate-800 dark:text-[#F8FAFC] rounded-md p-3.5 border border-slate-200 dark:border-[#233354] flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-sm">
-          <div className="flex items-start sm:items-center space-x-3">
-            <div className="w-8 h-8 rounded-md bg-[#1E40AF]/20 flex items-center justify-center shrink-0 text-[#38BDF8] border border-[#1E40AF]/40">
-              <Bell className="w-4 h-4 animate-bounce" />
+        <div className="max-w-7xl mx-auto py-4 border-b border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <div className="flex items-center space-x-2">
+              <span className="text-[10px] font-heading font-bold uppercase tracking-widest text-[#1E40AF] dark:text-[#38BDF8]">
+                NOTIFICACIÓN DE TAREA
+              </span>
+              <span className="text-[11px] text-[#475569] dark:text-[#94A3B8]">
+                • Supervisor: {user?.supervisorName || 'Líder de Equipo'}
+              </span>
             </div>
-            <div>
-              <div className="flex items-center space-x-2">
-                <span className="text-[10px] font-heading font-bold uppercase tracking-wider bg-[#1E40AF] text-[#F8FAFC] px-2 py-0.5 rounded-sm">
-                  NOTIFICACIÓN
-                </span>
-                <span className="text-[11px] text-[#94A3B8]">
-                  Supervisor: {user?.supervisorName || 'Líder de Equipo'}
-                </span>
-              </div>
-              <p className="text-xs font-medium text-[#F8FAFC] mt-0.5">{unreadTaskAlerts[0].message}</p>
-            </div>
+            <p className="text-xs font-medium text-[#0F172A] dark:text-[#F8FAFC] mt-0.5">
+              {unreadTaskAlerts[0].message}
+            </p>
           </div>
 
-          <div className="flex items-center space-x-2 shrink-0">
+          <div className="flex items-center space-x-3 shrink-0">
             <button
               onClick={() => {
                 setActiveTab('projects');
                 markAsRead(unreadTaskAlerts[0].id);
               }}
-              className="px-3 py-1.5 bg-[#1E40AF] hover:bg-[#1D4ED8] text-white rounded-md text-xs font-heading font-semibold transition-colors cursor-pointer"
+              className="px-3.5 py-1.5 bg-[#1E40AF] hover:bg-[#1D4ED8] text-white text-xs font-heading font-semibold transition-colors cursor-pointer"
             >
               Ver Mis Tareas
             </button>
             <button
               onClick={() => markAsRead(unreadTaskAlerts[0].id)}
-              className="p-1.5 bg-[#1A2742] hover:bg-[#233354] text-[#94A3B8] hover:text-[#F8FAFC] rounded-md text-xs font-semibold cursor-pointer border border-[#233354]"
-              title="Marcar como leída"
+              className="text-xs font-heading font-medium text-[#475569] hover:text-[#0F172A] dark:text-[#94A3B8] dark:hover:text-[#F8FAFC] cursor-pointer"
             >
-              <CheckCircle2 className="w-4 h-4 text-[#38BDF8]" />
+              Descartar
             </button>
           </div>
         </div>
       )}
 
-      {/* Barra de Navegación de Pestañas Abierta y Minimalista (Sin Recuadros) */}
-      <div className="flex flex-col items-center justify-center mt-6 mb-3 gap-2">
-        <div className="flex items-center space-x-6">
+      {/* Navegación de Pestañas Editorial (Sin Recuadros ni Iconos Decorativos) */}
+      <div className="max-w-7xl mx-auto flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pt-6 mb-6">
+        <div className="flex items-center space-x-8">
           {canAccessCheckIn && (
             <button
               onClick={() => setActiveTab('checkin')}
-              className={`flex items-center pb-2 text-xs font-heading font-semibold transition-all relative cursor-pointer ${
+              className={`pb-3 text-xs font-heading font-semibold uppercase tracking-wider transition-colors relative cursor-pointer ${
                 resolvedTab === 'checkin'
-                  ? 'text-slate-900 dark:text-white font-bold'
-                  : 'text-slate-500 hover:text-slate-800 dark:text-[#94A3B8] dark:hover:text-white'
+                  ? 'text-[#0F172A] dark:text-[#F8FAFC]'
+                  : 'text-[#475569] hover:text-[#0F172A] dark:text-[#94A3B8] dark:hover:text-[#F8FAFC]'
               }`}
             >
-              <Clock className="w-3.5 h-3.5 mr-1.5 text-current" />
-              <span>Asistencia Global</span>
+              Asistencia Global
               {resolvedTab === 'checkin' && (
-                <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-700 dark:bg-[#38BDF8] rounded-t" />
+                <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#1E40AF] dark:bg-[#38BDF8]" />
               )}
             </button>
           )}
@@ -107,31 +101,29 @@ function EmployeeDashboard({ initialTab = 'checkin' }: EmployeeDashboardProps) {
           {canAccessTasks && (
             <button
               onClick={() => setActiveTab('projects')}
-              className={`flex items-center pb-2 text-xs font-heading font-semibold transition-all relative cursor-pointer ${
+              className={`pb-3 text-xs font-heading font-semibold uppercase tracking-wider transition-colors relative cursor-pointer ${
                 resolvedTab === 'projects'
-                  ? 'text-slate-900 dark:text-white font-bold'
-                  : 'text-slate-500 hover:text-slate-800 dark:text-[#94A3B8] dark:hover:text-white'
+                  ? 'text-[#0F172A] dark:text-[#F8FAFC]'
+                  : 'text-[#475569] hover:text-[#0F172A] dark:text-[#94A3B8] dark:hover:text-[#F8FAFC]'
               }`}
             >
-              <LayoutGrid className="w-3.5 h-3.5 mr-1.5 text-current" />
-              <span>Mis Tareas Asignadas</span>
+              Mis Tareas Asignadas
               {resolvedTab === 'projects' && (
-                <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-700 dark:bg-[#38BDF8] rounded-t" />
+                <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#1E40AF] dark:bg-[#38BDF8]" />
               )}
             </button>
           )}
         </div>
 
         {!canAccessTasks && (
-          <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-slate-500 dark:text-[#94A3B8]">
-            <ShieldCheck className="w-3.5 h-3.5 text-blue-700 dark:text-[#38BDF8]" />
-            Perfil configurado en modo de Entrada / Salida (Módulo de tareas inactivo)
+          <span className="text-[11px] font-medium text-[#475569] dark:text-[#94A3B8] pb-3">
+            Modo de Entrada / Salida (Módulo de tareas inactivo)
           </span>
         )}
       </div>
 
       {resolvedTab === 'checkin' ? (
-        <div className="animate-fade-in w-full max-w-[1600px] mx-auto">
+        <div className="animate-fade-in w-full max-w-7xl mx-auto">
           <CheckinPanel />
         </div>
       ) : canAccessTasks ? (
@@ -156,7 +148,7 @@ function MainLayout({
   const normalizedRole = normalizeRole(user?.role);
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-[#0B111E] text-slate-800 dark:text-[#F8FAFC]">
+    <div className="min-h-screen bg-[#F8FAFC] dark:bg-[#090E17] text-slate-900 dark:text-slate-200">
       <GlobalHeader />
 
       {normalizedRole === 'TI' && <TIDashboard initialTab={initialTiTab} />}
@@ -253,7 +245,6 @@ export default function App() {
             }
           />
 
-          {/* Panel TI de Permisos Granulares (/admin/users-permissions) */}
           <Route
             path="/admin/users-permissions"
             element={
@@ -263,7 +254,6 @@ export default function App() {
             }
           />
 
-          {/* Rutas directas protegidas por RBAC + banderas user.modules */}
           <Route
             path="/tasks"
             element={

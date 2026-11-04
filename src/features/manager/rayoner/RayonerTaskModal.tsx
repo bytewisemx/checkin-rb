@@ -847,11 +847,16 @@ export function RayonerTaskModal({
                 />
               </div>
 
-              <div className="h-64 w-full rounded-xl overflow-hidden border border-slate-200 shadow-inner relative">
-                <MapContainer center={[geoLat, geoLng]} zoom={15} className="w-full h-full">
+              <div className="h-64 w-full rounded-xl overflow-hidden border border-slate-700 shadow-inner relative corporate-dark-map bg-[#090E17]">
+                <MapContainer
+                  center={[geoLat, geoLng]}
+                  zoom={15}
+                  attributionControl={false}
+                  className="w-full h-full corporate-dark-map"
+                >
                   <TileLayer
-                    attribution="&copy; OpenStreetMap"
-                    url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                    url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
+                    maxZoom={19}
                   />
                   <Marker position={[geoLat, geoLng]} />
                   <Circle

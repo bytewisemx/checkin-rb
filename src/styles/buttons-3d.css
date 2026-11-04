@@ -1,6 +1,6 @@
 /* ==========================================================================
    BOTONES CON EFECTO 3D PURO (CLIP-PATH, GRADIENTES Y VARIABLES CSS)
-   Coreografía secuencial de estados, extrusión isométrica y perspectiva
+   Profundidad física con gradiente de proyección en rgba(56, 189, 248, 0.25)
    ========================================================================== */
 
 /* Botón de Extrusión Isométrica (Acción Principal / Captura) */
@@ -10,19 +10,19 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-family: 'Sora', 'Space Grotesk', sans-serif;
+  font-family: 'Plus Jakarta Sans', 'Space Grotesk', sans-serif;
   font-size: 0.875rem;
   font-weight: 600;
   letter-spacing: 0.02em;
   padding: 10px 20px;
   color: #F8FAFC;
-  background-color: #0F172A;
+  background-color: #101726;
   cursor: pointer;
   border: solid transparent;
   border-width: 0 0 var(--c) var(--c);
   background-image:
-    linear-gradient(-45deg, transparent var(--g), rgba(56, 189, 248, 0.4) 0),
-    linear-gradient(135deg, transparent var(--g), rgba(30, 64, 175, 0.6) 0);
+    linear-gradient(-45deg, transparent var(--g), rgba(56, 189, 248, 0.25) 0),
+    linear-gradient(135deg, transparent var(--g), rgba(29, 78, 216, 0.55) 0);
   background-size: var(--c) 100%, 100% var(--c);
   background-position: left, bottom;
   background-repeat: no-repeat;
@@ -44,8 +44,8 @@
 }
 
 .btn-3d-extrude:hover:not(:disabled) {
-  background-color: #1E40AF;
-  color: #FFFFFF;
+  background-color: #1D4ED8;
+  color: #F8FAFC;
   transform: translate(0, 0);
   clip-path: polygon(
     0% var(--c),
@@ -70,15 +70,15 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-family: 'Sora', 'Space Grotesk', sans-serif;
+  font-family: 'Plus Jakarta Sans', 'Space Grotesk', sans-serif;
   font-size: 0.875rem;
   font-weight: 500;
   padding: 10px calc(16px + var(--d)) 10px 16px;
-  color: #94A3B8;
-  background-color: #131D31;
+  color: #E2E8F0;
+  background-color: #1E2B45;
   cursor: pointer;
   border: none;
-  background-image: linear-gradient(rgba(56, 189, 248, 0.2) 0 0);
+  background-image: linear-gradient(rgba(56, 189, 248, 0.25) 0 0);
   background-position: right;
   background-size: var(--d) 100%;
   background-repeat: no-repeat;
@@ -98,7 +98,7 @@
 }
 
 .btn-3d-fold:hover:not(:disabled) {
-  background-color: #0B111E;
+  background-color: #172238;
   color: #F8FAFC;
   transform: perspective(800px) rotateY(-20deg);
   clip-path: polygon(
@@ -116,4 +116,3 @@
   cursor: not-allowed;
   transform: perspective(800px) rotateY(0deg);
 }
-

@@ -284,7 +284,99 @@ function rbacApiPlugin(): Plugin {
           });
         }
 
-        // 5. Endpoints exclusivos de RH (/api/rh/work-summary, /api/rh/metrics/headcount, /api/rh/metrics/work-time)
+        // 5. Endpoint global de auditoría de asistencias para RH: GET /api/rh/attendance
+        if (method === 'GET' && cleanPath === '/api/rh/attendance') {
+          if (!checkRole(['TI', 'RH'])) return;
+          if (!checkModuleFlag('reports')) return;
+
+          const attendanceRecords = [
+            {
+              id: 'att_98765',
+              userName: 'Empleado Prueba',
+              userEmail: 'colaborador.prueba@russellbedford.mx',
+              teamName: 'Equipo Prueba (Auditoría Fiscal)',
+              supervisorName: 'Supervisor Prueba',
+              checkIn: {
+                timestamp: '2026-10-29T08:55:12Z',
+                facialMatch: true,
+                confidenceScore: 0.96,
+                location: {
+                  label: 'Oficina Central',
+                  latitude: 21.8853,
+                  longitude: -102.2915,
+                },
+              },
+              checkOut: {
+                timestamp: '2026-10-29T18:05:40Z',
+                facialMatch: true,
+                location: {
+                  label: 'Oficina Central',
+                  latitude: 21.8853,
+                  longitude: -102.2915,
+                },
+              },
+              totalHours: 9.1,
+            },
+            {
+              id: 'att_98766',
+              userName: 'Supervisor Prueba',
+              userEmail: 'supervisor.prueba@russellbedford.mx',
+              teamName: 'Equipo Prueba (Auditoría Fiscal)',
+              supervisorName: 'TI Prueba',
+              checkIn: {
+                timestamp: '2026-10-29T08:42:10Z',
+                facialMatch: false,
+                confidenceScore: 0,
+                location: {
+                  label: 'Sede Corporativa Norte',
+                  latitude: 19.4326,
+                  longitude: -99.1332,
+                },
+              },
+              checkOut: {
+                timestamp: '2026-10-29T18:12:00Z',
+                facialMatch: false,
+                location: {
+                  label: 'Sede Corporativa Norte',
+                  latitude: 19.4326,
+                  longitude: -99.1332,
+                },
+              },
+              totalHours: 9.5,
+            },
+            {
+              id: 'att_98767',
+              userName: 'Empleado Prueba',
+              userEmail: 'colaborador.prueba@russellbedford.mx',
+              teamName: 'Equipo Prueba (Auditoría Fiscal)',
+              supervisorName: 'Supervisor Prueba',
+              checkIn: {
+                timestamp: '2026-10-28T08:58:04Z',
+                facialMatch: true,
+                confidenceScore: 0.98,
+                location: {
+                  label: 'Oficina Central',
+                  latitude: 21.8853,
+                  longitude: -102.2915,
+                },
+              },
+              checkOut: {
+                timestamp: '2026-10-28T18:02:19Z',
+                facialMatch: true,
+                location: {
+                  label: 'Oficina Central',
+                  latitude: 21.8853,
+                  longitude: -102.2915,
+                },
+              },
+              totalHours: 9.0,
+            },
+          ];
+
+          return sendJson(200, attendanceRecords);
+        }
+
+        // 6. Endpoints adicionales de RH (/api/rh/work-summary, /api/rh/metrics/headcount, /api/rh/metrics/work-time)
         if (
           cleanPath === '/api/rh/work-summary' ||
           cleanPath === '/api/rh/metrics/headcount' ||

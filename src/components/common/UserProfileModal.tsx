@@ -125,13 +125,13 @@ export function UserProfileModal({ isOpen, onClose, initialTab = 'rank' }: UserP
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 dark:bg-black/80 backdrop-blur-xs animate-fade-in">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 dark:bg-[#090E17]/80 backdrop-blur-xs animate-fade-in">
       <div 
-        className="w-full max-w-2xl bg-white dark:bg-[#131D31] text-slate-900 dark:text-[#F8FAFC] rounded-xl shadow-2xl border border-slate-200 dark:border-[#233354] overflow-hidden flex flex-col max-h-[92vh] animate-scale-up"
+        className="w-full max-w-2xl bg-white dark:bg-[#101726] text-slate-900 dark:text-slate-100 rounded-xl shadow-2xl shadow-black/60 border border-slate-200 dark:border-slate-800 overflow-hidden flex flex-col max-h-[92vh] animate-scale-up"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Cabecera del Modal (Diseño abierto sin recuadros toscos) */}
-        <div className="relative bg-white dark:bg-[#0F172A] border-b border-slate-200 dark:border-[#233354] text-slate-900 dark:text-[#F8FAFC] p-5 pb-0">
+        {/* Cabecera del Modal */}
+        <div className="relative bg-white dark:bg-[#0B111E] border-b border-slate-200 dark:border-slate-800 text-slate-900 dark:text-slate-100 p-5 pb-0">
           <button
             onClick={onClose}
             className="absolute top-4 right-4 p-1.5 rounded-lg text-slate-400 hover:text-slate-800 dark:hover:text-[#F8FAFC] hover:bg-slate-100 dark:hover:bg-[#1A2742] transition-colors cursor-pointer"

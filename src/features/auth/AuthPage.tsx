@@ -9,7 +9,7 @@ import {
   logoutFirebase,
   isFirebaseConfigured 
 } from '../../services/firebase';
-import { AlertCircle, Lock, ArrowDown, ChevronUp } from 'lucide-react';
+import { ArrowDown, ChevronUp } from 'lucide-react';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import './AuthPage.css';
@@ -339,8 +339,7 @@ export function AuthPage() {
             </div>
 
             {errorMsg && (
-              <div className="mb-4 p-3 bg-rose-50 border border-rose-200 text-rose-700 rounded-xl text-xs font-semibold flex items-start space-x-2">
-                <AlertCircle className="w-4 h-4 shrink-0 text-rose-600 mt-0.5" />
+              <div className="mb-4 py-2 border-b border-slate-300 text-[#0F172A] text-xs font-semibold">
                 <span>{errorMsg}</span>
               </div>
             )}
@@ -407,21 +406,21 @@ export function AuthPage() {
                 </button>
 
                 {showDemoProfiles && (
-                  <div className="mt-2 space-y-1.5 animate-fade-in">
-                    <span className="font-medium text-slate-400 text-[10px] block">
-                      Equipo de Prueba • Contraseña: <code className="font-mono text-slate-600 font-semibold">admin123</code>
+                  <div className="mt-2 space-y-2 animate-fade-in">
+                    <span className="font-medium text-slate-500 text-[10px] block">
+                      Equipo de Prueba • Contraseña: <code className="font-mono text-slate-700 font-semibold">admin123</code>
                     </span>
-                    <div className="grid grid-cols-2 gap-1.5">
+                    <div className="grid grid-cols-2 gap-2">
                       <button
                         type="button"
                         onClick={() => {
                           setEmail('ti.root@russellbedford.mx');
                           setPassword('admin123');
                         }}
-                        className="inline-flex items-center justify-center px-2 py-1.5 rounded-lg bg-[#001A29] hover:bg-[#002538] text-amber-300 text-[10px] font-bold border border-slate-700 transition-all cursor-pointer shadow-2xs active:scale-95"
-                        title="TI Prueba (Nivel más alto): Gestiona toda la estructura, revoca/asigna permisos incluso de Socios y asigna equipos a RH"
+                        className="inline-flex items-center justify-center px-2.5 py-1.5 bg-[#0F172A] hover:bg-[#1E40AF] text-[#F8FAFC] text-[10px] font-heading font-semibold uppercase tracking-wider transition-colors cursor-pointer"
+                        title="TI Prueba (Nivel más alto)"
                       >
-                        <span>👑 TI Prueba</span>
+                        <span>TI Prueba</span>
                       </button>
                       <button
                         type="button"
@@ -429,10 +428,10 @@ export function AuthPage() {
                           setEmail('supervisor.prueba@russellbedford.mx');
                           setPassword('admin123');
                         }}
-                        className="inline-flex items-center justify-center px-2 py-1.5 rounded-lg bg-cyan-50 hover:bg-cyan-100 text-[#0D5C75] text-[10px] font-bold border border-cyan-200 transition-all cursor-pointer shadow-2xs active:scale-95"
-                        title="Supervisor Prueba (Socio / Líder): Invita a su equipo y asigna tareas"
+                        className="inline-flex items-center justify-center px-2.5 py-1.5 border border-slate-300 hover:border-[#1E40AF] text-[#0F172A] text-[10px] font-heading font-semibold uppercase tracking-wider transition-colors cursor-pointer"
+                        title="Supervisor Prueba (Socio / Líder)"
                       >
-                        <span>🛡️ Supervisor Prueba</span>
+                        <span>Supervisor Prueba</span>
                       </button>
                       <button
                         type="button"
@@ -440,10 +439,10 @@ export function AuthPage() {
                           setEmail('colaborador.prueba@russellbedford.mx');
                           setPassword('admin123');
                         }}
-                        className="inline-flex items-center justify-center px-2 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-800 text-[10px] font-bold border border-blue-200 transition-all cursor-pointer shadow-2xs active:scale-95"
-                        title="Empleado Prueba: Subordinado a Supervisor Prueba"
+                        className="inline-flex items-center justify-center px-2.5 py-1.5 border border-slate-300 hover:border-[#1E40AF] text-[#0F172A] text-[10px] font-heading font-semibold uppercase tracking-wider transition-colors cursor-pointer"
+                        title="Empleado Prueba"
                       >
-                        <span>👤 Empleado Prueba</span>
+                        <span>Empleado Prueba</span>
                       </button>
                       <button
                         type="button"
@@ -451,10 +450,10 @@ export function AuthPage() {
                           setEmail('rh.prueba@russellbedford.mx');
                           setPassword('admin123');
                         }}
-                        className="inline-flex items-center justify-center px-2 py-1.5 rounded-lg bg-teal-50 hover:bg-teal-100 text-teal-800 text-[10px] font-bold border border-teal-200 transition-all cursor-pointer shadow-2xs active:scale-95"
-                        title="RH Prueba: Visualiza checadas de los equipos asignados por TI"
+                        className="inline-flex items-center justify-center px-2.5 py-1.5 border border-slate-300 hover:border-[#1E40AF] text-[#0F172A] text-[10px] font-heading font-semibold uppercase tracking-wider transition-colors cursor-pointer"
+                        title="RH Prueba"
                       >
-                        <span>📊 RH Prueba</span>
+                        <span>RH Prueba</span>
                       </button>
                     </div>
                   </div>
@@ -462,7 +461,7 @@ export function AuthPage() {
               </div>
 
               <div className="flex items-center justify-between mb-4">
-                <Link to="/forgot-password" className="text-xs text-[#0D5C75] hover:underline font-medium">
+                <Link to="/forgot-password" className="text-xs text-[#1E40AF] hover:underline font-medium">
                   ¿Olvidaste tu contraseña?
                 </Link>
                 <button type="submit" className="auth-submit-btn !w-auto !py-2 !px-5" disabled={isLoading}>
@@ -471,8 +470,7 @@ export function AuthPage() {
               </div>
             </form>
 
-            <div className="mt-2 pt-3 border-t border-slate-100 flex items-center justify-center space-x-1.5 text-slate-400 text-[10px]">
-              <Lock className="w-3 h-3 text-slate-400 shrink-0" />
+            <div className="mt-2 pt-3 border-t border-slate-100 flex items-center justify-center text-slate-400 text-[10px] uppercase tracking-widest font-heading">
               <span>Acceso no público</span>
             </div>
           </div>
@@ -489,31 +487,25 @@ export function AuthPage() {
         >
           <div className="auth-intro-content">
             <div className="auth-brand-badge">
-              <span className="w-2 h-2 rounded-full bg-[#00B5B8] animate-pulse"></span>
               <span>Plataforma Corporativa</span>
             </div>
 
-            {/* Palomita Azul 3D */}
-            <div className="mb-4">
-              <svg className="w-16 h-16 drop-shadow-md" viewBox="0 0 64 64" fill="none">
+            {/* Palomita Azul Limpia (Sin recuadro ni círculo contenedor) */}
+            <div className="mb-3">
+              <svg className="w-14 h-14" viewBox="0 0 64 64" fill="none">
                 <defs>
                   <linearGradient id="checkmarkGrad" x1="0%" y1="0%" x2="100%" y2="100%">
                     <stop offset="0%" stopColor="#00E5FF" />
                     <stop offset="50%" stopColor="#0D5C75" />
                     <stop offset="100%" stopColor="#002538" />
                   </linearGradient>
-                  <filter id="shadow3d" x="-20%" y="-20%" width="140%" height="140%">
-                    <feDropShadow dx="2" dy="4" stdDeviation="4" floodColor="#002538" floodOpacity="0.25" />
-                  </filter>
                 </defs>
-                <circle cx="32" cy="32" r="30" fill="#F0F9FF" stroke="#BAE6FD" strokeWidth="2" />
                 <path 
-                  d="M18 33L27 42L46 22" 
+                  d="M14 33L26 45L50 19" 
                   stroke="url(#checkmarkGrad)" 
-                  strokeWidth="6" 
+                  strokeWidth="6.5" 
                   strokeLinecap="round" 
                   strokeLinejoin="round" 
-                  filter="url(#shadow3d)"
                 />
               </svg>
             </div>
@@ -550,12 +542,11 @@ export function AuthPage() {
         <div className="auth-right-backdrop" ref={backdropRef}>
           <div className="auth-backdrop-decoration"></div>
           <div className="auth-backdrop-brand">
-            <svg className="w-16 h-16 mx-auto mb-4 drop-shadow-lg" viewBox="0 0 64 64" fill="none">
-              <circle cx="32" cy="32" r="30" fill="rgba(255,255,255,0.08)" stroke="rgba(255,255,255,0.2)" strokeWidth="1.5" />
+            <svg className="w-14 h-14 mx-auto mb-4" viewBox="0 0 64 64" fill="none">
               <path 
-                d="M18 33L27 42L46 22" 
+                d="M14 33L26 45L50 19" 
                 stroke="#00E5FF" 
-                strokeWidth="5" 
+                strokeWidth="6" 
                 strokeLinecap="round" 
                 strokeLinejoin="round" 
               />
