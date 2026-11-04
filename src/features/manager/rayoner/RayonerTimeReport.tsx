@@ -362,16 +362,19 @@ export function RayonerTimeReport({ initialProjectId }: RayonerTimeReportProps) 
                     <span className="font-semibold text-slate-800 dark:text-slate-200 truncate">{d.name}</span>
                     <span className="font-mono font-bold text-slate-900 dark:text-white">{formatHoursToSexagesimal(d.hours)}</span>
                   </div>
-                  <div className="flex items-center space-x-2 mt-2">
-                    <div className="flex-1 bg-slate-200 dark:bg-slate-800 h-1.5 rounded-full overflow-hidden">
-                      <div 
-                        className="bg-blue-600 h-full rounded-full transition-all duration-300"
-                        style={{ width: `${Math.min(100, d.percentage)}%` }}
-                      />
-                    </div>
-                    <span className="text-[11px] font-mono text-slate-500 dark:text-slate-400 w-10 text-right">
-                      {d.percentage}%
-                    </span>
+                  <div className="relative flex items-center h-4 mt-2">
+                    <div className="w-full h-0.5 bg-slate-200 dark:bg-slate-800 rounded-full" />
+                    <div 
+                      className="absolute left-0 top-1/2 -translate-y-1/2 h-0.5 bg-[#1D4ED8] dark:bg-sky-400 rounded-full"
+                      style={{ width: `${Math.min(100, d.percentage)}%` }}
+                    />
+                    <div 
+                      className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-2 h-2 rounded-full bg-[#1D4ED8] dark:bg-sky-400 border border-white dark:border-[#101726]"
+                      style={{ left: `${Math.min(100, d.percentage)}%` }}
+                    />
+                  </div>
+                  <div className="flex justify-end text-[11px] font-mono text-slate-500 dark:text-slate-400 mt-1">
+                    {d.percentage}%
                   </div>
                 </div>
               ))}
@@ -495,7 +498,12 @@ export function RayonerTimeReport({ initialProjectId }: RayonerTimeReportProps) 
                                 }`}
                               >
                                 <span>{asg.userName}: {formatHoursToSexagesimal(userActual)} / {formatHoursToSexagesimal(asg.allocatedHours)}</span>
-                                {asg.blockOnLimit && <span title="Límite estricto activo">🔒</span>}
+                                {asg.blockOnLimit && (
+                                  <span className="inline-flex items-center gap-1 text-[10px] text-slate-500 font-mono" title="Límite estricto">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-[#1D4ED8] dark:bg-sky-400" />
+                                    Límite
+                                  </span>
+                                )}
                               </span>
                             );
                           })}
@@ -515,20 +523,30 @@ export function RayonerTimeReport({ initialProjectId }: RayonerTimeReportProps) 
                       {formatHoursToSexagesimal(actualH)}
                     </td>
 
-                    {/* Barra de Consumo Sobria */}
+                    {/* Indicador Sobrio Minimalista de Consumo (Línea Fina y Punto) */}
                     <td className="p-3.5">
-                      <div className="flex items-center space-x-2">
-                        <div className="flex-1 bg-slate-200 dark:bg-slate-800 rounded-full h-2 overflow-hidden">
+                      <div className="flex items-center space-x-3">
+                        <div className="relative flex-1 flex items-center h-4">
+                          {/* Línea base sutil */}
+                          <div className="w-full h-0.5 bg-slate-200 dark:bg-slate-800 rounded-full" />
+                          
+                          {/* Segmento de avance monocromático en azul rey */}
                           <div
                             style={{ width: `${Math.min(100, pct)}%` }}
-                            className={`h-full rounded-full transition-all ${
-                              pct > 100 ? 'bg-rose-500' : 'bg-blue-600'
+                            className="absolute left-0 top-1/2 -translate-y-1/2 h-0.5 bg-[#1D4ED8] dark:bg-sky-400 rounded-full"
+                          />
+
+                          {/* Punto minimalista de posición */}
+                          <div
+                            style={{ left: `${Math.min(100, Math.max(0, pct))}%` }}
+                            className={`absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-2 h-2 rounded-full border border-white dark:border-[#101726] shadow-2xs ${
+                              pct > 100 
+                                ? 'bg-rose-400' 
+                                : 'bg-[#1D4ED8] dark:bg-sky-400'
                             }`}
                           />
                         </div>
-                        <span className={`w-12 text-right font-mono font-bold text-xs ${
-                          pct > 100 ? 'text-rose-400' : 'text-slate-700 dark:text-slate-300'
-                        }`}>
+                        <span className="w-12 text-right font-mono text-xs text-slate-600 dark:text-slate-400">
                           {pct.toFixed(0)}%
                         </span>
                       </div>
@@ -536,19 +554,10 @@ export function RayonerTimeReport({ initialProjectId }: RayonerTimeReportProps) 
 
                     {/* Badge de Estatus Sobrio */}
                     <td className="p-3.5 pr-6 text-center">
-                      {pct > 100 ? (
-                        <span className="px-2 py-0.5 bg-rose-950/60 text-rose-300 border border-rose-800 rounded text-[11px] font-medium">
-                          Excedido
-                        </span>
-                      ) : pct >= 80 ? (
-                        <span className="px-2 py-0.5 bg-amber-950/50 text-amber-300 border border-amber-800 rounded text-[11px] font-medium">
-                          Alerta
-                        </span>
-                      ) : (
-                        <span className="px-2 py-0.5 bg-slate-100 dark:bg-[#1E2B45] text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-700 rounded text-[11px] font-medium">
-                          En Rango
-                        </span>
-                      )}
+                      <span className="inline-flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-300">
+                        <span className={`w-1.5 h-1.5 rounded-full ${pct > 100 ? 'bg-rose-400' : 'bg-[#1D4ED8] dark:bg-sky-400'}`} />
+                        <span>{pct > 100 ? 'Excedido' : pct >= 80 ? 'Alerta' : 'En Rango'}</span>
+                      </span>
                     </td>
                   </tr>
                 );
@@ -569,27 +578,31 @@ export function RayonerTimeReport({ initialProjectId }: RayonerTimeReportProps) 
                   {formatHoursToSexagesimal(totalActualHours)}
                 </td>
                 <td className="p-4">
-                  <div className="flex items-center space-x-2">
-                    <div className="flex-1 bg-slate-200 dark:bg-slate-800 rounded-full h-2.5 overflow-hidden">
+                  <div className="flex items-center space-x-3">
+                    <div className="relative flex-1 flex items-center h-4">
+                      <div className="w-full h-0.5 bg-slate-200 dark:bg-slate-800 rounded-full" />
                       <div
                         style={{ width: `${Math.min(100, percentConsumed)}%` }}
-                        className={`h-full rounded-full ${
-                          percentConsumed > 100 ? 'bg-rose-500' : 'bg-blue-600'
+                        className="absolute left-0 top-1/2 -translate-y-1/2 h-0.5 bg-[#1D4ED8] dark:bg-sky-400 rounded-full"
+                      />
+                      <div
+                        style={{ left: `${Math.min(100, Math.max(0, percentConsumed))}%` }}
+                        className={`absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-2 h-2 rounded-full border border-white dark:border-[#101726] shadow-2xs ${
+                          percentConsumed > 100 
+                            ? 'bg-rose-400' 
+                            : 'bg-[#1D4ED8] dark:bg-sky-400'
                         }`}
                       />
                     </div>
-                    <span className="font-extrabold font-mono text-sm text-slate-900 dark:text-slate-100">
+                    <span className="font-mono text-xs text-slate-900 dark:text-slate-100 font-bold">
                       {percentConsumed.toFixed(1)}%
                     </span>
                   </div>
                 </td>
                 <td className="p-4 pr-6 text-center">
-                  <span className={`px-2.5 py-0.5 rounded text-xs font-semibold uppercase tracking-wider ${
-                    percentConsumed > 100 
-                      ? 'bg-rose-950/60 text-rose-300 border border-rose-800' 
-                      : 'bg-slate-100 dark:bg-[#1E2B45] text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-700'
-                  }`}>
-                    {percentConsumed > 100 ? 'Excedido' : 'Óptimo'}
+                  <span className="inline-flex items-center gap-1.5 text-xs text-slate-700 dark:text-slate-300">
+                    <span className={`w-1.5 h-1.5 rounded-full ${percentConsumed > 100 ? 'bg-rose-400' : 'bg-[#1D4ED8] dark:bg-sky-400'}`} />
+                    <span>{percentConsumed > 100 ? 'Excedido' : 'Óptimo'}</span>
                   </span>
                 </td>
               </tr>

@@ -7,8 +7,6 @@ import {
   MapPin,
   DollarSign,
   AlertTriangle,
-  Lock,
-  Unlock,
   Plus,
   Trash2,
   UserCheck,
@@ -682,24 +680,17 @@ export function RayonerTaskModal({
                         <button
                           type="button"
                           onClick={() => handleToggleBlock(idx)}
-                          className={`flex items-center px-2.5 py-1 rounded-md text-xs font-bold border transition-all ${
-                            asg.blockOnLimit
-                              ? 'bg-red-50 border-red-200 text-red-600 shadow-2xs'
-                              : 'bg-slate-100 border-slate-200 text-slate-500'
-                          }`}
-                          title="Detener cronómetro automáticamente al llegar al límite asignado"
+                          className="flex items-center space-x-1.5 px-2.5 py-1 rounded border border-slate-300 dark:border-slate-700 bg-white dark:bg-[#0B111E] text-slate-700 dark:text-slate-300 text-xs transition-colors hover:border-slate-400 cursor-pointer"
+                          title="Alternar límite de tiempo"
                         >
-                          {asg.blockOnLimit ? (
-                            <>
-                              <Lock className="w-3 h-3 mr-1 text-red-500" />
-                              Bloqueo Activo
-                            </>
-                          ) : (
-                            <>
-                              <Unlock className="w-3 h-3 mr-1 text-slate-400" />
-                              Sin Bloqueo
-                            </>
-                          )}
+                          <span
+                            className={`w-2 h-2 rounded-full ${
+                              asg.blockOnLimit
+                                ? 'bg-[#1D4ED8] dark:bg-sky-400 shadow-2xs'
+                                : 'bg-slate-300 dark:bg-slate-600'
+                            }`}
+                          />
+                          <span>{asg.blockOnLimit ? 'Límite Activo' : 'Sin Límite'}</span>
                         </button>
 
                         <button

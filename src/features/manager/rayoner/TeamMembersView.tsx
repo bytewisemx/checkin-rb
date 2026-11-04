@@ -411,9 +411,13 @@ function FragmentRow({
                             <span className="font-medium text-slate-900 dark:text-slate-200 block">
                               {task?.name || 'Tarea asignada'}
                             </span>
-                            <span className="text-[11px] text-slate-600 dark:text-slate-400">
-                              {project?.name || 'Proyecto'} •{' '}
-                              {asg.blockOnLimit ? 'Límite Estricto' : 'Flexible'}
+                            <span className="text-[11px] text-slate-600 dark:text-slate-400 flex items-center gap-1.5 mt-0.5">
+                              <span>{project?.name || 'Proyecto'}</span>
+                              <span>•</span>
+                              <span className="inline-flex items-center gap-1">
+                                <span className={`w-1.5 h-1.5 rounded-full ${asg.blockOnLimit ? 'bg-[#1D4ED8] dark:bg-sky-400' : 'bg-slate-400'}`} />
+                                <span>{asg.blockOnLimit ? 'Límite Activo' : 'Flexible'}</span>
+                              </span>
                             </span>
                           </div>
                           <div className="font-mono text-slate-900 dark:text-slate-200">
