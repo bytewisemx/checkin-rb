@@ -33,6 +33,7 @@ export interface Project {
   currency: string;
   notes?: string;
   isActive: boolean;
+  assignedUserIds?: string[];
 }
 
 export interface TaskNode {

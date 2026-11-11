@@ -351,3 +351,116 @@ html.dark {
 .corporate-dark-map .leaflet-control-attribution {
   display: none !important;
 }
+
+/* ====================================================
+   LOADER CÚBICO DINÁMICO CORPORATIVO (JUMPING/ROLLING BOX)
+   ==================================================== */
+.checkin-loader-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  transition: opacity 0.25s ease-in-out, visibility 0.25s ease-in-out;
+}
+
+html.dark .checkin-loader-overlay,
+.dark .checkin-loader-overlay {
+  background-color: rgba(9, 14, 23, 0.85);
+}
+
+.loader-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+#loader {
+  position: relative;
+  width: 50px;
+  height: 50px;
+}
+
+#box {
+  width: 50px;
+  height: 50px;
+  background-color: #0B253A;
+  position: absolute;
+  top: 0;
+  left: 0;
+  border-radius: 4px;
+  animation: checkinBoxJump 0.5s linear infinite;
+}
+
+html.dark #box,
+.dark #box {
+  background-color: #2563EB;
+}
+
+#shadow {
+  width: 50px;
+  height: 6px;
+  background: rgba(11, 37, 58, 0.15);
+  position: absolute;
+  top: 58px;
+  left: 0;
+  border-radius: 50%;
+  animation: checkinShadowScale 0.5s linear infinite;
+}
+
+html.dark #shadow,
+.dark #shadow {
+  background: rgba(0, 0, 0, 0.45);
+}
+
+.loader-text {
+  margin-top: 28px;
+  font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  font-weight: 600;
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+  color: #475569; /* slate-600 */
+  letter-spacing: 0.025em;
+  user-select: none;
+}
+
+html.dark .loader-text,
+.dark .loader-text {
+  color: #94A3B8; /* slate-400 */
+}
+
+@keyframes checkinBoxJump {
+  17% {
+    border-bottom-right-radius: 4px;
+  }
+  25% {
+    transform: translateY(9px) rotate(22.5deg);
+  }
+  50% {
+    transform: translateY(18px) scale(1, 0.9) rotate(45deg);
+    border-bottom-right-radius: 20px;
+  }
+  75% {
+    transform: translateY(9px) rotate(67.5deg);
+  }
+  100% {
+    transform: translateY(0) rotate(90deg);
+  }
+}
+
+@keyframes checkinShadowScale {
+  0%, 100% {
+    transform: scale(1, 1);
+    opacity: 0.8;
+  }
+  50% {
+    transform: scale(1.2, 1);
+    opacity: 1;
+  }
+}

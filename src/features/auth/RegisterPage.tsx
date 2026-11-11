@@ -5,7 +5,7 @@ import { useRayonerStore } from '../../store/useRayonerStore';
 import { 
   registerWithEmail, 
   loginWithGoogle, 
-  logoutFirebase,
+  logoutFirebase, 
   isFirebaseConfigured 
 } from '../../services/firebase';
 import { 
@@ -14,14 +14,18 @@ import {
 } from '../../services/invitations';
 import type { Invitation } from '../../types/invitation';
 import { 
-  UserPlus, ArrowLeft, AlertCircle, 
-  Lock, Mail, KeyRound, Sparkles, ShieldCheck, 
-  Clock, Ban
+  ArrowLeft, 
+  AlertCircle, 
+  Lock, 
+  Clock, 
+  Ban, 
+  RefreshCw 
 } from 'lucide-react';
 
 export function RegisterPage() {
   const [searchParams] = useSearchParams();
   const inviteToken = searchParams.get('token') || '';
+  const emailParam = searchParams.get('email') || '';
 
   const { loginWithFirebaseUser, addToast } = useCheckinStore();
   const navigate = useNavigate();
@@ -55,7 +59,7 @@ export function RegisterPage() {
         const result = await validateInvitationToken(inviteToken);
         if (result.valid && result.invitation) {
           setInvitation(result.invitation);
-          setEmail(result.invitation.email);
+          setEmail(result.invitation.email || emailParam || '');
           setTokenError(null);
         } else {
           setTokenError(result.error || 'Token de invitación no válido o expirado.');
@@ -68,7 +72,7 @@ export function RegisterPage() {
     }
 
     checkToken();
-  }, [inviteToken]);
+  }, [inviteToken, emailParam]);
 
   // 2. Registro con Correo y Contraseña
   const handleRegister = async (e: React.FormEvent) => {
@@ -80,8 +84,8 @@ export function RegisterPage() {
       return;
     }
 
-    if (password.length < 6) {
-      setErrorMsg('La contraseña debe tener al menos 6 caracteres.');
+    if (password.length < 8) {
+      setErrorMsg('La contraseña debe tener al menos 8 caracteres.');
       return;
     }
     if (password !== confirmPassword) {
@@ -113,10 +117,13 @@ export function RegisterPage() {
             name: invitation.email.split('@')[0],
           });
 
-          loginWithFirebaseUser({
-            ...res.user,
-            email,
-          }, invitationPayload);
+          loginWithFirebaseUser(
+            {
+              ...res.user,
+              email,
+            },
+            invitationPayload
+          );
 
           addToast('¡Registro completado! Por favor configura tus datos de perfil.', 'success');
           navigate('/complete-profile');
@@ -131,11 +138,14 @@ export function RegisterPage() {
           name: invitation.email.split('@')[0],
         });
 
-        loginWithFirebaseUser({
-          uid: localUid,
-          email: invitation.email,
-          displayName: invitation.email.split('@')[0],
-        }, invitationPayload);
+        loginWithFirebaseUser(
+          {
+            uid: localUid,
+            email: invitation.email,
+            displayName: invitation.email.split('@')[0],
+          },
+          invitationPayload
+        );
 
         addToast('Invitación aceptada exitosamente. Completa tus datos.', 'success');
         navigate('/complete-profile');
@@ -209,13 +219,17 @@ export function RegisterPage() {
   // VISTA A: Verificando Token
   if (isValidatingToken) {
     return (
-      <div className="min-h-screen bg-[#0B111E] flex items-center justify-center p-4 text-[#F8FAFC]">
-        <div className="bg-[#131D31] rounded-md p-8 max-w-md w-full text-center shadow-2xl border border-[#233354] animate-pulse">
-          <div className="w-12 h-12 rounded-md bg-[#1A2742] text-[#38BDF8] border border-[#233354] flex items-center justify-center mx-auto mb-4">
+      <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col items-center justify-center p-4 text-slate-800 dark:text-slate-100">
+        <div className="w-full max-w-md bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-xl p-8 text-center animate-fade-in space-y-4">
+          <div className="w-12 h-12 rounded-xl bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 flex items-center justify-center mx-auto">
             <Clock className="w-6 h-6 animate-spin" />
           </div>
-          <h2 className="text-base font-heading font-bold text-[#F8FAFC]">Verificando Invitación...</h2>
-          <p className="text-xs text-[#94A3B8] mt-1">Validando token criptográfico en la lista blanca corporativa.</p>
+          <div>
+            <h2 className="text-lg font-bold text-slate-900 dark:text-white">Verificando Invitación...</h2>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+              Validando token de acceso en la lista blanca institucional.
+            </p>
+          </div>
         </div>
       </div>
     );
@@ -224,43 +238,38 @@ export function RegisterPage() {
   // VISTA B: Bloqueo de Registro Público (Sin Token)
   if (tokenError === 'NO_TOKEN') {
     return (
-      <div className="min-h-screen bg-[#0B111E] flex items-center justify-center p-4 text-[#F8FAFC]">
-        <div className="bg-[#131D31] rounded-md p-8 max-w-lg w-full text-center shadow-2xl border border-[#233354] animate-fade-in space-y-4">
-          <div className="w-12 h-12 rounded-md bg-[#1A2742] text-[#E11D48] border border-[#E11D48]/30 flex items-center justify-center mx-auto">
+      <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col items-center justify-center p-4 text-slate-800 dark:text-slate-100">
+        <div className="w-full max-w-md mb-4">
+          <Link
+            to="/login"
+            className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-slate-800 dark:hover:text-white transition-colors"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            Volver al inicio de sesión
+          </Link>
+        </div>
+
+        <div className="w-full max-w-md bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-xl p-8 text-center space-y-5 animate-fade-in">
+          <div className="w-12 h-12 rounded-xl bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 flex items-center justify-center mx-auto">
             <Lock className="w-6 h-6" />
           </div>
 
-          <div className="space-y-1">
-            <span className="text-[10px] font-heading font-bold uppercase tracking-wider text-[#E11D48] bg-[#1A2742] px-2.5 py-0.5 rounded-sm border border-[#E11D48]/30">
-              ACCESO RESTRINGIDO • WHITELIST
-            </span>
-            <h1 className="text-xl font-heading font-bold text-[#F8FAFC] tracking-tight mt-1">
+          <div>
+            <h2 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight">
               Registro Público Deshabilitado
-            </h1>
-            <p className="text-xs text-[#94A3B8] max-w-md mx-auto">
-              La plataforma opera bajo un modelo privado de lista blanca. El registro abierto no está permitido.
+            </h2>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1.5 leading-relaxed">
+              La plataforma opera bajo un modelo privado de lista blanca. Para crear una cuenta, solicita a tu Supervisor o Administrador que emita una invitación para tu correo.
             </p>
           </div>
 
-          <div className="bg-[#1A2742] rounded-md p-3.5 border border-[#233354] text-left space-y-1.5 text-xs text-[#94A3B8]">
-            <div className="flex items-start space-x-2 text-[#F8FAFC] font-heading font-semibold">
-              <ShieldCheck className="w-4 h-4 text-[#38BDF8] shrink-0 mt-0.5" />
-              <span>¿Cómo crear una cuenta de colaborador?</span>
-            </div>
-            <p className="text-[11px] text-[#94A3B8] pl-6">
-              Debes solicitar a tu Supervisor que emita una invitación para tu correo electrónico institucional.
-            </p>
-          </div>
-
-          <div className="pt-2">
-            <Link
-              to="/login"
-              className="w-full py-2.5 px-4 bg-[#1E40AF] hover:bg-[#1D4ED8] text-white rounded-md text-xs font-heading font-semibold tracking-wide uppercase transition-colors text-center flex items-center justify-center space-x-2"
-            >
-              <ArrowLeft className="w-4 h-4 text-white" />
-              <span>Volver al Inicio de Sesión</span>
-            </Link>
-          </div>
+          <Link
+            to="/login"
+            className="w-full py-2.5 px-4 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold transition-colors flex items-center justify-center gap-2 shadow-xs"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            <span>Ir al Inicio de Sesión</span>
+          </Link>
         </div>
       </div>
     );
@@ -269,195 +278,185 @@ export function RegisterPage() {
   // VISTA C: Token Inválido o Expirado
   if (tokenError) {
     return (
-      <div className="min-h-screen bg-[#0B111E] flex items-center justify-center p-4 text-[#F8FAFC]">
-        <div className="bg-[#131D31] rounded-md p-8 max-w-lg w-full text-center shadow-2xl border border-[#233354] animate-fade-in space-y-4">
-          <div className="w-12 h-12 rounded-md bg-[#1A2742] text-[#F59E0B] border border-[#F59E0B]/30 flex items-center justify-center mx-auto">
+      <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col items-center justify-center p-4 text-slate-800 dark:text-slate-100">
+        <div className="w-full max-w-md mb-4">
+          <Link
+            to="/login"
+            className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-slate-800 dark:hover:text-white transition-colors"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            Volver al inicio de sesión
+          </Link>
+        </div>
+
+        <div className="w-full max-w-md bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-xl p-8 text-center space-y-5 animate-fade-in">
+          <div className="w-12 h-12 rounded-xl bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 flex items-center justify-center mx-auto">
             <Ban className="w-6 h-6" />
           </div>
 
-          <div className="space-y-1">
-            <span className="text-[10px] font-heading font-bold uppercase tracking-wider text-[#F59E0B] bg-[#1A2742] px-2.5 py-0.5 rounded-sm border border-[#F59E0B]/30">
-              INVITACIÓN NO VÁLIDA
-            </span>
-            <h1 className="text-xl font-heading font-bold text-[#F8FAFC] tracking-tight mt-1">
-              Enlace de Invitación No Disponible
-            </h1>
-            <p className="text-xs text-[#E11D48] font-medium max-w-md mx-auto bg-[#1A2742] p-2.5 rounded-md border border-[#E11D48]/30">
+          <div>
+            <h2 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight">
+              Invitación No Válida o Expirada
+            </h2>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1.5 leading-relaxed">
               {tokenError}
             </p>
           </div>
 
-          <div className="pt-2">
-            <Link
-              to="/login"
-              className="w-full py-2.5 px-4 bg-[#1A2742] hover:bg-[#233354] text-[#F8FAFC] rounded-md text-xs font-heading font-semibold tracking-wide uppercase transition-colors text-center flex items-center justify-center space-x-2 border border-[#233354]"
-            >
-              <ArrowLeft className="w-4 h-4" />
-              <span>Ir a Pantalla de Inicio</span>
-            </Link>
-          </div>
+          <Link
+            to="/login"
+            className="w-full py-2.5 px-4 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold transition-colors flex items-center justify-center gap-2 shadow-xs"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            <span>Regresar al Inicio de Sesión</span>
+          </Link>
         </div>
       </div>
     );
   }
 
-  // VISTA D: Formulario de Registro Autorizado
+  // VISTA PRINCIPAL: Formulario de Registro con Diseño Minimalista Homologado
   return (
-    <div className="min-h-screen bg-[#0B111E] flex items-center justify-center p-4 text-[#F8FAFC]">
-      <div className="bg-[#131D31] rounded-md shadow-2xl border border-[#233354] max-w-md w-full p-6 sm:p-7 animate-fade-in relative overflow-hidden">
-        {/* Botón Volver */}
+    <div className="min-h-screen bg-slate-50/50 dark:bg-slate-950 flex flex-col items-center justify-center p-4 animate-fade-in">
+      {/* Enlace Superior de Retorno */}
+      <div className="w-full max-w-md mb-4">
         <Link
           to="/login"
-          className="inline-flex items-center text-xs font-heading font-semibold text-[#94A3B8] hover:text-[#38BDF8] transition-colors mb-3"
+          className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-slate-800 dark:hover:text-white transition-colors"
         >
-          <ArrowLeft className="w-3.5 h-3.5 mr-1.5" />
-          Volver al Inicio de Sesión
+          <ArrowLeft className="w-4 h-4" />
+          Volver al inicio de sesión
         </Link>
+      </div>
 
-        {/* Tarjeta de Invitación Verificada */}
+      <div className="w-full max-w-md bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-xl p-8">
+        
+        {/* Contexto de Invitación Sutil */}
         {invitation && (
-          <div className="bg-[#1A2742] border border-[#233354] rounded-md p-3.5 mb-4 text-xs text-[#94A3B8] space-y-1.5">
-            <div className="flex items-center justify-between">
-              <span className="flex items-center space-x-1 text-[10px] font-heading font-bold text-[#38BDF8] uppercase tracking-wider bg-[#0F172A] px-2 py-0.5 rounded-sm border border-[#233354]">
-                <ShieldCheck className="w-3.5 h-3.5 text-[#38BDF8]" />
-                <span>Invitación Verificada</span>
-              </span>
-              <span className="text-[10px] text-[#38BDF8] font-heading font-bold bg-[#0F172A] px-2 py-0.5 rounded-sm border border-[#233354]">
-                Lista Blanca Activa
+          <div className="bg-blue-50/50 dark:bg-blue-950/40 border border-blue-100/80 dark:border-blue-900/50 rounded-xl p-3.5 mb-6 text-xs text-slate-600 dark:text-slate-300">
+            <div className="flex items-center justify-between mb-1.5">
+              <span className="font-semibold text-blue-900 dark:text-blue-300">Invitación Validada</span>
+              <span className="bg-blue-100 dark:bg-blue-900/60 text-blue-700 dark:text-blue-300 font-semibold px-2 py-0.5 rounded-full text-[10px]">
+                {invitation.roleTitle || 'Colaborador'}
               </span>
             </div>
-
-            <div className="pt-1 space-y-1 text-xs">
-              <div className="flex items-center justify-between">
-                <span className="text-[#94A3B8]">Nivel de Alta:</span>
-                <span className="font-heading font-bold text-[#38BDF8] uppercase">
-                  {(invitation.targetRole || invitation.role) === 'Supervisor'
-                    ? 'Alta de Supervisor (TI)'
-                    : 'Alta de Empleado'}
-                </span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-[#94A3B8]">Autorizado por:</span>
-                <span className="font-semibold text-[#F8FAFC]">{invitation.supervisorName}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-[#94A3B8]">Equipo:</span>
-                <span className="font-semibold text-[#F8FAFC]">{invitation.team}</span>
-              </div>
-            </div>
+            <p className="text-slate-500 dark:text-slate-400 text-[11px] leading-tight">
+              Autorizado por <strong className="text-slate-700 dark:text-slate-200">{invitation.supervisorName}</strong> para integrarse al equipo <strong className="text-slate-700 dark:text-slate-200">{invitation.team}</strong>.
+            </p>
           </div>
         )}
 
-        {/* Cabecera del Formulario */}
-        <div className="flex flex-col items-center text-center mb-4">
-          <div className="w-10 h-10 bg-[#1E40AF] rounded-md flex items-center justify-center text-white mb-2 shadow-xs">
-            <UserPlus className="w-5 h-5 text-white" />
-          </div>
-          <h1 className="text-xl font-heading font-bold text-[#F8FAFC] tracking-tight">Completar Registro</h1>
-          <p className="text-xs text-[#94A3B8] mt-0.5">
-            Crea tu contraseña para activar tu cuenta vinculada.
+        {/* Título Principal */}
+        <div className="text-center mb-6">
+          <h2 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">
+            Activar Cuenta
+          </h2>
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+            Establece tus credenciales para acceder al equipo.
           </p>
         </div>
 
-        {errorMsg && (
-          <div className="mb-3.5 p-3 bg-[#1A2742] border border-[#E11D48]/40 text-[#E11D48] rounded-md text-xs font-medium flex items-start space-x-2 animate-fade-in">
-            <AlertCircle className="w-4 h-4 shrink-0 text-[#E11D48] mt-0.5" />
-            <div className="flex-1">{errorMsg}</div>
-          </div>
-        )}
-
-        {/* Botón Google */}
+        {/* Botón Continuar con Google */}
         <button
           type="button"
           onClick={handleGoogleSignUp}
           disabled={isGoogleLoading || isLoading}
-          className="w-full mb-3.5 py-2 px-3 bg-[#1A2742] hover:bg-[#233354] border border-[#233354] rounded-md text-xs font-heading font-semibold text-[#F8FAFC] flex items-center justify-center space-x-2 cursor-pointer disabled:opacity-50 transition-colors"
+          className="w-full flex items-center justify-center gap-2.5 py-2.5 px-4 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-lg text-xs font-semibold text-slate-700 dark:text-slate-200 transition-colors shadow-xs mb-5 cursor-pointer disabled:opacity-50"
         >
-          <svg className="w-4 h-4" viewBox="0 0 24 24">
-            <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
-            <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
-            <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
-            <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
+          <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
+            <path
+              fill="#4285F4"
+              d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+            />
+            <path
+              fill="#34A853"
+              d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+            />
+            <path
+              fill="#FBBC05"
+              d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
+            />
+            <path
+              fill="#EA4335"
+              d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
+            />
           </svg>
-          <span>Continuar con Google ({invitation?.email})</span>
+          <span>{isGoogleLoading ? 'Autenticando con Google...' : 'Continuar con Google'}</span>
         </button>
 
-        <div className="relative flex py-2 items-center mb-3">
-          <div className="flex-grow border-t border-[#233354]"></div>
-          <span className="flex-shrink mx-2 text-[10px] font-heading font-semibold text-[#64748B] uppercase tracking-wider">o con contraseña</span>
-          <div className="flex-grow border-t border-[#233354]"></div>
+        {/* Separador */}
+        <div className="relative flex py-2 items-center mb-5">
+          <div className="flex-grow border-t border-slate-150 dark:border-slate-800"></div>
+          <span className="flex-shrink mx-3 text-[11px] uppercase tracking-wider text-slate-400 font-medium">
+            o con contraseña
+          </span>
+          <div className="flex-grow border-t border-slate-150 dark:border-slate-800"></div>
         </div>
 
-        {/* Formulario */}
-        <form onSubmit={handleRegister} className="space-y-3">
+        {/* Formulario Tradicional */}
+        <form onSubmit={handleRegister} className="space-y-4">
           <div>
-            <label className="block text-xs font-heading font-semibold text-[#94A3B8] mb-1">
+            <label className="block text-xs font-medium text-slate-600 dark:text-slate-300 mb-1">
               Correo Electrónico Autorizado
             </label>
-            <div className="relative">
-              <Mail className="w-4 h-4 text-[#64748B] absolute left-3 top-1/2 -translate-y-1/2" />
-              <input
-                type="email"
-                required
-                readOnly
-                value={email}
-                className="w-full pl-9 pr-3 py-2 rounded-md border border-[#233354] bg-[#0F172A] text-[#94A3B8] text-xs font-medium cursor-not-allowed outline-none"
-              />
-            </div>
+            <input
+              type="email"
+              readOnly
+              value={email}
+              className="w-full py-2.5 px-3.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-500 dark:text-slate-400 cursor-not-allowed outline-none select-none"
+            />
           </div>
 
           <div>
-            <label className="block text-xs font-heading font-semibold text-[#94A3B8] mb-1">
+            <label className="block text-xs font-medium text-slate-600 dark:text-slate-300 mb-1">
               Nueva Contraseña
             </label>
-            <div className="relative">
-              <Lock className="w-4 h-4 text-[#64748B] absolute left-3 top-1/2 -translate-y-1/2" />
-              <input
-                type="password"
-                required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="w-full pl-9 pr-3 py-2 rounded-md border border-[#233354] focus:border-[#38BDF8] bg-[#1A2742] text-[#F8FAFC] text-xs font-medium placeholder-[#64748B] outline-none"
-                placeholder="Mínimo 6 caracteres"
-              />
-            </div>
+            <input
+              type="password"
+              required
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Mínimo 8 caracteres"
+              className="w-full py-2.5 px-3.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 focus:border-blue-600 focus:ring-2 focus:ring-blue-100 dark:focus:ring-blue-950/40 outline-none transition"
+            />
           </div>
 
           <div>
-            <label className="block text-xs font-heading font-semibold text-[#94A3B8] mb-1">
+            <label className="block text-xs font-medium text-slate-600 dark:text-slate-300 mb-1">
               Confirmar Contraseña
             </label>
-            <div className="relative">
-              <KeyRound className="w-4 h-4 text-[#64748B] absolute left-3 top-1/2 -translate-y-1/2" />
-              <input
-                type="password"
-                required
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                className="w-full pl-9 pr-3 py-2 rounded-md border border-[#233354] focus:border-[#38BDF8] bg-[#1A2742] text-[#F8FAFC] text-xs font-medium placeholder-[#64748B] outline-none"
-                placeholder="Repite tu contraseña"
-              />
+            <input
+              type="password"
+              required
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              placeholder="Repite tu contraseña"
+              className="w-full py-2.5 px-3.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 focus:border-blue-600 focus:ring-2 focus:ring-blue-100 dark:focus:ring-blue-950/40 outline-none transition"
+            />
+          </div>
+
+          {errorMsg && (
+            <div className="p-3 bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-900/50 text-rose-700 dark:text-rose-400 rounded-lg text-xs font-medium flex items-start gap-2 animate-fade-in">
+              <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+              <span>{errorMsg}</span>
             </div>
-          </div>
+          )}
 
-          <div className="pt-1.5">
-            <button
-              type="submit"
-              disabled={isLoading || isGoogleLoading}
-              className="w-full py-2.5 px-4 bg-[#1E40AF] hover:bg-[#1D4ED8] text-white rounded-md text-xs font-heading font-semibold tracking-wide uppercase transition-colors cursor-pointer disabled:opacity-50 flex items-center justify-center space-x-2 shadow-xs"
-            >
-              <UserPlus className="w-4 h-4 text-white" />
-              <span>{isLoading ? 'Activando Cuenta...' : 'Activar Cuenta y Continuar'}</span>
-            </button>
-          </div>
+          <button
+            type="submit"
+            disabled={isLoading || isGoogleLoading}
+            className="w-full mt-2 py-2.5 px-4 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-sm transition-colors cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2"
+          >
+            {isLoading ? (
+              <>
+                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                <span>Activando Cuenta...</span>
+              </>
+            ) : (
+              <span>Activar Cuenta y Continuar</span>
+            )}
+          </button>
         </form>
-
-        <div className="mt-4 p-2.5 bg-[#1A2742] rounded-md border border-[#233354] flex items-start space-x-2 text-[11px] text-[#94A3B8]">
-          <Sparkles className="w-3.5 h-3.5 text-[#38BDF8] shrink-0 mt-0.5" />
-          <p>
-            Al activar tu cuenta quedarás vinculado a <b>{invitation?.supervisorName}</b>.
-          </p>
-        </div>
       </div>
     </div>
   );

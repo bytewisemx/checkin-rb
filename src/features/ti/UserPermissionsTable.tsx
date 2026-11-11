@@ -1,15 +1,25 @@
-import { useState, useMemo, useEffect, Fragment } from 'react';
-import { Search } from 'lucide-react';
+import { useState, useMemo } from 'react';
+import {
+  Search,
+  Plus,
+  Trash2,
+  RotateCcw,
+  SlidersHorizontal,
+  X,
+} from 'lucide-react';
 import { useCheckinStore, type ManagedUserPermissionEntry } from '../../store/useCheckinStore';
 import { useRayonerStore } from '../../store/useRayonerStore';
 import {
   normalizeRole,
   getDefaultModulesForRole,
   type UserModules,
-  type UserRole,
 } from '../../services/rbac';
 
-const MODULE_COLUMNS: Array<{
+export interface UserPermissionsTableProps {
+  onNewUser?: () => void;
+}
+
+const MODULE_LIST: Array<{
   key: keyof UserModules;
   label: string;
   shortLabel: string;
@@ -18,51 +28,61 @@ const MODULE_COLUMNS: Array<{
   {
     key: 'checkIn',
     label: 'Reloj Checador',
-    shortLabel: 'Reloj Checador',
-    hint: 'Habilita el reloj de entrada/salida (Check-In / Check-Out)',
+    shortLabel: 'Checador',
+    hint: 'Entrada y salida con registro de horas (Check-In / Check-Out)',
   },
   {
     key: 'tasks',
-    label: 'Tareas (Kanban)',
-    shortLabel: 'Tareas (Kanban)',
-    hint: 'Habilita el tablero Kanban y la ejecución de tareas asignadas',
+    label: 'Tablero Kanban y Tareas',
+    shortLabel: 'Kanban',
+    hint: 'Asignación, seguimiento y ejecución de tareas',
   },
   {
     key: 'clients',
-    label: 'Clientes / Empresas',
-    shortLabel: 'Clientes / Empresas',
-    hint: 'Permite visualizar empresas y proyectos en el árbol C/P/T',
+    label: 'Cartera de Clientes y Proyectos',
+    shortLabel: 'Clientes',
+    hint: 'Visualización y gestión de clientes y proyectos asignados',
   },
   {
     key: 'reports',
-    label: 'Reportes / Auditoría',
-    shortLabel: 'Reportes / Auditoría',
-    hint: 'Acceso a métricas operativas y reportes de horas',
+    label: 'Auditoría y Reportes de Tiempos',
+    shortLabel: 'Auditorías',
+    hint: 'Reportes ejecutivos de horas, rendimientos y asistencias',
   },
   {
     key: 'facialCheckIn',
-    label: 'Check-In Facial',
-    shortLabel: 'Check-In Facial',
-    hint: 'Fuerza la verificación biométrica facial (128D) incluso en Supervisores',
+    label: 'Validación Facial Biométrica',
+    shortLabel: 'Facial',
+    hint: 'Verificación facial express obligatoria al iniciar jornada',
   },
 ];
 
-export function UserPermissionsTable() {
+function getInitials(name: string): string {
+  if (!name) return 'US';
+  const parts = name.trim().split(/\s+/);
+  if (parts.length >= 2) {
+    return (parts[0][0] + parts[1][0]).toUpperCase();
+  }
+  return parts[0].substring(0, 2).toUpperCase();
+}
+
+export function UserPermissionsTable({ onNewUser }: UserPermissionsTableProps) {
   const {
     userPermissionsDirectory,
     mockEmployeesData,
     updateUserModules,
     toggleUserAccessRevoked,
-    updateRHAllowedTeams,
     reassignEmployeeSupervisor,
     addToast,
   } = useCheckinStore();
   const { teamMembers } = useRayonerStore();
 
   const [search, setSearch] = useState('');
-  const [roleFilter, setRoleFilter] = useState<'ALL' | UserRole>('ALL');
-  const [groupByHierarchy, setGroupByHierarchy] = useState<boolean>(true);
+  const [roleFilter, setRoleFilter] = useState<'ALL' | 'TI' | 'RH' | 'Supervisor' | 'Empleado'>('ALL');
+  const [editingUser, setEditingUser] = useState<ManagedUserPermissionEntry | null>(null);
+  const [modalDraftModules, setModalDraftModules] = useState<UserModules | null>(null);
 
+  // Unificación de usuarios desde directorio de permisos, miembros y mocks
   const mergedUsers = useMemo<ManagedUserPermissionEntry[]>(() => {
     const map = new Map<string, ManagedUserPermissionEntry>();
 
@@ -118,17 +138,7 @@ export function UserPermissionsTable() {
     return Array.from(map.values());
   }, [userPermissionsDirectory, teamMembers, mockEmployeesData]);
 
-  const [drafts, setDrafts] = useState<Record<string, UserModules>>({});
-  const [savingUserId, setSavingUserId] = useState<string | null>(null);
-
-  useEffect(() => {
-    const initial: Record<string, UserModules> = {};
-    mergedUsers.forEach((u) => {
-      initial[u.id] = { ...u.modules };
-    });
-    setDrafts(initial);
-  }, [mergedUsers]);
-
+  // Filtro por rol y búsqueda en tiempo real
   const filteredUsers = useMemo(() => {
     return mergedUsers.filter((u) => {
       if (roleFilter !== 'ALL' && u.role !== roleFilter) return false;
@@ -145,76 +155,54 @@ export function UserPermissionsTable() {
     });
   }, [mergedUsers, roleFilter, search]);
 
-  const hierarchyGroups = useMemo(() => {
-    const tiUsers = filteredUsers.filter((u) => u.role === 'TI');
-    const rhUsers = filteredUsers.filter((u) => u.role === 'RH');
-    const allSupervisors = mergedUsers.filter((u) => u.role === 'Supervisor');
-    const visibleSupervisors = filteredUsers.filter((u) => u.role === 'Supervisor');
-    const visibleEmployees = filteredUsers.filter((u) => u.role === 'Empleado');
+  const allSupervisors = useMemo(() => {
+    return mergedUsers.filter((u) => u.role === 'Supervisor');
+  }, [mergedUsers]);
 
-    const teams = allSupervisors
-      .map((sup, index) => {
-        const teamEmployees = visibleEmployees.filter(
-          (emp) => (emp.supervisor_id || 'admin-99') === sup.id
-        );
-        const isSupVisible = visibleSupervisors.some((s) => s.id === sup.id);
-        return {
-          teamNumber: index + 1,
-          supervisor: sup,
-          employees: teamEmployees,
-          shouldRender: isSupVisible || teamEmployees.length > 0,
-        };
-      })
-      .filter((t) => t.shouldRender);
-
-    return {
-      tiUsers,
-      rhUsers,
-      allSupervisors,
-      teams,
-    };
-  }, [filteredUsers, mergedUsers]);
-
-  const hasUnsavedChanges = (userId: string, original: UserModules): boolean => {
-    const draft = drafts[userId];
-    if (!draft) return false;
-    return (
-      draft.checkIn !== original.checkIn ||
-      draft.tasks !== original.tasks ||
-      draft.clients !== original.clients ||
-      draft.reports !== original.reports ||
-      draft.facialCheckIn !== original.facialCheckIn
-    );
-  };
-
-  const handleToggleModule = (userEntry: ManagedUserPermissionEntry, key: keyof UserModules) => {
+  // Conmutación rápida de módulo con guardado directo
+  const handleToggleModuleQuick = (userEntry: ManagedUserPermissionEntry, key: keyof UserModules) => {
     if (userEntry.role === 'TI') {
       addToast('Las cuentas TI (Root) conservan todos los módulos activos por seguridad.', 'info');
       return;
     }
 
     if (userEntry.role === 'RH' && (key === 'tasks' || key === 'clients')) {
-      addToast('Política RBAC 403: Recursos Humanos tiene bloqueado el acceso a Tareas y Clientes.', 'error');
+      addToast('Política RBAC 403: Recursos Humanos tiene restringido el acceso a Tareas y Clientes.', 'error');
       return;
     }
 
-    setDrafts((prev) => {
-      const current = prev[userEntry.id] || userEntry.modules;
-      return {
-        ...prev,
-        [userEntry.id]: {
-          ...current,
-          [key]: !current[key],
-        },
-      };
-    });
+    const currentModules = userEntry.modules;
+    const nextModules: UserModules = {
+      ...currentModules,
+      [key]: !currentModules[key],
+    };
+
+    updateUserModules(userEntry.id, nextModules);
+    addToast(
+      `Módulo "${key}" ${nextModules[key] ? 'habilitado' : 'deshabilitado'} para ${userEntry.name}.`,
+      'success'
+    );
   };
 
-  const handleApplyPreset = (
-    userEntry: ManagedUserPermissionEntry,
-    preset: 'entry_exit_only' | 'full_role'
-  ) => {
-    if (userEntry.role === 'TI') return;
+  // Abrir modal de edición
+  const handleOpenEditModal = (userEntry: ManagedUserPermissionEntry) => {
+    setEditingUser(userEntry);
+    setModalDraftModules({ ...userEntry.modules });
+  };
+
+  // Guardar desde el modal
+  const handleSaveModal = () => {
+    if (!editingUser || !modalDraftModules) return;
+    updateUserModules(editingUser.id, modalDraftModules);
+    addToast(`Permisos actualizados para ${editingUser.name}.`, 'success');
+    setEditingUser(null);
+    setModalDraftModules(null);
+  };
+
+  // Aplicar presets en el modal
+  const handleApplyPresetInModal = (preset: 'entry_exit_only' | 'full_role') => {
+    if (!editingUser) return;
+    if (editingUser.role === 'TI') return;
 
     const nextModules: UserModules =
       preset === 'entry_exit_only'
@@ -225,462 +213,478 @@ export function UserPermissionsTable() {
             reports: false,
             facialCheckIn: true,
           }
-        : getDefaultModulesForRole(userEntry.role);
+        : getDefaultModulesForRole(editingUser.role);
 
-    setDrafts((prev) => ({
-      ...prev,
-      [userEntry.id]: nextModules,
-    }));
+    setModalDraftModules(nextModules);
   };
 
-  const handleSaveUserPermissions = async (userEntry: ManagedUserPermissionEntry) => {
-    const nextModules = drafts[userEntry.id] || userEntry.modules;
-    setSavingUserId(userEntry.id);
-
-    await new Promise((resolve) => setTimeout(resolve, 150));
-
-    updateUserModules(userEntry.id, nextModules);
-    setSavingUserId(null);
-
-    addToast(
-      `Permisos guardados para ${userEntry.name} (${userEntry.role}).`,
-      'success'
-    );
-  };
-
-  const handleRevokeEntireTeam = (
-    supervisor: ManagedUserPermissionEntry,
-    employees: ManagedUserPermissionEntry[],
-    shouldRevoke: boolean
-  ) => {
-    if (Boolean(supervisor.accessRevoked) !== shouldRevoke) {
-      toggleUserAccessRevoked(supervisor.id);
+  // Conmutar revocación de acceso
+  const handleToggleRevoke = (u: ManagedUserPermissionEntry) => {
+    if (u.role === 'TI') {
+      addToast('No es posible revocar la cuenta TI Root principal.', 'error');
+      return;
     }
-    employees.forEach((emp) => {
-      if (Boolean(emp.accessRevoked) !== shouldRevoke) {
-        toggleUserAccessRevoked(emp.id);
-      }
-    });
-    addToast(
-      shouldRevoke
-        ? `TI revocó el acceso completo al Equipo de ${supervisor.name} (${employees.length + 1} cuentas).`
-        : `TI restauró el acceso completo al Equipo de ${supervisor.name} (${employees.length + 1} cuentas).`,
-      shouldRevoke ? 'error' : 'success'
-    );
-  };
-
-  const renderUserMatrixRow = (
-    u: ManagedUserPermissionEntry,
-    options?: {
-      isSubordinate?: boolean;
-      isLastSubordinate?: boolean;
-      teamNumber?: number;
-      supervisorName?: string;
-    }
-  ) => {
-    const draft = drafts[u.id] || u.modules;
-    const isTI = u.role === 'TI';
-    const isRH = u.role === 'RH';
     const isRevoked = Boolean(u.accessRevoked);
-    const dirty = hasUnsavedChanges(u.id, u.modules);
-
-    const supIndex = hierarchyGroups.allSupervisors.findIndex(
-      (s) => s.id === (u.role === 'Supervisor' ? u.id : u.supervisor_id || 'admin-99')
-    );
-    const resolvedTeamNumber = options?.teamNumber ?? (supIndex >= 0 ? supIndex + 1 : 1);
-    const resolvedSupName =
-      options?.supervisorName ??
-      (supIndex >= 0 ? hierarchyGroups.allSupervisors[supIndex].name : 'Supervisor Prueba');
-
-    const allowedSupsForRH =
-      u.allowedSupervisorIds ?? hierarchyGroups.allSupervisors.map((s) => s.id);
-
-    const toggleTeamForRH = (supId: string, supName: string) => {
-      const exists = allowedSupsForRH.includes(supId);
-      const next = exists
-        ? allowedSupsForRH.filter((id) => id !== supId)
-        : [...allowedSupsForRH, supId];
-      updateRHAllowedTeams(u.id, next);
-      addToast(
-        exists
-          ? `TI retiró a ${u.name} la visualización de checadas del equipo de ${supName}.`
-          : `TI autorizó a ${u.name} visualizar las checadas del equipo de ${supName}.`,
-        exists ? 'info' : 'success'
-      );
-    };
-
-    return (
-      <tr
-        key={u.id}
-        className={`bg-white dark:bg-[#101726] hover:bg-slate-50 dark:hover:bg-[#172238] transition-colors ${
-          isRevoked ? 'opacity-65' : ''
-        }`}
-      >
-        {/* Columna 1: Usuario y Correo */}
-        <td className="py-4 px-4 align-top">
-          <div className={options?.isSubordinate ? 'pl-5 border-l-2 border-slate-300 dark:border-slate-700' : ''}>
-            <div className="flex items-center flex-wrap gap-2">
-              {options?.isSubordinate && (
-                <span className="font-mono text-xs text-slate-500 dark:text-slate-400">
-                  {options.isLastSubordinate ? '└─' : '├─'}
-                </span>
-              )}
-              <span
-                className={`font-semibold text-sm ${
-                  isRevoked
-                    ? 'line-through text-slate-500 dark:text-slate-400'
-                    : 'text-slate-900 dark:text-slate-200'
-                }`}
-              >
-                {u.name}
-              </span>
-              <span className="text-[11px] font-medium text-blue-700 dark:text-sky-400">
-                ({u.role})
-              </span>
-              {isRevoked && (
-                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400">
-                  [REVOCADO]
-                </span>
-              )}
-            </div>
-            <div className={`text-xs text-slate-600 dark:text-slate-400 mt-0.5 ${options?.isSubordinate ? 'pl-5' : ''}`}>
-              {u.email} • <span className="font-mono text-[11px]">ID: {u.id}</span>
-            </div>
-          </div>
-        </td>
-
-        {/* Columna 2: Jerarquía, Equipo y Relación de Reporte */}
-        <td className="py-4 px-4 align-top text-xs text-slate-600 dark:text-slate-400">
-          {u.role === 'TI' && (
-            <div>
-              <span className="font-semibold text-slate-900 dark:text-slate-200 block">
-                Nivel 1 • Puesto Más Alto (Root)
-              </span>
-              <span className="text-[11px] text-slate-600 dark:text-slate-400">
-                Autoridad global sobre toda la estructura
-              </span>
-            </div>
-          )}
-
-          {u.role === 'RH' && (
-            <div className="space-y-2">
-              <div>
-                <span className="font-semibold text-slate-900 dark:text-slate-200 block">
-                  Nivel 2 • Reporta a TI Root
-                </span>
-                <span className="text-[11px] text-slate-600 dark:text-slate-400">
-                  Equipos autorizados para ver checadas:
-                </span>
-              </div>
-              <div className="flex flex-wrap items-center gap-3 pt-0.5">
-                {hierarchyGroups.allSupervisors.map((sup, idx) => {
-                  const checked = allowedSupsForRH.includes(sup.id);
-                  return (
-                    <label
-                      key={sup.id}
-                      className="inline-flex items-center space-x-1.5 text-[11px] cursor-pointer select-none"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        disabled={isRevoked}
-                        onChange={() => toggleTeamForRH(sup.id, sup.name)}
-                        className="w-4 h-4 rounded-sm bg-white dark:bg-slate-900 border border-slate-400 dark:border-slate-600 text-blue-600 accent-blue-600 cursor-pointer"
-                      />
-                      <span className={checked ? 'font-semibold text-slate-900 dark:text-slate-200' : 'text-slate-600 dark:text-slate-400'}>
-                        Equipo #{idx + 1} ({sup.name})
-                      </span>
-                    </label>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          {u.role === 'Supervisor' && (
-            <div>
-              <span className="font-semibold text-slate-900 dark:text-slate-200 block">
-                Cabeza de Equipo #{resolvedTeamNumber} ({u.team || 'Equipo Prueba'})
-              </span>
-              <span className="text-[11px] text-slate-600 dark:text-slate-400">
-                Socio / Supervisor • Código: <code className="font-mono text-slate-700 dark:text-slate-200">SUP-RB-990{resolvedTeamNumber}</code>
-              </span>
-            </div>
-          )}
-
-          {u.role === 'Empleado' && (
-            <div className="space-y-1">
-              <span className="block text-slate-600 dark:text-slate-400">
-                Integrante de <strong className="text-slate-900 dark:text-slate-200">Equipo #{resolvedTeamNumber}</strong>
-              </span>
-              <span className="text-[11px] block text-slate-600 dark:text-slate-400">
-                Reporta a: <strong className="text-slate-900 dark:text-slate-200">{resolvedSupName}</strong>
-              </span>
-              {hierarchyGroups.allSupervisors.length > 1 && (
-                <select
-                  value={u.supervisor_id || 'admin-99'}
-                  onChange={(e) => {
-                    reassignEmployeeSupervisor(u.id, e.target.value);
-                    addToast(`TI reasignó a ${u.name} de equipo.`, 'info');
-                  }}
-                  className="bg-white dark:bg-[#0B111E] border border-slate-300 dark:border-slate-700 focus:border-sky-400 rounded px-2 py-0.5 text-[11px] text-slate-900 dark:text-slate-100 cursor-pointer"
-                >
-                  {hierarchyGroups.allSupervisors.map((s, sIdx) => (
-                    <option key={s.id} value={s.id} className="bg-white dark:bg-[#101726]">
-                      Mover a Equipo #{sIdx + 1}: {s.name}
-                    </option>
-                  ))}
-                </select>
-              )}
-            </div>
-          )}
-        </td>
-
-        {/* Columnas 3 a 7: Casillas de Verificación (Checkboxes) por Módulo */}
-        {MODULE_COLUMNS.map((col) => {
-          const checked = Boolean(draft[col.key]);
-          const lockedByPolicy =
-            isTI || (isRH && (col.key === 'tasks' || col.key === 'clients'));
-
-          return (
-            <td key={col.key} className="py-4 px-3 text-center align-middle">
-              <label className="inline-flex flex-col items-center justify-center cursor-pointer select-none">
-                <input
-                  type="checkbox"
-                  checked={checked}
-                  disabled={lockedByPolicy || isRevoked}
-                  onChange={() => handleToggleModule(u, col.key)}
-                  title={col.hint}
-                  className="w-4 h-4 rounded-sm bg-white dark:bg-slate-900 border border-slate-400 dark:border-slate-600 text-blue-600 accent-blue-600 cursor-pointer disabled:opacity-35 disabled:cursor-not-allowed"
-                />
-                {isRH && (col.key === 'tasks' || col.key === 'clients') && (
-                  <span className="text-[9px] font-mono text-slate-500 dark:text-slate-400 mt-0.5">
-                    403
-                  </span>
-                )}
-              </label>
-            </td>
-          );
-        })}
-
-        {/* Columna 8: Revocación y Guardado */}
-        <td className="py-4 px-4 text-right align-middle">
-          {isTI ? (
-            <span className="text-[11px] font-heading font-semibold uppercase tracking-wider text-blue-700 dark:text-sky-400">
-              Root Activo
-            </span>
-          ) : (
-            <div className="flex flex-wrap items-center justify-end gap-2.5">
-              {!isRevoked && u.role === 'Empleado' && (
-                <button
-                  type="button"
-                  onClick={() => handleApplyPreset(u, 'entry_exit_only')}
-                  className="text-[11px] font-medium text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100 hover:underline cursor-pointer"
-                  title="Palomear únicamente Reloj Checador y Biometría"
-                >
-                  Solo Checador
-                </button>
-              )}
-
-              {dirty && (
-                <button
-                  type="button"
-                  disabled={savingUserId === u.id}
-                  onClick={() => handleSaveUserPermissions(u)}
-                  className="px-3 py-1 rounded bg-[#1D4ED8] hover:bg-[#1E40AF] text-slate-100 text-xs font-heading font-semibold cursor-pointer transition-colors"
-                >
-                  {savingUserId === u.id ? 'Guardando...' : 'Guardar'}
-                </button>
-              )}
-
-              <button
-                type="button"
-                onClick={() => {
-                  toggleUserAccessRevoked(u.id);
-                  addToast(
-                    isRevoked
-                      ? `Permisos restaurados por TI para ${u.name}.`
-                      : `Permisos REVOCADOS por TI para ${u.name}.`,
-                    isRevoked ? 'success' : 'error'
-                  );
-                }}
-                className={`px-3 py-1 rounded text-xs font-heading font-semibold transition-colors cursor-pointer ${
-                  isRevoked
-                    ? 'bg-[#1D4ED8] hover:bg-[#1E40AF] text-slate-100'
-                    : 'bg-slate-100 dark:bg-[#1E2B45] border border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-200 hover:border-sky-400'
-                }`}
-              >
-                {isRevoked ? 'Restaurar' : 'Revocar'}
-              </button>
-            </div>
-          )}
-        </td>
-      </tr>
+    toggleUserAccessRevoked(u.id);
+    addToast(
+      isRevoked
+        ? `Acceso restaurado por TI para ${u.name}.`
+        : `Acceso REVOCADO / SUSPENDIDO para ${u.name}.`,
+      isRevoked ? 'success' : 'error'
     );
   };
 
   return (
-    <div className="space-y-6 animate-fade-in">
-      {/* Barra de Búsqueda y Filtros de la Matriz */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 border-b border-slate-200 dark:border-slate-800">
+    <div className="w-full space-y-4 animate-fade-in">
+      {/* 2. Barra de Filtros y Búsqueda */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        {/* Input de Búsqueda */}
         <div className="relative flex-1 max-w-md">
-          <Search className="w-4 h-4 text-slate-500 dark:text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+          <span className="absolute inset-y-0 left-0 flex items-center pl-3.5 text-slate-400 pointer-events-none">
+            <Search className="w-4 h-4" />
+          </span>
           <input
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Buscar usuario por nombre, correo, equipo o ID..."
-            className="w-full pl-9 pr-3.5 py-2 bg-white dark:bg-[#0B111E] border border-slate-300 dark:border-slate-700 focus:border-blue-600 dark:focus:border-sky-400 rounded-md text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-500"
+            placeholder="Buscar por nombre, correo, rol o ID..."
+            className="w-full pl-10 pr-4 py-2 text-xs rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:border-blue-600 focus:ring-2 focus:ring-blue-100 dark:focus:ring-blue-900/30 outline-none transition"
           />
         </div>
 
-        <div className="flex flex-wrap items-center justify-between lg:justify-end gap-6">
-          {/* Filtro por Rol */}
-          <div className="flex items-center space-x-4 text-xs font-heading">
-            {(['ALL', 'TI', 'RH', 'Supervisor', 'Empleado'] as const).map((r) => (
-              <button
-                key={r}
-                type="button"
-                onClick={() => setRoleFilter(r)}
-                className={`pb-1 transition-colors cursor-pointer uppercase tracking-wider ${
-                  roleFilter === r
-                    ? 'font-bold text-slate-900 dark:text-slate-100 border-b-2 border-[#1D4ED8] dark:border-sky-400'
-                    : 'font-medium text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100'
-                }`}
-              >
-                {r === 'ALL' ? 'Todos' : r}
-              </button>
-            ))}
+        {/* Filtro Rápido Segmentado por Rol y Botón de Acción Principal */}
+        <div className="flex flex-wrap items-center gap-2.5">
+          <div className="flex items-center border border-slate-200 dark:border-slate-800 rounded-lg p-0.5 bg-slate-50 dark:bg-slate-800/60 text-xs">
+            <button
+              type="button"
+              onClick={() => setRoleFilter('ALL')}
+              className={`px-2.5 py-1 rounded-md transition-colors cursor-pointer ${
+                roleFilter === 'ALL'
+                  ? 'bg-white dark:bg-slate-900 font-semibold text-slate-800 dark:text-slate-100 shadow-xs'
+                  : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+              }`}
+            >
+              Todos
+            </button>
+            <button
+              type="button"
+              onClick={() => setRoleFilter('TI')}
+              className={`px-2.5 py-1 rounded-md transition-colors cursor-pointer ${
+                roleFilter === 'TI'
+                  ? 'bg-white dark:bg-slate-900 font-semibold text-slate-800 dark:text-slate-100 shadow-xs'
+                  : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+              }`}
+            >
+              TI Root
+            </button>
+            <button
+              type="button"
+              onClick={() => setRoleFilter('RH')}
+              className={`px-2.5 py-1 rounded-md transition-colors cursor-pointer ${
+                roleFilter === 'RH'
+                  ? 'bg-white dark:bg-slate-900 font-semibold text-slate-800 dark:text-slate-100 shadow-xs'
+                  : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+              }`}
+            >
+              RH
+            </button>
+            <button
+              type="button"
+              onClick={() => setRoleFilter('Supervisor')}
+              className={`px-2.5 py-1 rounded-md transition-colors cursor-pointer ${
+                roleFilter === 'Supervisor'
+                  ? 'bg-white dark:bg-slate-900 font-semibold text-slate-800 dark:text-slate-100 shadow-xs'
+                  : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+              }`}
+            >
+              Supervisores
+            </button>
+            <button
+              type="button"
+              onClick={() => setRoleFilter('Empleado')}
+              className={`px-2.5 py-1 rounded-md transition-colors cursor-pointer ${
+                roleFilter === 'Empleado'
+                  ? 'bg-white dark:bg-slate-900 font-semibold text-slate-800 dark:text-slate-100 shadow-xs'
+                  : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+              }`}
+            >
+              Operativos
+            </button>
           </div>
 
-          {/* Agrupar filas por Equipos y Jerarquía dentro de la Tabla Matricial */}
-          <label className="flex items-center space-x-2 text-xs text-slate-600 dark:text-slate-400 border-l border-slate-200 dark:border-slate-800 pl-6 cursor-pointer select-none">
-            <input
-              type="checkbox"
-              checked={groupByHierarchy}
-              onChange={(e) => setGroupByHierarchy(e.target.checked)}
-              className="w-4 h-4 rounded-sm bg-white dark:bg-slate-900 border border-slate-400 dark:border-slate-600 text-blue-600 accent-blue-600 cursor-pointer"
-            />
-            <span className="font-medium text-slate-900 dark:text-slate-200">
-              Separar por Niveles y Equipos
-            </span>
-          </label>
+          {onNewUser && (
+            <button
+              type="button"
+              onClick={onNewUser}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 active:scale-95 rounded-lg shadow-xs transition cursor-pointer"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              Nuevo Usuario / Supervisor
+            </button>
+          )}
         </div>
       </div>
 
-      {/* TABLA MATRICIAL DE PERMISOS (PANEL TI) CON ELEVACIÓN #101726 */}
-      <div className="overflow-x-auto bg-white dark:bg-[#101726] border border-slate-200 dark:border-slate-800 rounded-md">
-        <table className="w-full text-left text-xs border-collapse">
-          <thead className="bg-slate-100 dark:bg-[#0B111E] text-slate-600 dark:text-slate-400 border-b border-slate-200 dark:border-slate-800">
-            <tr className="text-[11px] font-heading font-semibold uppercase tracking-widest">
-              <th className="py-3.5 px-4 min-w-[230px] text-slate-600 dark:text-slate-400">Usuario / Cuenta</th>
-              <th className="py-3.5 px-4 min-w-[250px] text-slate-600 dark:text-slate-400">Jerarquía / Equipo</th>
-              {MODULE_COLUMNS.map((col) => (
-                <th
-                  key={col.key}
-                  className="py-3.5 px-3 text-center min-w-[115px] text-slate-600 dark:text-slate-400"
-                  title={col.hint}
-                >
-                  {col.shortLabel}
-                </th>
-              ))}
-              <th className="py-3.5 px-4 text-right min-w-[170px] text-slate-600 dark:text-slate-400">Acciones TI</th>
-            </tr>
-          </thead>
+      {/* 3. Tabla Jerárquica y de Permisos (Table Project) */}
+      <div className="w-full bg-white dark:bg-[#0B111E] rounded-2xl border border-slate-100 dark:border-slate-800/80 shadow-xs overflow-hidden">
+        <div className="w-full overflow-x-auto">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="border-b border-slate-100 dark:border-slate-800 bg-slate-50/75 dark:bg-slate-900/50 text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                <th className="py-3.5 px-4">Usuario / Cuenta</th>
+                <th className="py-3.5 px-4">Jerarquía y Equipo</th>
+                <th className="py-3.5 px-4">Matriz de Permisos / Módulos</th>
+                <th className="py-3.5 px-4">Estado de Cuenta</th>
+                <th className="py-3.5 px-4 text-right">Acciones</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60 text-xs">
+              {filteredUsers.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="py-10 text-center text-slate-400">
+                    No se encontraron usuarios con los filtros seleccionados.
+                  </td>
+                </tr>
+              ) : (
+                filteredUsers.map((u) => {
+                  const isRevoked = Boolean(u.accessRevoked);
+                  const isTI = u.role === 'TI';
+                  const isRH = u.role === 'RH';
+                  const isSupervisor = u.role === 'Supervisor';
 
-          <tbody className="divide-y divide-slate-200 dark:divide-slate-800/80">
-            {groupByHierarchy ? (
-              <>
-                {/* SECCIÓN 1: NIVEL MÁS ALTO — TI (ROOT) */}
-                {hierarchyGroups.tiUsers.length > 0 && (
-                  <>
-                    <tr className="bg-slate-50 dark:bg-[#0B111E]">
-                      <td
-                        colSpan={8}
-                        className="py-2.5 px-4 text-[11px] font-heading font-bold uppercase tracking-widest text-blue-700 dark:text-sky-400"
-                      >
-                        NIVEL 1 — PUESTO MÁS ALTO • ADMINISTRACIÓN TI (ROOT)
-                      </td>
-                    </tr>
-                    {hierarchyGroups.tiUsers.map((tiUser) => renderUserMatrixRow(tiUser))}
-                  </>
-                )}
+                  // Resolución del equipo y supervisor a cargo
+                  const supervisorUser = allSupervisors.find(
+                    (s) => s.id === (isSupervisor ? u.id : u.supervisor_id || 'admin-99')
+                  );
+                  const supervisorIndex = allSupervisors.findIndex(
+                    (s) => s.id === (isSupervisor ? u.id : u.supervisor_id || 'admin-99')
+                  );
+                  const teamNumber = supervisorIndex >= 0 ? supervisorIndex + 1 : 1;
+                  const supervisorName = supervisorUser?.name || 'Supervisor Líder';
 
-                {/* SECCIÓN 2: RECURSOS HUMANOS (RH) */}
-                {hierarchyGroups.rhUsers.length > 0 && (
-                  <>
-                    <tr className="bg-slate-50 dark:bg-[#0B111E]">
-                      <td
-                        colSpan={8}
-                        className="py-2.5 px-4 text-[11px] font-heading font-bold uppercase tracking-widest text-slate-700 dark:text-slate-400"
-                      >
-                        NIVEL 2 — RECURSOS HUMANOS (VISUALIZACIÓN DE CHECADAS POR EQUIPO)
-                      </td>
-                    </tr>
-                    {hierarchyGroups.rhUsers.map((rhUser) => renderUserMatrixRow(rhUser))}
-                  </>
-                )}
-
-                {/* SECCIÓN 3: EQUIPOS OPERATIVOS */}
-                {hierarchyGroups.teams.map(({ teamNumber, supervisor, employees }) => {
-                  const isSupRevoked = Boolean(supervisor.accessRevoked);
-                  const allTeamRevoked =
-                    isSupRevoked && employees.every((emp) => Boolean(emp.accessRevoked));
+                  // Cantidad de colaboradores subordinados a este supervisor
+                  const subordinateCount = isSupervisor
+                    ? mergedUsers.filter((m) => (m.supervisor_id || 'admin-99') === u.id).length
+                    : 0;
 
                   return (
-                    <Fragment key={supervisor.id}>
-                      <tr className="bg-slate-50 dark:bg-[#0B111E]">
-                        <td colSpan={7} className="py-2.5 px-4">
-                          <div className="flex flex-wrap items-center gap-3">
-                            <span className="text-[11px] font-heading font-bold uppercase tracking-widest text-blue-700 dark:text-sky-400">
-                              NIVEL 3 — EQUIPO #{teamNumber} • {(supervisor.team || 'EQUIPO PRUEBA').toUpperCase()}
+                    <tr
+                      key={u.id}
+                      className={`hover:bg-slate-50/60 dark:hover:bg-slate-800/40 transition-colors ${
+                        isRevoked ? 'opacity-60 bg-slate-50/30 dark:bg-slate-900/20' : ''
+                      }`}
+                    >
+                      {/* Columna 1: Usuario / Credenciales */}
+                      <td className="py-3.5 px-4">
+                        <div className="flex items-center gap-3">
+                          <div
+                            className={`w-9 h-9 rounded-lg font-bold text-xs flex items-center justify-center shrink-0 ${
+                              isTI
+                                ? 'bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-sky-300'
+                                : isRH
+                                ? 'bg-purple-50 text-purple-700 dark:bg-purple-950/60 dark:text-purple-300'
+                                : isSupervisor
+                                ? 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200'
+                                : 'bg-slate-100 text-slate-600 dark:bg-slate-800/80 dark:text-slate-300'
+                            }`}
+                          >
+                            {getInitials(u.name)}
+                          </div>
+                          <div className="flex flex-col min-w-0">
+                            <span
+                              className={`font-semibold text-slate-900 dark:text-slate-100 text-sm truncate ${
+                                isRevoked ? 'line-through text-slate-400' : ''
+                              }`}
+                            >
+                              {u.name}
                             </span>
-                            <span className="text-[11px] text-slate-600 dark:text-slate-400">
-                              Código: <code className="font-mono text-slate-800 dark:text-slate-200">SUP-RB-990{teamNumber}</code> • Líder: <strong className="text-slate-900 dark:text-slate-200">{supervisor.name}</strong> ({employees.length} {employees.length === 1 ? 'subordinado' : 'subordinados'})
+                            <span className="text-slate-400 font-mono text-[11px] truncate">
+                              {u.email} • {u.id}
                             </span>
                           </div>
-                        </td>
-                        <td className="py-2.5 px-4 text-right">
+                        </div>
+                      </td>
+
+                      {/* Columna 2: Jerarquía y Equipo */}
+                      <td className="py-3.5 px-4">
+                        <div className="space-y-1">
+                          {isTI && (
+                            <div>
+                              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-blue-50 text-blue-700 border border-blue-200/60 dark:bg-blue-950/50 dark:text-sky-300 dark:border-blue-800/60">
+                                Nivel 1 • TI Root
+                              </span>
+                              <p className="text-[11px] text-slate-400 mt-0.5">Control global del sistema</p>
+                            </div>
+                          )}
+
+                          {isRH && (
+                            <div>
+                              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-purple-50 text-purple-700 border border-purple-200/60 dark:bg-purple-950/50 dark:text-purple-300 dark:border-purple-800/60">
+                                Nivel 2 • Recursos Humanos
+                              </span>
+                              <p className="text-[11px] text-slate-400 mt-0.5">
+                                Auditoría de checadas • {u.allowedSupervisorIds?.length ?? allSupervisors.length} equipo(s)
+                              </p>
+                            </div>
+                          )}
+
+                          {isSupervisor && (
+                            <div>
+                              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-slate-100 text-slate-700 border border-slate-200/60 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700">
+                                Nivel 3 • Supervisor
+                              </span>
+                              <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                                {u.team || `Equipo #${teamNumber}`} • Lidera {subordinateCount} {subordinateCount === 1 ? 'colaborador' : 'colaboradores'}
+                              </p>
+                            </div>
+                          )}
+
+                          {u.role === 'Empleado' && (
+                            <div>
+                              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-slate-50 text-slate-600 border border-slate-200/60 dark:bg-slate-800/60 dark:text-slate-400 dark:border-slate-700/60">
+                                Nivel 4 • Operativo
+                              </span>
+                              <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                                Equipo #{teamNumber} • Reporta a {supervisorName}
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      </td>
+
+                      {/* Columna 3: Matriz de Permisos / Módulos (Badges Interactivos) */}
+                      <td className="py-3.5 px-4">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          {MODULE_LIST.map((mod) => {
+                            const isEnabled = Boolean(u.modules[mod.key]);
+                            const isPolicyLocked = isTI || (isRH && (mod.key === 'tasks' || mod.key === 'clients'));
+
+                            return (
+                              <button
+                                key={mod.key}
+                                type="button"
+                                disabled={isPolicyLocked || isRevoked}
+                                onClick={() => handleToggleModuleQuick(u, mod.key)}
+                                title={
+                                  isPolicyLocked
+                                    ? isTI
+                                      ? 'TI Root mantiene todos los módulos activos'
+                                      : 'Política RBAC 403: No permitido para RH'
+                                    : `${isEnabled ? 'Desactivar' : 'Activar'} ${mod.label}`
+                                }
+                                className={`px-2 py-0.5 rounded text-[10px] font-medium transition-all ${
+                                  isPolicyLocked
+                                    ? isTI
+                                      ? 'bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-sky-300 cursor-default'
+                                      : 'bg-slate-100 text-slate-400 dark:bg-slate-800/60 dark:text-slate-500 cursor-not-allowed opacity-60'
+                                    : isEnabled
+                                    ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200/60 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800/50 cursor-pointer active:scale-95'
+                                    : 'bg-slate-100 text-slate-400 hover:bg-slate-200 border border-slate-200/60 dark:bg-slate-800/60 dark:text-slate-500 dark:border-slate-700/60 cursor-pointer active:scale-95'
+                                }`}
+                              >
+                                {mod.shortLabel}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </td>
+
+                      {/* Columna 4: Estado de Cuenta */}
+                      <td className="py-3.5 px-4">
+                        {isRevoked ? (
+                          <span className="inline-flex items-center gap-1.5 text-rose-600 dark:text-rose-400 font-medium text-xs">
+                            <span className="w-1.5 h-1.5 rounded-full bg-rose-500"></span> Suspendido
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1.5 text-emerald-700 dark:text-emerald-400 font-medium text-xs">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> Activo
+                          </span>
+                        )}
+                      </td>
+
+                      {/* Columna 5: Acciones */}
+                      <td className="py-3.5 px-4 text-right">
+                        <div className="flex items-center justify-end gap-1">
+                          {/* Botón Editar Permisos */}
                           <button
                             type="button"
-                            onClick={() =>
-                              handleRevokeEntireTeam(supervisor, employees, !allTeamRevoked)
-                            }
-                            className="text-[11px] font-heading font-semibold text-blue-700 dark:text-sky-400 hover:underline cursor-pointer"
+                            onClick={() => handleOpenEditModal(u)}
+                            className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/40 rounded-lg transition-colors cursor-pointer"
+                            title="Gestionar permisos y equipo"
                           >
-                            {allTeamRevoked
-                              ? `Restaurar Equipo #${teamNumber}`
-                              : `Revocar Equipo #${teamNumber}`}
+                            <SlidersHorizontal className="w-4 h-4" />
                           </button>
-                        </td>
-                      </tr>
 
-                      {/* Fila del Socio / Supervisor (Cabeza del Equipo) */}
-                      {renderUserMatrixRow(supervisor, {
-                        isSubordinate: false,
-                        teamNumber,
-                        supervisorName: supervisor.name,
-                      })}
-
-                      {/* Filas indentadas de los Empleados Subordinados a este Equipo */}
-                      {employees.map((emp, empIdx) =>
-                        renderUserMatrixRow(emp, {
-                          isSubordinate: true,
-                          isLastSubordinate: empIdx === employees.length - 1,
-                          teamNumber,
-                          supervisorName: supervisor.name,
-                        })
-                      )}
-                    </Fragment>
+                          {/* Botón Revocar / Restaurar */}
+                          {!isTI && (
+                            <button
+                              type="button"
+                              onClick={() => handleToggleRevoke(u)}
+                              className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                                isRevoked
+                                  ? 'text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-950/40'
+                                  : 'text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40'
+                              }`}
+                              title={isRevoked ? 'Restaurar Acceso' : 'Revocar Acceso / Suspender'}
+                            >
+                              {isRevoked ? <RotateCcw className="w-4 h-4" /> : <Trash2 className="w-4 h-4" />}
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
                   );
-                })}
-              </>
-            ) : (
-              filteredUsers.map((u) => renderUserMatrixRow(u))
-            )}
-          </tbody>
-        </table>
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
+
+      {/* 4. Modal de Edición de Permisos y Estructura */}
+      {editingUser && modalDraftModules && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs animate-fade-in">
+          <div className="bg-white dark:bg-[#0B111E] rounded-2xl border border-slate-100 dark:border-slate-800 shadow-2xl max-w-lg w-full p-6 space-y-6">
+            {/* Cabecera del Modal */}
+            <div className="flex items-start justify-between gap-4 border-b border-slate-100 dark:border-slate-800 pb-4">
+              <div>
+                <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                  Gestionar Permisos y Accesos
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  {editingUser.name} • <span className="font-mono">{editingUser.email}</span> ({editingUser.role})
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setEditingUser(null);
+                  setModalDraftModules(null);
+                }}
+                className="p-1 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Presets Rápidos */}
+            {editingUser.role !== 'TI' && (
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-slate-500 font-medium">Ajuste rápido:</span>
+                <button
+                  type="button"
+                  onClick={() => handleApplyPresetInModal('entry_exit_only')}
+                  className="px-2.5 py-1 text-xs font-medium rounded-md bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-200 cursor-pointer transition-colors"
+                >
+                  Solo Checador
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleApplyPresetInModal('full_role')}
+                  className="px-2.5 py-1 text-xs font-medium rounded-md bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-200 cursor-pointer transition-colors"
+                >
+                  Perfil Completo de {editingUser.role}
+                </button>
+              </div>
+            )}
+
+            {/* Lista de Módulos con Switches */}
+            <div className="space-y-3 max-h-64 overflow-y-auto pr-1">
+              {MODULE_LIST.map((mod) => {
+                const isEnabled = Boolean(modalDraftModules[mod.key]);
+                const isPolicyLocked =
+                  editingUser.role === 'TI' ||
+                  (editingUser.role === 'RH' && (mod.key === 'tasks' || mod.key === 'clients'));
+
+                return (
+                  <div
+                    key={mod.key}
+                    className="flex items-center justify-between p-3 rounded-xl border border-slate-100 dark:border-slate-800 hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-colors"
+                  >
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-semibold text-slate-800 dark:text-slate-200">
+                          {mod.label}
+                        </span>
+                        {isPolicyLocked && editingUser.role === 'RH' && (
+                          <span className="text-[10px] font-mono text-rose-500 bg-rose-50 px-1.5 py-0.5 rounded">
+                            RBAC 403
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-[11px] text-slate-400 mt-0.5">{mod.hint}</p>
+                    </div>
+
+                    <button
+                      type="button"
+                      disabled={isPolicyLocked}
+                      onClick={() =>
+                        setModalDraftModules((prev) =>
+                          prev ? { ...prev, [mod.key]: !prev[mod.key] } : prev
+                        )
+                      }
+                      className={`w-11 h-6 flex items-center rounded-full p-1 transition-colors cursor-pointer ${
+                        isPolicyLocked
+                          ? 'opacity-40 cursor-not-allowed bg-slate-300 dark:bg-slate-700'
+                          : isEnabled
+                          ? 'bg-blue-600 justify-end'
+                          : 'bg-slate-200 dark:bg-slate-700 justify-start'
+                      }`}
+                    >
+                      <span className="w-4 h-4 rounded-full bg-white shadow-xs" />
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Reasignación de Equipo para Empleados */}
+            {editingUser.role === 'Empleado' && allSupervisors.length > 0 && (
+              <div className="border-t border-slate-100 dark:border-slate-800 pt-3">
+                <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-1.5">
+                  Supervisor y Equipo Asignado
+                </label>
+                <select
+                  value={editingUser.supervisor_id || allSupervisors[0]?.id}
+                  onChange={(e) => {
+                    reassignEmployeeSupervisor(editingUser.id, e.target.value);
+                    setEditingUser((prev) => (prev ? { ...prev, supervisor_id: e.target.value } : prev));
+                    addToast(`Supervisor reasignado a ${editingUser.name}.`, 'info');
+                  }}
+                  className="w-full py-2 px-3 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-800 dark:text-slate-200 outline-none focus:border-blue-600"
+                >
+                  {allSupervisors.map((s, idx) => (
+                    <option key={s.id} value={s.id}>
+                      Equipo #{idx + 1}: {s.name} ({s.team || 'Equipo Corporativo'})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {/* Botones de Acción del Modal */}
+            <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-slate-100 dark:border-slate-800">
+              <button
+                type="button"
+                onClick={() => {
+                  setEditingUser(null);
+                  setModalDraftModules(null);
+                }}
+                className="px-4 py-2 text-xs font-medium text-slate-600 hover:text-slate-800 dark:text-slate-400 dark:hover:text-white rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveModal}
+                className="px-4 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-xs transition-colors cursor-pointer"
+              >
+                Guardar Permisos
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

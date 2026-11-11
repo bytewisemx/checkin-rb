@@ -8,7 +8,6 @@ import {
   Sliders,
   Sun,
   Moon,
-  Menu,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useCheckinStore } from '../../store/useCheckinStore';
@@ -48,6 +47,25 @@ export function GlobalHeader() {
   const normalizedRole = normalizeRole(user?.role);
   const effectiveModules = getEffectiveUserModules(user?.id) || getEffectiveModules(user);
 
+  // Nombre de equipo dinámico y etiqueta de rol sobria
+  const teamName =
+    user?.team ||
+    (user as unknown as { teamName?: string })?.teamName ||
+    (normalizedRole === 'TI'
+      ? 'Equipo TI & Ciberseguridad'
+      : normalizedRole === 'RH'
+      ? 'Equipo Recursos Humanos'
+      : 'Equipo General');
+
+  const roleLabel =
+    normalizedRole === 'Supervisor'
+      ? 'Supervisor'
+      : normalizedRole === 'TI'
+      ? 'Admin TI'
+      : normalizedRole === 'RH'
+      ? 'Recursos Humanos'
+      : 'Colaborador';
+
   const gamification = useMemo(() => {
     return calculateGamification({
       history,
@@ -79,22 +97,15 @@ export function GlobalHeader() {
   return (
     <>
       <header className="bg-white dark:bg-[#101726] text-slate-900 dark:text-slate-100 border-b border-slate-200 dark:border-slate-800 h-14 flex items-center justify-between px-4 lg:px-8 sticky top-0 z-40">
-        {/* Lado Izquierdo: Navegación Principal e Identidad */}
-        <div className="flex items-center space-x-3 w-1/4">
+        {/* Lado Izquierdo: Botón de Sincronización + Nombre de Equipo Dinámico y Rol */}
+        <div className="flex items-center gap-3 min-w-0 max-w-[40%]">
+          {/* Botón de Sincronizar / Refrescar */}
           <button
-            onClick={() => navigate('/')}
-            title="Ir al panel principal de secciones"
-            className="p-1.5 text-slate-400 hover:text-blue-700 dark:text-[#94A3B8] dark:hover:text-[#38BDF8] transition-colors cursor-pointer"
-            aria-label="Menú principal"
-          >
-            <Menu className="w-4 h-4" />
-          </button>
-
-          <button
+            id="btn-refresh"
             onClick={handleReload}
-            title="Sincronizar y recargar datos"
-            className="p-1.5 text-slate-400 hover:text-blue-700 dark:text-[#94A3B8] dark:hover:text-[#38BDF8] transition-colors cursor-pointer group"
-            aria-label="Recargar"
+            title="Sincronizar y actualizar datos"
+            className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 dark:hover:text-white dark:hover:bg-slate-800 rounded-lg transition-colors cursor-pointer group shrink-0"
+            aria-label="Actualizar datos"
           >
             <RefreshCw
               className={`w-4 h-4 transition-transform duration-500 ${
@@ -103,16 +114,19 @@ export function GlobalHeader() {
             />
           </button>
 
-          <button
-            onClick={() => navigate('/')}
-            className="text-xs font-heading font-bold tracking-widest uppercase text-slate-900 dark:text-slate-100 hover:text-blue-700 dark:hover:text-[#38BDF8] transition-colors cursor-pointer hidden md:inline-block"
-          >
-            RUSSELL BEDFORD
-          </button>
-
-          <span className="text-[11px] font-heading font-medium uppercase tracking-wider text-slate-500 dark:text-slate-400 hidden lg:inline-block">
-            • {normalizedRole}
-          </span>
+          {/* Nombre del Equipo Dinámico + Rol Opcional */}
+          <div className="flex items-center gap-2 min-w-0">
+            <span
+              onClick={() => navigate('/')}
+              className="text-sm font-semibold text-slate-800 dark:text-slate-100 tracking-tight font-['Inter',sans-serif] truncate cursor-pointer hover:text-blue-700 dark:hover:text-[#38BDF8] transition-colors"
+              title={teamName}
+            >
+              {teamName}
+            </span>
+            <span className="text-[11px] font-medium text-slate-500 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 border border-slate-200/60 dark:border-slate-700/60 px-2 py-0.5 rounded-full shrink-0 hidden sm:inline-block">
+              {roleLabel}
+            </span>
+          </div>
         </div>
 
         {/* Centro: Buscador Universal Plano */}

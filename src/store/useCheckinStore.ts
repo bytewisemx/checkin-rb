@@ -80,7 +80,32 @@ export interface ManagedUserPermissionEntry {
   created_by_ti_id?: string | null;
 }
 
+export interface AbsenceJustification {
+  id: string;
+  userId: string;
+  userEmail: string;
+  dateKey: string; // Formato YYYY-MM-DD
+  status: 'justified' | 'unjustified';
+  reasonType: 'medical' | 'vacation' | 'paid_leave' | 'commission' | 'unpaid_leave' | 'other';
+  reasonLabel: string;
+  notes?: string;
+  hoursCredit: number; // Horas a computar (ej. 8.0)
+  justifiedBy: string;
+  justifiedAt: string;
+}
+
 export interface PauseBlock {
+  startMs: number;
+  endMs: number | null;
+}
+
+export interface TaskInterval {
+  taskId: string;
+  taskName: string;
+  company?: string;
+  startTime: string; // Formato HH:MM:SS
+  endTime: string | null; // HH:MM:SS o null si está corriendo activamente
+  durationSeconds: number;
   startMs: number;
   endMs: number | null;
 }
@@ -100,6 +125,10 @@ export interface CheckinRecord {
   // Estrictamente prohibido guardar facePhotoUrl / base64; solo score y distancia vectorial
   biometricMatchScore?: number | null;
   biometricDistance?: number | null;
+  // Modelo de persistencia de jornada y subtramos por tarea
+  status?: 'active' | 'paused' | 'completed';
+  workdayTotalSeconds?: number;
+  taskIntervals?: TaskInterval[];
 }
 
 export interface MockEmployee {
@@ -137,6 +166,12 @@ interface CheckinState {
   userPermissionsDirectory: Record<string, ManagedUserPermissionEntry>;
   toasts: GlobalToast[];
   tasks: Task[];
+  globalLoading: {
+    active: boolean;
+    message: string;
+  };
+  showLoader: (message?: string) => void;
+  hideLoader: () => void;
 
   addToast: (msg: string, type?: 'info' | 'success' | 'error') => void;
   removeToast: (id: number) => void;
@@ -185,13 +220,22 @@ interface CheckinState {
   updateRHAllowedTeams: (rhUserId: string, supervisorIds: string[]) => void;
   reassignEmployeeSupervisor: (employeeId: string, newSupervisorId: string) => void;
 
+  // Justificaciones de inasistencia para prenómina y auditoría de RH
+  absenceJustifications: Record<string, AbsenceJustification>;
+  setAbsenceJustification: (
+    justification: Omit<AbsenceJustification, 'id' | 'justifiedAt'>
+  ) => void;
+  removeAbsenceJustification: (userEmail: string, dateKey: string) => void;
+
   startCheckin: (
     lat: number,
     lng: number,
     address: string,
     matchScore?: number,
-    biometricDistance?: number
+    biometricDistance?: number,
+    initialTaskData?: { taskId: string; taskName: string; company?: string } | null
   ) => Promise<void>;
+  switchActiveTask: (taskData: { taskId: string; taskName: string; company?: string } | null) => void;
   pauseCheckin: () => Promise<void>;
   resumeCheckin: () => Promise<void>;
   endCheckin: () => Promise<void>;
@@ -344,6 +388,18 @@ export const useCheckinStore = create<CheckinState>()(
       toasts: [],
       tasks: [],
       theme: 'dark',
+      globalLoading: {
+        active: false,
+        message: 'Cargando Checkin...',
+      },
+
+      showLoader: (message = 'Cargando Checkin...') => {
+        set({ globalLoading: { active: true, message } });
+      },
+
+      hideLoader: () => {
+        set((state) => ({ globalLoading: { ...state.globalLoading, active: false } }));
+      },
 
       setTheme: (theme: 'dark' | 'light') => {
         set({ theme });
@@ -602,6 +658,32 @@ export const useCheckinStore = create<CheckinState>()(
           });
         }
         broadcastPermissionsUpdate({ userId: employeeId, supervisor_id: newSupervisorId });
+      },
+
+      absenceJustifications: {},
+
+      setAbsenceJustification: (data) => {
+        const compositeKey = `${data.userEmail.toLowerCase()}_${data.dateKey}`;
+        const id = `just-${compositeKey}`;
+        set((state) => ({
+          absenceJustifications: {
+            ...state.absenceJustifications,
+            [compositeKey]: {
+              ...data,
+              id,
+              justifiedAt: new Date().toISOString(),
+            },
+          },
+        }));
+      },
+
+      removeAbsenceJustification: (userEmail, dateKey) => {
+        const compositeKey = `${userEmail.toLowerCase()}_${dateKey}`;
+        set((state) => {
+          const next = { ...state.absenceJustifications };
+          delete next[compositeKey];
+          return { absenceJustifications: next };
+        });
       },
 
       login: (email, password) => {
@@ -1087,7 +1169,7 @@ export const useCheckinStore = create<CheckinState>()(
         return savedBiometrics;
       },
 
-      startCheckin: async (lat, lng, address, matchScore, biometricDistance) => {
+      startCheckin: async (lat, lng, address, matchScore, biometricDistance, initialTaskData) => {
         const { user, history, mockEmployeesData, addToast } = get();
         if (!user) return;
 
@@ -1106,6 +1188,22 @@ export const useCheckinStore = create<CheckinState>()(
         }
 
         const dateIsoStr = new Date(secureTimeMs).toISOString().split('T')[0];
+        const nowTimeStr = new Date(secureTimeMs).toLocaleTimeString('es-MX', { hour12: false });
+
+        const initialIntervals: TaskInterval[] = initialTaskData
+          ? [
+              {
+                taskId: initialTaskData.taskId,
+                taskName: initialTaskData.taskName,
+                company: initialTaskData.company || 'Russell Bedford',
+                startTime: nowTimeStr,
+                endTime: null,
+                durationSeconds: 0,
+                startMs: secureTimeMs,
+                endMs: null,
+              },
+            ]
+          : [];
 
         const newRecord: CheckinRecord = {
           id: Math.random().toString(36).substring(2, 11),
@@ -1121,6 +1219,9 @@ export const useCheckinStore = create<CheckinState>()(
           minutesLate,
           biometricMatchScore: matchScore ?? null,
           biometricDistance: biometricDistance ?? null,
+          status: 'active',
+          workdayTotalSeconds: 0,
+          taskIntervals: initialIntervals,
         };
 
         const updatedMockData = mockEmployeesData.map((emp) =>
@@ -1151,6 +1252,69 @@ export const useCheckinStore = create<CheckinState>()(
         });
       },
 
+      switchActiveTask: (taskData) => {
+        const { activeCheckin, user, history, mockEmployeesData } = get();
+        if (!activeCheckin || !user) return;
+
+        const now = Date.now();
+        const nowTimeStr = new Date(now).toLocaleTimeString('es-MX', { hour12: false });
+        const currentIntervals = activeCheckin.taskIntervals ? [...activeCheckin.taskIntervals] : [];
+
+        // 1. Cerrar intervalo de la tarea previa si estaba corriendo
+        const closedIntervals = currentIntervals.map((interval) => {
+          if (!interval.endMs) {
+            const durationSecs = Math.max(0, Math.floor((now - interval.startMs) / 1000));
+            return {
+              ...interval,
+              endMs: now,
+              endTime: nowTimeStr,
+              durationSeconds: durationSecs,
+            };
+          }
+          return interval;
+        });
+
+        // 2. Abrir intervalo para la nueva tarea si existe
+        if (taskData) {
+          const newInterval: TaskInterval = {
+            taskId: taskData.taskId,
+            taskName: taskData.taskName,
+            company: taskData.company || 'Russell Bedford',
+            startTime: nowTimeStr,
+            endTime: null,
+            durationSeconds: 0,
+            startMs: now,
+            endMs: null,
+          };
+          closedIntervals.push(newInterval);
+        }
+
+        // El checkInTimeMs y pauses de la jornada permanecen INMUTABLES
+        const updatedRecord: CheckinRecord = {
+          ...activeCheckin,
+          taskIntervals: closedIntervals,
+        };
+
+        const nextUserActiveCheckins = {
+          ...get().userActiveCheckins,
+          [user.id]: updatedRecord,
+        };
+
+        set({
+          activeCheckin: updatedRecord,
+          userActiveCheckins: nextUserActiveCheckins,
+          history: history.map((r) => (r.id === updatedRecord.id ? updatedRecord : r)),
+          mockEmployeesData: mockEmployeesData.map((emp) =>
+            emp.id === user.id
+              ? {
+                  ...emp,
+                  history: emp.history.map((h) => (h.id === updatedRecord.id ? updatedRecord : h)),
+                }
+              : emp
+          ),
+        });
+      },
+
       pauseCheckin: async () => {
         const { activeCheckin, history, mockEmployeesData, user } = get();
         if (!activeCheckin || !user) return;
@@ -1162,8 +1326,9 @@ export const useCheckinStore = create<CheckinState>()(
           endMs: null,
         };
 
-        const updatedRecord = {
+        const updatedRecord: CheckinRecord = {
           ...activeCheckin,
+          status: 'paused',
           pauses: [...activeCheckin.pauses, newPause],
         };
 
@@ -1199,8 +1364,9 @@ export const useCheckinStore = create<CheckinState>()(
         const updatedPauses = [...activeCheckin.pauses];
         updatedPauses[updatedPauses.length - 1].endMs = secureTimeMs;
 
-        const updatedRecord = {
+        const updatedRecord: CheckinRecord = {
           ...activeCheckin,
+          status: 'active',
           pauses: updatedPauses,
         };
 
@@ -1245,12 +1411,31 @@ export const useCheckinStore = create<CheckinState>()(
 
         const effectiveMs = secureTimeMs - activeCheckin.checkInTimeMs - totalPauseMs;
         const durationMinutes = Math.floor(effectiveMs / 60000);
+        const workdayTotalSeconds = Math.max(0, Math.floor(effectiveMs / 1000));
+        const nowTimeStr = new Date(secureTimeMs).toLocaleTimeString('es-MX', { hour12: false });
+
+        // Cerrar cualquier intervalo pendiente al finalizar jornada
+        const closedIntervals = (activeCheckin.taskIntervals || []).map((interval) => {
+          if (!interval.endMs) {
+            const durationSecs = Math.max(0, Math.floor((secureTimeMs - interval.startMs) / 1000));
+            return {
+              ...interval,
+              endMs: secureTimeMs,
+              endTime: nowTimeStr,
+              durationSeconds: durationSecs,
+            };
+          }
+          return interval;
+        });
 
         const updatedRecord: CheckinRecord = {
           ...activeCheckin,
           pauses: updatedPauses,
           checkOutTimeMs: secureTimeMs,
           totalDurationMinutes: durationMinutes,
+          status: 'completed',
+          workdayTotalSeconds,
+          taskIntervals: closedIntervals,
         };
 
         const updatedMockData = mockEmployeesData.map((emp) => {
@@ -1318,6 +1503,7 @@ export const useCheckinStore = create<CheckinState>()(
           userActiveCheckins: state.userActiveCheckins || {},
           userHistories: state.userHistories || {},
           history: state.history,
+          absenceJustifications: state.absenceJustifications || {},
           theme: state.theme || 'dark',
         };
       },

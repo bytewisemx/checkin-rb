@@ -1,14 +1,15 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useRayonerStore } from '../../store/useRayonerStore';
 import { useCheckinStore } from '../../store/useCheckinStore';
 import { useNotificationStore } from '../../store/useNotificationStore';
 import { getEffectiveModules } from '../../services/rbac';
-import { RayonerTree } from './rayoner/RayonerTree';
+import { ProjectsSupervisionTable } from './rayoner/ProjectsSupervisionTable';
 import { RayonerTimeReport } from './rayoner/RayonerTimeReport';
 import { RayonerTaskModal } from './rayoner/RayonerTaskModal';
 import { TeamMembersView } from './rayoner/TeamMembersView';
 import { SupervisorInvitationsView } from './invitations/SupervisorInvitationsView';
 import { CheckinPanel } from '../checkin/CheckinPanel';
+import { Users, AlertTriangle, TrendingUp } from 'lucide-react';
 
 export type SupervisorTab = 'tree' | 'report' | 'attendance' | 'invitations' | 'my_checkin';
 
@@ -79,6 +80,17 @@ export function SupervisorDashboard({ initialTab }: SupervisorDashboardProps = {
     return actual / planned >= 0.8;
   });
 
+  // Eficiencia Global (% de horas auditadas vs presupuestadas)
+  const totalActualAllTasks = useMemo(() => {
+    return tasks.reduce((acc, t) => acc + (taskActualHours[t.id] || 0), 0);
+  }, [tasks, taskActualHours]);
+
+  const totalBudgetedAllProjects = useMemo(() => {
+    return projects.reduce((acc, p) => acc + (p.totalBudgetHours || 0), 0) || 1;
+  }, [projects]);
+
+  const globalEfficiency = Math.round((totalActualAllTasks / totalBudgetedAllProjects) * 100);
+
   const handleOpenReportForProject = (projectId: string) => {
     if (!canSeeReports) {
       addToast('El módulo de Reportes fue deshabilitado para tu perfil por TI.', 'error');
@@ -89,147 +101,154 @@ export function SupervisorDashboard({ initialTab }: SupervisorDashboardProps = {
   };
 
   return (
-    <div className="w-full max-w-7xl mx-auto px-4 lg:px-8 py-8 space-y-10 animate-fade-in bg-[#F8FAFC] dark:bg-[#090E17] text-slate-900 dark:text-slate-200">
-      {/* 1. Cabecera Editorial Abierta de Supervisión */}
+    <div className="w-full max-w-[96vw] mx-auto px-4 md:px-8 py-8 space-y-8 animate-fade-in bg-[#F8FAFC] dark:bg-[#090E17] text-slate-900 dark:text-slate-200">
+      {/* 1. Cabecera Ejecutiva de Supervisión */}
       <header className="space-y-6 border-b border-slate-200 dark:border-slate-800 pb-6">
-        <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-6">
-          <div className="space-y-1.5">
-            <div className="flex flex-wrap items-center gap-3 text-xs font-heading font-semibold uppercase tracking-widest text-[#475569] dark:text-[#94A3B8]">
-              <span className="text-[#1E40AF] dark:text-[#38BDF8]">RAYONER TIME SUITE</span>
-              <span>/</span>
-              <span>Panel de Supervisión y Control de Horas</span>
-              <span>/</span>
-              <span>
-                {!forcedFacialByTI ? 'Exento de Biometría' : 'Biometría Activa por TI'}
-              </span>
-            </div>
-            <h1 className="text-2xl sm:text-3xl font-heading font-bold text-[#0F172A] dark:text-[#F8FAFC] tracking-tight">
-              Gestión de Clientes, Proyectos y Rentabilidad
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+          <div className="space-y-1">
+            <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100 tracking-tight">
+              Supervisión de Proyectos
             </h1>
+            <p className="text-sm text-slate-500 dark:text-slate-400">
+              Seguimiento de horas, avance presupuestal y asignación de colaboradores.
+            </p>
           </div>
 
-          {/* Pestañas de Navegación Planas sin Cajas ni Iconos Decorativos */}
-          <nav className="flex flex-wrap items-center gap-6 border-b border-slate-200 dark:border-slate-800 lg:border-b-0 pb-2 lg:pb-0">
+          {/* Pestañas Superiores Estilizadas como Pills Modernas */}
+          <nav className="inline-flex items-center gap-1.5 p-1 bg-slate-100 dark:bg-slate-800/80 rounded-xl border border-slate-200/60 dark:border-slate-700/60 self-start lg:self-auto">
             {canSeeTree && (
               <button
+                type="button"
                 onClick={() => setActiveTab('tree')}
-                className={`pb-2 text-xs font-heading font-semibold uppercase tracking-wider transition-colors relative cursor-pointer ${
+                className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
                   resolvedTab === 'tree'
-                    ? 'text-[#0F172A] dark:text-[#F8FAFC]'
-                    : 'text-[#475569] hover:text-[#0F172A] dark:text-[#94A3B8] dark:hover:text-[#F8FAFC]'
+                    ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
                 }`}
               >
-                Árbol C/P/T
-                {resolvedTab === 'tree' && (
-                  <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#1E40AF] dark:bg-[#38BDF8]" />
-                )}
-              </button>
-            )}
-
-            {canSeeReports && (
-              <button
-                onClick={() => setActiveTab('report')}
-                className={`pb-2 text-xs font-heading font-semibold uppercase tracking-wider transition-colors relative cursor-pointer ${
-                  resolvedTab === 'report'
-                    ? 'text-[#0F172A] dark:text-[#F8FAFC]'
-                    : 'text-[#475569] hover:text-[#0F172A] dark:text-[#94A3B8] dark:hover:text-[#F8FAFC]'
-                }`}
-              >
-                Informe de Tiempos
-                {resolvedTab === 'report' && (
-                  <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#1E40AF] dark:bg-[#38BDF8]" />
-                )}
+                Proyectos y Tiempos
               </button>
             )}
 
             <button
+              type="button"
               onClick={() => setActiveTab('attendance')}
-              className={`pb-2 text-xs font-heading font-semibold uppercase tracking-wider transition-colors relative cursor-pointer ${
+              className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
                 resolvedTab === 'attendance'
-                  ? 'text-[#0F172A] dark:text-[#F8FAFC]'
-                  : 'text-[#475569] hover:text-[#0F172A] dark:text-[#94A3B8] dark:hover:text-[#F8FAFC]'
+                  ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
               }`}
             >
               Asistencia y Equipos
-              {resolvedTab === 'attendance' && (
-                <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#1E40AF] dark:bg-[#38BDF8]" />
-              )}
             </button>
 
             <button
+              type="button"
               onClick={() => setActiveTab('invitations')}
-              className={`pb-2 text-xs font-heading font-semibold uppercase tracking-wider transition-colors relative cursor-pointer ${
+              className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
                 resolvedTab === 'invitations'
-                  ? 'text-[#0F172A] dark:text-[#F8FAFC]'
-                  : 'text-[#475569] hover:text-[#0F172A] dark:text-[#94A3B8] dark:hover:text-[#F8FAFC]'
+                  ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
               }`}
             >
-              Invitaciones y Whitelist
-              {resolvedTab === 'invitations' && (
-                <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#1E40AF] dark:bg-[#38BDF8]" />
-              )}
+              Invitaciones/Whitelist
             </button>
+
+            {canSeeReports && (
+              <button
+                type="button"
+                onClick={() => setActiveTab('report')}
+                className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                  resolvedTab === 'report'
+                    ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                }`}
+              >
+                Informes
+              </button>
+            )}
 
             {showPersonalCheckInTab && (
               <button
+                type="button"
                 onClick={() => setActiveTab('my_checkin')}
-                className={`pb-2 text-xs font-heading font-semibold uppercase tracking-wider transition-colors relative cursor-pointer ${
+                className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
                   resolvedTab === 'my_checkin'
-                    ? 'text-[#0F172A] dark:text-[#F8FAFC]'
-                    : 'text-[#475569] hover:text-[#0F172A] dark:text-[#94A3B8] dark:hover:text-[#F8FAFC]'
+                    ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
                 }`}
               >
-                {forcedFacialByTI ? 'Mi Check-in Facial (TI)' : 'Mi Asistencia'}
-                {resolvedTab === 'my_checkin' && (
-                  <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#1E40AF] dark:bg-[#38BDF8]" />
-                )}
+                {forcedFacialByTI ? 'Mi Check-in Facial' : 'Mi Asistencia'}
               </button>
             )}
           </nav>
         </div>
 
-        {/* 2. Métricas Operativas en Vivo (Sin Recuadros ni Iconos Decorativos) */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-8 pt-4 border-t border-slate-200 dark:border-slate-800">
-          <div>
-            <span className="text-[11px] font-heading font-semibold text-[#475569] dark:text-[#94A3B8] uppercase tracking-wider block">
-              En Vivo: Actividad del Equipo
-            </span>
-            <div className="text-3xl font-heading font-bold text-[#0F172A] dark:text-[#F8FAFC] metric-value mt-1">
-              {activeWorkers.length} Activos
+        {/* 2. Tres Métricas Superiores en Tarjetas Compactas y Limpias (Exclusivas de la pestaña Proyectos y Tiempos) */}
+        {resolvedTab === 'tree' && (
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 animate-fade-in">
+            {/* Métrica 1: Colaboradores Activos */}
+            <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-xs flex flex-col justify-between">
+              <div className="flex items-center justify-between text-slate-500 dark:text-slate-400 mb-2">
+                <span className="text-xs font-semibold uppercase tracking-wider">
+                  Colaboradores Activos
+                </span>
+                <Users className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+              </div>
+              <div>
+                <div className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight flex items-center gap-2">
+                  <span>{activeWorkers.length} en vivo</span>
+                  {activeWorkers.length > 0 && (
+                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
+                  )}
+                </div>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 truncate">
+                  {activeWorkers.length > 0
+                    ? `${activeWorkers[0].userName} cronometrando`
+                    : 'Sin cronómetros activos'}
+                </p>
+              </div>
             </div>
-            <p className="text-xs text-[#475569] dark:text-[#94A3B8] mt-1 truncate">
-              {activeWorkers.length > 0
-                ? `${activeWorkers[0].userName} en ${activeWorkers[0].taskName.substring(0, 26)}...`
-                : 'Ningún cronómetro activo'}
-            </p>
-          </div>
 
-          <div>
-            <span className="text-[11px] font-heading font-semibold text-[#475569] dark:text-[#94A3B8] uppercase tracking-wider block">
-              Proyectos al ≥80% Consumo
-            </span>
-            <div className="text-3xl font-heading font-bold text-[#0F172A] dark:text-[#F8FAFC] metric-value mt-1">
-              {projectsInAlert.length} En Observación
+            {/* Métrica 2: En Observación */}
+            <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-xs flex flex-col justify-between">
+              <div className="flex items-center justify-between text-slate-500 dark:text-slate-400 mb-2">
+                <span className="text-xs font-semibold uppercase tracking-wider">
+                  En Observación
+                </span>
+                <AlertTriangle className="w-4 h-4 text-amber-500" />
+              </div>
+              <div>
+                <div className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">
+                  {projectsInAlert.length} {projectsInAlert.length === 1 ? 'Proyecto' : 'Proyectos'}
+                </div>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 truncate">
+                  {projectsInAlert.length > 0
+                    ? '≥80% de horas consumidas'
+                    : 'Todos dentro del margen'}
+                </p>
+              </div>
             </div>
-            <p className="text-xs text-[#475569] dark:text-[#94A3B8] mt-1 truncate">
-              {projectsInAlert.length > 0
-                ? projectsInAlert.map((p) => p.name).join(', ')
-                : 'Todos dentro del presupuesto'}
-            </p>
-          </div>
 
-          <div>
-            <span className="text-[11px] font-heading font-semibold text-[#475569] dark:text-[#94A3B8] uppercase tracking-wider block">
-              Proyección Financiera
-            </span>
-            <div className="text-3xl font-heading font-bold text-[#0F172A] dark:text-[#F8FAFC] metric-value mt-1">
-              100% Auditado
+            {/* Métrica 3: Eficiencia Global */}
+            <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-xs flex flex-col justify-between">
+              <div className="flex items-center justify-between text-slate-500 dark:text-slate-400 mb-2">
+                <span className="text-xs font-semibold uppercase tracking-wider">
+                  Eficiencia Global
+                </span>
+                <TrendingUp className="w-4 h-4 text-emerald-500" />
+              </div>
+              <div>
+                <div className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">
+                  {globalEfficiency}%
+                </div>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 truncate">
+                  {totalActualAllTasks}h auditadas vs. {totalBudgetedAllProjects}h presupuestadas
+                </p>
+              </div>
             </div>
-            <p className="text-xs text-[#475569] dark:text-[#94A3B8] mt-1">
-              Límites de cronómetro activos por colaborador
-            </p>
           </div>
-        </div>
+        )}
       </header>
 
       {/* Aviso cuando TI habilita verificación facial obligatoria */}
@@ -274,7 +293,7 @@ export function SupervisorDashboard({ initialTab }: SupervisorDashboardProps = {
 
       {/* 3. Renderizado de la Vista Seleccionada */}
       {resolvedTab === 'tree' && canSeeTree && (
-        <RayonerTree
+        <ProjectsSupervisionTable
           onOpenTaskModal={(taskId, projectId) =>
             setTaskModalState({ isOpen: true, taskId, projectId })
           }

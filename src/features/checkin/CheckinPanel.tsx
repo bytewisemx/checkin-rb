@@ -5,13 +5,7 @@ import { getEffectiveModules } from '../../services/rbac';
 import {
   MapPin,
   Play,
-  Square,
-  Pause,
-  Briefcase,
-  Building2,
-  CheckSquare,
   RefreshCw,
-  Sparkles,
   ScanFace,
   ShieldCheck,
   Lock,
@@ -23,13 +17,14 @@ import { StartTaskModal } from './StartTaskModal';
 import { EndDayAllocationModal } from './EndDayAllocationModal';
 import { FacialEnrollmentModal } from './FacialEnrollmentModal';
 import { FacialCheckinModal } from './FacialCheckinModal';
-import { PLAY_BUTTON_BASE64 } from '../../assets/playButtonBase64';
+import { loadFaceApiModels } from '../../services/facialBiometrics';
 import { DailyQuoteCard } from '../../components/common/DailyQuoteCard';
 
 export function CheckinPanel() {
   const {
     activeCheckin,
     startCheckin,
+    switchActiveTask,
     endCheckin,
     pauseCheckin,
     resumeCheckin,
@@ -100,10 +95,23 @@ export function CheckinPanel() {
     );
   }, [user, teamMembers]);
 
-  const { durationStr, isOverTime } = useImmutableTimer(
+  // Precarga silenciosa de modelos de visión artificial para verificación express sin esperas
+  useEffect(() => {
+    if (requiresFacialBiometrics) {
+      void loadFaceApiModels();
+    }
+  }, [requiresFacialBiometrics]);
+
+  const { durationStr, isOverTime, secondsElapsed } = useImmutableTimer(
     activeCheckin?.checkInTimeMs || null,
     activeCheckin?.pauses || []
   );
+
+  // Escala de jornada laboral: 10 horas (36,000 segundos) • Círculo ampliado de 420px (r = 185, circunferencia = 1162.39)
+  const TOTAL_WORK_SECONDS = 10 * 3600;
+  const CIRCUMFERENCE = 1162.39;
+  const progressRatio = Math.min(secondsElapsed / TOTAL_WORK_SECONDS, 1);
+  const strokeDashoffset = CIRCUMFERENCE * (1 - progressRatio);
 
   const isCurrentlyPaused = Boolean(
     activeCheckin &&
@@ -205,7 +213,7 @@ export function CheckinPanel() {
     proceedAfterBiometrics({ matchScore: 100 });
   };
 
-  // 5. Confirmar inicio de jornada (con o sin tarea según permisos granulares)
+  // 5. Confirmar inicio de jornada (matutino / primer arranque de check-in)
   const handleConfirmStartWithTask = async (
     selectedTaskId: string | null,
     explicitBio?: { matchScore?: number; distance?: number }
@@ -215,12 +223,27 @@ export function CheckinPanel() {
     const bio = explicitBio || verifiedBiometrics;
 
     const onLocationSuccess = async (lat: number, lng: number, address: string) => {
-      await startCheckin(lat, lng, address, bio?.matchScore, bio?.distance);
+      let initialTaskData: { taskId: string; taskName: string; company?: string } | null = null;
+      const currentUserId = user?.id || currentMember?.id || 'usr-ana';
+
+      if (selectedTaskId && hasTasksModule) {
+        const chosenTask = tasks.find((t) => t.id === selectedTaskId);
+        const chosenProject = projects.find((p) => p.id === chosenTask?.projectId);
+        const chosenClient = clients.find((c) => c.id === chosenProject?.clientId);
+        if (chosenTask) {
+          initialTaskData = {
+            taskId: chosenTask.id,
+            taskName: chosenTask.name,
+            company: chosenClient?.name || chosenProject?.name || 'Russell Bedford',
+          };
+        }
+      }
+
+      await startCheckin(lat, lng, address, bio?.matchScore, bio?.distance, initialTaskData);
       setVerifiedBiometrics(null);
       setIsLocating(false);
 
       if (selectedTaskId && hasTasksModule) {
-        const currentUserId = user?.id || currentMember?.id || 'usr-ana';
         setActiveTaskId(selectedTaskId);
         localStorage.setItem(`rb_active_task_id_${currentUserId}`, selectedTaskId);
 
@@ -229,7 +252,7 @@ export function CheckinPanel() {
         const chosenClient = clients.find((c) => c.id === chosenProject?.clientId);
 
         startWorkerTimer({
-          userId: currentMember?.id || user?.id || 'usr-ana',
+          userId: currentUserId,
           userName: currentMember?.name || user?.name || 'Colaborador',
           taskId: selectedTaskId,
           taskName: chosenTask?.name || 'Tarea activa',
@@ -241,7 +264,6 @@ export function CheckinPanel() {
 
         addToast(`Jornada iniciada. Trabajando en: ${chosenTask?.name}`, 'success');
       } else {
-        const currentUserId = user?.id || currentMember?.id || 'usr-ana';
         setActiveTaskId(null);
         localStorage.removeItem(`rb_active_task_id_${currentUserId}`);
         addToast('Entrada de asistencia registrada correctamente.', 'success');
@@ -264,6 +286,53 @@ export function CheckinPanel() {
         await onLocationSuccess(19.4326, -99.1332, 'Ubicación de Registro');
       }
     );
+  };
+
+  // 6. Cambiar de tarea en jornada activa: Cierra lapso previo y abre nuevo lapso SIN alterar la jornada total
+  const handleSwitchTask = (newTaskId: string | null) => {
+    setIsStartTaskModalOpen(false);
+    const currentUserId = user?.id || currentMember?.id || 'usr-ana';
+
+    if (newTaskId === activeTaskId) return;
+
+    if (newTaskId && hasTasksModule) {
+      const chosenTask = tasks.find((t) => t.id === newTaskId);
+      const chosenProject = projects.find((p) => p.id === chosenTask?.projectId);
+      const chosenClient = clients.find((c) => c.id === chosenProject?.clientId);
+
+      // Cerrar lapso previo y abrir nuevo lapso en el modelo de intervalos de tarea
+      switchActiveTask(
+        chosenTask
+          ? {
+              taskId: chosenTask.id,
+              taskName: chosenTask.name,
+              company: chosenClient?.name || chosenProject?.name || 'Russell Bedford',
+            }
+          : null
+      );
+
+      setActiveTaskId(newTaskId);
+      localStorage.setItem(`rb_active_task_id_${currentUserId}`, newTaskId);
+
+      startWorkerTimer({
+        userId: currentUserId,
+        userName: currentMember?.name || user?.name || 'Colaborador',
+        taskId: newTaskId,
+        taskName: chosenTask?.name || 'Tarea activa',
+        projectName: chosenProject?.name || 'Proyecto',
+        clientName: chosenClient?.name || 'Cliente',
+        startedAtMs: Date.now(),
+        currentDurationStr: '00:00:01',
+      });
+
+      addToast(`Tarea actualizada a: "${chosenTask?.name}". La jornada continúa sumando tiempo.`, 'success');
+    } else {
+      switchActiveTask(null);
+      setActiveTaskId(null);
+      localStorage.removeItem(`rb_active_task_id_${currentUserId}`);
+      stopWorkerTimer(currentUserId);
+      addToast('Jornada continuará en modo general (sin tarea asignada)', 'info');
+    }
   };
 
   const handlePauseToggle = async () => {
@@ -356,13 +425,7 @@ export function CheckinPanel() {
             </span>
           )}
 
-          {activeCheckin && (
-            <span className="text-xs font-heading font-semibold text-blue-700 dark:text-[#38BDF8] flex items-center">
-              <span className="w-2 h-2 rounded-full bg-blue-600 dark:bg-[#38BDF8] animate-pulse mr-1.5" />
-              En Jornada
-            </span>
-          )}
-
+          {/* Indicador discreto de presencia / en línea */}
           <div className="flex items-center" title={isOffline ? 'Sin conexión' : 'En línea'}>
             <div
               className={`w-2.5 h-2.5 rounded-full ${
@@ -380,27 +443,43 @@ export function CheckinPanel() {
 
         {!activeCheckin ? (
           <div className="flex flex-col items-center justify-center space-y-8 animate-fade-in">
+            {/* Botón de Inicio Play Minimalista Estilizado (Outline con esquinas redondeadas idéntico a la referencia visual) */}
             <button
+              id="btn-play-checkin"
               onClick={handlePlayButtonClick}
               disabled={isLocating}
-              className="group relative flex items-center justify-center p-4 transition-all duration-300 active:scale-95 hover:scale-105 disabled:opacity-75 disabled:hover:scale-100 disabled:active:scale-100 cursor-pointer focus:outline-hidden"
+              className="group relative flex items-center justify-center p-8 sm:p-10 rounded-full transition-all duration-300 active:scale-95 hover:scale-105 disabled:opacity-75 disabled:hover:scale-100 disabled:active:scale-100 cursor-pointer focus:outline-hidden"
               aria-label="Iniciar Jornada"
+              title="Iniciar Jornada"
             >
-              <div className="absolute inset-0 rounded-full bg-cyan-400/20 blur-2xl group-hover:bg-cyan-400/35 transition-all duration-500 scale-90 group-hover:scale-115 pointer-events-none" />
-              <div className="absolute inset-4 rounded-full bg-blue-600/10 blur-xl group-hover:bg-blue-600/25 transition-all duration-500 pointer-events-none" />
+              {/* Resplandor y halo sutil de fondo al hover */}
+              <div className="absolute inset-0 rounded-full bg-slate-200/50 dark:bg-slate-800/40 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
 
-              <div className="relative z-10 flex items-center justify-center">
-                <img
-                  src={PLAY_BUTTON_BASE64}
-                  alt="Iniciar Check-in"
-                  className="w-40 h-40 sm:w-52 sm:h-52 object-contain drop-shadow-[0_20px_35px_rgba(13,92,117,0.32)] group-hover:drop-shadow-[0_25px_45px_rgba(14,165,233,0.48)] transition-all duration-300 select-none pointer-events-none"
-                  draggable={false}
+              {/* Triángulo equilátero estilizado idéntico a la referencia visual (outline con esquinas curvas filleted y sombra flotante) */}
+              <svg 
+                className="w-32 h-32 sm:w-40 sm:h-40 text-[#0B253A] dark:text-white drop-shadow-[2px_14px_22px_rgba(11,37,58,0.32)] dark:drop-shadow-[2px_14px_22px_rgba(0,0,0,0.7)] transition-all duration-300 select-none" 
+                viewBox="0 0 100 100" 
+                fill="none"
+              >
+                <path 
+                  d="M 32 30.5
+                     A 7 7 0 0 1 42.5 24.5
+                     L 75.5 44
+                     A 7 7 0 0 1 75.5 56
+                     L 42.5 75.5
+                     A 7 7 0 0 1 32 69.5
+                     Z"
+                  stroke="currentColor" 
+                  strokeWidth="6.5" 
+                  strokeLinejoin="round" 
+                  strokeLinecap="round"
+                  fill="none"
                 />
-              </div>
+              </svg>
 
               {isLocating && (
-                <div className="absolute inset-0 flex items-center justify-center z-20 bg-white/40 rounded-full backdrop-blur-2xs">
-                  <RefreshCw className="w-12 h-12 text-[#0D5C75] animate-spin" />
+                <div className="absolute inset-0 flex items-center justify-center z-20 bg-white/70 dark:bg-slate-900/70 rounded-full backdrop-blur-xs">
+                  <RefreshCw className="w-12 h-12 text-blue-600 dark:text-sky-400 animate-spin" />
                 </div>
               )}
             </button>
@@ -417,127 +496,128 @@ export function CheckinPanel() {
             </div>
           </div>
         ) : (
-          <div className="flex flex-col items-center w-full space-y-10 max-w-2xl">
-            {/* Banner de Tarea Activa (solo si el módulo tasks está habilitado) */}
-            {hasTasksModule && (
-              <div className="w-full">
-                {activeTask ? (
-                  <div className="bg-[#131D31] rounded-md p-4 border border-[#233354] shadow-xs flex items-center justify-between gap-3 animate-fade-in text-[#F8FAFC]">
-                    <div className="flex items-center space-x-3 min-w-0">
-                      <div className="w-9 h-9 rounded-md bg-[#1E40AF]/20 text-[#38BDF8] flex items-center justify-center shrink-0 border border-[#1E40AF]/40">
-                        <CheckSquare className="w-4 h-4 text-[#38BDF8]" />
-                      </div>
-                      <div className="min-w-0">
-                        <div className="flex items-center space-x-2">
-                          <span className="text-[10px] font-heading font-bold uppercase tracking-wider text-[#38BDF8] flex items-center">
-                            <span className="w-1.5 h-1.5 rounded-full bg-[#38BDF8] animate-pulse mr-1" />
-                            Cronometrando Tarea Activa
-                          </span>
-                        </div>
-                        <h4 className="text-sm font-semibold text-[#F8FAFC] truncate">
-                          {activeTask.name}
-                        </h4>
-                        <div className="flex items-center space-x-2 text-[11px] text-[#94A3B8] mt-0.5">
-                          <span className="flex items-center truncate">
-                            <Building2 className="w-3 h-3 mr-1 text-[#38BDF8]" />
-                            {activeClient?.name || 'Cliente'}
-                          </span>
-                          <span>•</span>
-                          <span className="flex items-center truncate">
-                            <Briefcase className="w-3 h-3 mr-1 text-[#94A3B8]" />
-                            {activeProject?.name || 'Proyecto'}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
+          <div className="flex flex-col items-center justify-center w-full max-w-2xl animate-fade-in py-2">
+            {/* Círculo Ampliado y Dinámico (viewBox 420x420, r=185) */}
+            <div className="relative w-84 h-84 sm:w-96 sm:h-96 md:w-[420px] md:h-[420px] flex items-center justify-center">
+              <svg className="w-full h-full transform -rotate-90" viewBox="0 0 420 420">
+                {/* Pista base */}
+                <circle
+                  cx="210"
+                  cy="210"
+                  r="185"
+                  className="text-slate-100 dark:text-slate-800"
+                  stroke="currentColor"
+                  strokeWidth="6"
+                  fill="transparent"
+                />
+                {/* Progreso activo (azul institucional / estado de pausa o exceso) */}
+                <circle
+                  id="progress-circle"
+                  cx="210"
+                  cy="210"
+                  r="185"
+                  className={`transition-all duration-1000 ease-linear ${
+                    isCurrentlyPaused
+                      ? 'text-amber-500'
+                      : isOverTime
+                      ? 'text-rose-500'
+                      : 'text-blue-600 dark:text-[#38BDF8]'
+                  }`}
+                  stroke="currentColor"
+                  strokeWidth="6"
+                  strokeLinecap="round"
+                  fill="transparent"
+                  strokeDasharray="1162.39"
+                  strokeDashoffset={strokeDashoffset}
+                />
+              </svg>
 
-                    <button
-                      onClick={() => setIsStartTaskModalOpen(true)}
-                      className="shrink-0 flex items-center space-x-1 text-xs font-heading font-semibold text-white bg-[#1E40AF] hover:bg-[#1D4ED8] border border-[#1E40AF] px-3 py-1.5 rounded-md transition-colors cursor-pointer"
-                    >
-                      <RefreshCw className="w-3.5 h-3.5" />
-                      <span className="hidden sm:inline">Cambiar Tarea</span>
-                    </button>
-                  </div>
-                ) : (
-                  <div className="bg-[#131D31] rounded-md p-3.5 border border-[#233354] flex items-center justify-between gap-3 animate-fade-in text-[#F8FAFC]">
-                    <div className="flex items-center space-x-2.5 text-xs text-[#94A3B8] min-w-0">
-                      <Sparkles className="w-4 h-4 text-[#38BDF8] shrink-0" />
-                      <span className="truncate font-medium">
-                        Jornada en modo general (distribuirás tus horas al finalizar el día)
+              {/* Información Central Integrada (Sin recuadros) */}
+              <div className="absolute flex flex-col items-center text-center px-6 max-w-full">
+                {/* Tiempo Principal con Tipografía Limpia Tabular */}
+                <div
+                  id="timer-display"
+                  className={`text-6xl sm:text-7xl font-extrabold tracking-tight font-sans tabular-nums mb-3 ${
+                    isOverTime && !isCurrentlyPaused
+                      ? 'text-rose-500'
+                      : 'text-slate-900 dark:text-white'
+                  }`}
+                >
+                  {durationStr}
+                </div>
+
+                {/* Tarea Activa Minimalista e Interactiva (Clic para cambiar de tarea) */}
+                {hasTasksModule && (
+                  <button
+                    id="btn-trigger-task-modal"
+                    type="button"
+                    onClick={() => setIsStartTaskModalOpen(true)}
+                    className="group flex flex-col items-center p-2 rounded-xl hover:bg-slate-100/60 dark:hover:bg-slate-800/60 transition-colors cursor-pointer max-w-[280px]"
+                    title="Clic para cambiar de tarea"
+                  >
+                    <div className="flex items-center gap-1.5 text-sm font-semibold text-slate-700 dark:text-slate-300 group-hover:text-blue-600 dark:group-hover:text-[#38BDF8] transition-colors">
+                      <span className="truncate">
+                        {activeTask ? activeTask.name : 'Vincular tarea a la jornada'}
                       </span>
+                      <svg
+                        className="w-3.5 h-3.5 text-slate-400 group-hover:text-blue-600 dark:group-hover:text-[#38BDF8] shrink-0 transition-transform group-hover:rotate-180"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth="2"
+                          d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                        />
+                      </svg>
                     </div>
-
-                    <button
-                      onClick={() => setIsStartTaskModalOpen(true)}
-                      className="shrink-0 text-xs font-heading font-semibold text-[#38BDF8] hover:text-[#F8FAFC] cursor-pointer"
-                    >
-                      + Vincular Tarea Ahora
-                    </button>
-                  </div>
+                    {activeClient && (
+                      <span className="text-xs text-slate-400 dark:text-slate-500 font-normal truncate mt-0.5">
+                        {activeClient.name} {activeProject ? `• ${activeProject.name}` : ''}
+                      </span>
+                    )}
+                  </button>
                 )}
-              </div>
-            )}
-
-            {/* Reloj Digital Minimalista */}
-            <div className="flex flex-col items-center">
-              <div
-                className={`text-xs font-heading font-bold mb-3 uppercase tracking-[0.25em] ${
-                  isCurrentlyPaused
-                    ? 'text-[#F59E0B]'
-                    : isOverTime
-                    ? 'text-[#E11D48] animate-pulse'
-                    : 'text-[#94A3B8]'
-                }`}
-              >
-                {isCurrentlyPaused ? 'Pausa' : isOverTime ? 'Exceso' : 'Transcurrido'}
-              </div>
-              <div
-                className={`text-7xl sm:text-[120px] leading-none font-heading font-bold tabular-nums tracking-tighter ${
-                  isOverTime && !isCurrentlyPaused ? 'text-[#E11D48]' : 'text-[#F8FAFC]'
-                }`}
-              >
-                {durationStr}
               </div>
             </div>
 
-            {/* Controles de Pausa y Fin */}
-            <div className="flex gap-12 sm:gap-24">
+            {/* Controles Inferiores Minimalistas (Botones Circulares Refinados) */}
+            <div className="flex items-center gap-5 mt-8 mb-4">
+              {/* Pausa / Reanudar */}
               <button
                 onClick={handlePauseToggle}
-                className="flex flex-col items-center justify-center text-[#94A3B8] hover:text-[#F8FAFC] transition-colors active:scale-95 cursor-pointer"
+                className={`w-12 h-12 rounded-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 shadow-xs transition-all flex items-center justify-center active:scale-95 cursor-pointer ${
+                  isCurrentlyPaused ? 'text-amber-500 border-amber-300 dark:border-amber-600/60' : ''
+                }`}
+                title={isCurrentlyPaused ? 'Reanudar jornada' : 'Pausar jornada'}
+                aria-label={isCurrentlyPaused ? 'Reanudar' : 'Pausar'}
               >
-                <div
-                  className={`p-3.5 rounded-md mb-2.5 border ${
-                    isCurrentlyPaused
-                      ? 'bg-[#1E40AF] text-white border-[#1E40AF]'
-                      : 'bg-[#1A2742] text-[#F8FAFC] border-[#233354] hover:border-[#38BDF8]'
-                  }`}
-                >
-                  {isCurrentlyPaused ? (
-                    <Play className="w-7 h-7 fill-current text-white" />
-                  ) : (
-                    <Pause className="w-7 h-7 fill-current text-current" />
-                  )}
-                </div>
-                <span className="text-xs font-heading font-semibold uppercase tracking-wider">
-                  {isCurrentlyPaused ? 'Reanudar' : 'Pausa'}
-                </span>
+                {isCurrentlyPaused ? (
+                  <Play className="w-5 h-5 fill-current ml-0.5" />
+                ) : (
+                  <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z" />
+                  </svg>
+                )}
               </button>
 
+              {/* Detener / Finalizar */}
               <button
                 onClick={handleEndButtonClick}
-                className="flex flex-col items-center justify-center text-[#E11D48]/80 hover:text-[#E11D48] transition-colors active:scale-95 cursor-pointer"
+                className="w-12 h-12 rounded-full border border-red-100 dark:border-rose-900/40 bg-red-50/60 dark:bg-rose-950/30 hover:bg-red-100 dark:hover:bg-rose-900/50 text-red-600 dark:text-rose-400 transition-all flex items-center justify-center active:scale-95 cursor-pointer shadow-xs"
+                title="Finalizar jornada"
+                aria-label="Finalizar jornada"
               >
-                <div className="p-3.5 bg-[#1A2742] text-[#E11D48] border border-[#E11D48]/30 rounded-md mb-2.5 hover:bg-[#E11D48]/10 transition-colors">
-                  <Square className="w-7 h-7 fill-current" />
-                </div>
-                <span className="text-xs font-heading font-semibold uppercase tracking-wider">Fin</span>
+                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                  <rect x="5" y="5" width="14" height="14" rx="2.5" />
+                </svg>
               </button>
             </div>
 
             {/* Ubicación y Validación Vectorial en diseño abierto */}
-            <div className="flex flex-col sm:flex-row items-center gap-4 text-xs font-medium text-slate-500 dark:text-[#94A3B8] tracking-wide">
+            <div className="flex flex-col sm:flex-row items-center gap-4 text-xs font-medium text-slate-500 dark:text-[#94A3B8] tracking-wide mt-2">
               <div className="flex items-center">
                 <MapPin className="w-3.5 h-3.5 mr-1.5 text-blue-700 dark:text-[#38BDF8]" />
                 <span>{activeCheckin?.address ? activeCheckin.address : 'Ubicación Registrada'}</span>
@@ -570,7 +650,13 @@ export function CheckinPanel() {
           <StartTaskModal
             isOpen={isStartTaskModalOpen}
             onClose={() => setIsStartTaskModalOpen(false)}
-            onSelectTaskAndStart={(taskId) => handleConfirmStartWithTask(taskId)}
+            onSelectTaskAndStart={(taskId) => {
+              if (activeCheckin) {
+                handleSwitchTask(taskId);
+              } else {
+                void handleConfirmStartWithTask(taskId);
+              }
+            }}
           />
 
           <EndDayAllocationModal

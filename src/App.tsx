@@ -17,6 +17,7 @@ import { KanbanBoard } from './features/projects/KanbanBoard';
 // Componentes UI Globales
 import { ToastContainer } from './components/common/ToastContainer';
 import { GlobalHeader } from './components/common/GlobalHeader';
+import { CheckinLoader } from './components/common/CheckinLoader';
 
 interface EmployeeDashboardProps {
   initialTab?: 'checkin' | 'projects';
@@ -219,9 +220,12 @@ function ModuleProtectedRoute({
 }
 
 export default function App() {
+  const { globalLoading } = useCheckinStore();
+
   return (
     <>
       <ToastContainer />
+      {globalLoading?.active && <CheckinLoader text={globalLoading.message} />}
       <Router basename={import.meta.env.BASE_URL}>
         <Routes>
           <Route path="/login" element={<AuthPage />} />

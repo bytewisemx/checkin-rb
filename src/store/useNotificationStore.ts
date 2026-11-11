@@ -45,9 +45,9 @@ interface NotificationState {
   getNotificationsForRecipient: (userId?: string, role?: string) => AppNotification[];
   getUnreadCountForUser: (userId?: string, role?: string) => number;
   markAsRead: (id: string) => void;
-  markAllAsRead: (userId?: string) => void;
+  markAllAsRead: (userId?: string, role?: string) => void;
   clearNotification: (id: string) => void;
-  clearAll: (userId?: string) => void;
+  clearAll: (userId?: string, role?: string, targetIds?: string[]) => void;
 }
 
 const INITIAL_NOTIFICATIONS: AppNotification[] = [
@@ -91,6 +91,33 @@ const notifChannel =
     ? new BroadcastChannel('rb_notifications_realtime_channel')
     : null;
 
+export function isNotificationForUser(
+  n: AppNotification,
+  userId?: string,
+  role?: string
+): boolean {
+  if (!userId) return true;
+  const normRole = (role || '').toUpperCase();
+  // RH tiene bloqueado el módulo de tareas/notificaciones de tareas
+  if (normRole === 'RH') return false;
+  if (normRole === 'TI') return true;
+
+  if (!n.recipient_id || n.recipient_id === 'all') return true;
+  if (n.recipient_id === userId) return true;
+  // Compatibilidad con cuentas demo de supervisor ('admin-99' / 'sup-1')
+  if (normRole === 'SUPERVISOR' && (n.recipient_id === 'admin-99' || n.recipient_id === 'sup-1')) {
+    return true;
+  }
+  // Compatibilidad con cuenta demo de empleado ('usr-ana')
+  if (
+    (normRole === 'EMPLEADO' || normRole === 'EMPLOYEE') &&
+    (n.recipient_id === 'usr-ana' || userId === 'usr-ana')
+  ) {
+    return true;
+  }
+  return false;
+}
+
 export const useNotificationStore = create<NotificationState>()(
   persist(
     (set, get) => ({
@@ -131,24 +158,7 @@ export const useNotificationStore = create<NotificationState>()(
       getNotificationsForUser: (userId, role) => {
         const all = get().notifications;
         if (!userId) return all;
-        const normRole = (role || '').toUpperCase();
-        // RH tiene bloqueado el módulo de tareas/notificaciones de tareas
-        if (normRole === 'RH') return [];
-        if (normRole === 'TI') return all;
-
-        return all.filter((n) => {
-          if (!n.recipient_id || n.recipient_id === 'all') return true;
-          if (n.recipient_id === userId) return true;
-          // Compatibilidad con cuentas demo de supervisor ('admin-99' / 'sup-1')
-          if (normRole === 'SUPERVISOR' && (n.recipient_id === 'admin-99' || n.recipient_id === 'sup-1')) {
-            return true;
-          }
-          // Compatibilidad con cuenta demo de empleado ('usr-ana')
-          if ((normRole === 'EMPLEADO' || normRole === 'EMPLOYEE') && n.recipient_id === 'usr-ana' && userId === 'usr-ana') {
-            return true;
-          }
-          return false;
-        });
+        return all.filter((n) => isNotificationForUser(n, userId, role));
       },
 
       getUnreadCountForUser: (userId, role) => {
@@ -178,10 +188,10 @@ export const useNotificationStore = create<NotificationState>()(
         }
       },
 
-      markAllAsRead: (userId) => {
+      markAllAsRead: (userId, role) => {
         set((state) => {
           const updated = state.notifications.map((n) =>
-            !userId || n.recipient_id === userId || n.recipient_id === 'all'
+            !userId || isNotificationForUser(n, userId, role)
               ? { ...n, read: true }
               : n
           );
@@ -212,11 +222,17 @@ export const useNotificationStore = create<NotificationState>()(
         }
       },
 
-      clearAll: (userId) => {
+      clearAll: (userId, role, targetIds) => {
         set((state) => {
-          const updated = userId
-            ? state.notifications.filter((n) => n.recipient_id !== userId && n.recipient_id !== 'all')
-            : [];
+          let updated: AppNotification[];
+          if (targetIds && targetIds.length > 0) {
+            const idSet = new Set(targetIds);
+            updated = state.notifications.filter((n) => !idSet.has(n.id));
+          } else if (userId) {
+            updated = state.notifications.filter((n) => !isNotificationForUser(n, userId, role));
+          } else {
+            updated = [];
+          }
           return {
             notifications: updated,
             unreadCount: updated.filter((n) => !n.read).length,

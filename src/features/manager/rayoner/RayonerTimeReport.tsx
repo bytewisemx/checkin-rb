@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { 
   Download, 
-  Filter, FileSpreadsheet, Printer, TrendingUp
+  FileSpreadsheet, Printer, TrendingUp
 } from 'lucide-react';
 import { useRayonerStore } from '../../../store/useRayonerStore';
 import { useCheckinStore } from '../../../store/useCheckinStore';
@@ -187,22 +187,25 @@ export function RayonerTimeReport({ initialProjectId }: RayonerTimeReportProps) 
     }
   };
 
+  const handlePrint = () => {
+    window.print();
+  };
+
   return (
     <div className="w-full space-y-6 animate-fade-in text-slate-900 dark:text-slate-100">
       
-      {/* 1. Selector de Proyecto y Grupo de Botones de Exportación Sobrios */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white dark:bg-[#101726] p-4 border border-slate-200 dark:border-slate-800">
-        <div className="flex items-center space-x-3 flex-wrap gap-y-2">
-          <Filter className="w-4 h-4 text-slate-400" />
-          <span className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider">
+      {/* 1. Selector de Proyecto y Botones de Exportación con Alto Contraste y Accesibilidad */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-100 dark:border-slate-800 shadow-sm">
+        <div className="flex items-center gap-2 flex-1 max-w-md">
+          <span className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 shrink-0">
             Proyecto:
           </span>
           <select
             value={selectedProjectId}
-            onChange={e => setSelectedProjectId(e.target.value)}
-            className="border border-slate-300 dark:border-slate-700 rounded px-3 py-1.5 text-xs font-bold text-slate-900 dark:text-slate-100 bg-slate-50 dark:bg-[#0B111E] focus:outline-none focus:border-blue-600 dark:focus:border-sky-400"
+            onChange={(e) => setSelectedProjectId(e.target.value)}
+            className="w-full text-xs font-medium py-2 px-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 outline-none focus:border-blue-600 transition cursor-pointer"
           >
-            {projects.map(p => (
+            {projects.map((p) => (
               <option key={p.id} value={p.id}>
                 {p.name} ({p.code})
               </option>
@@ -210,64 +213,80 @@ export function RayonerTimeReport({ initialProjectId }: RayonerTimeReportProps) 
           </select>
         </div>
 
-        {/* Button Group Sobrio en Gris Pizarra (bg-slate-800) */}
-        <div className="inline-flex rounded-md shadow-xs" role="group">
+        {/* Botones de Exportación Homogéneos y Accesibles */}
+        <div className="flex items-center gap-2 shrink-0">
+          {/* Imprimir */}
           <button
             type="button"
-            onClick={handleExportPDF}
-            className="flex items-center px-3.5 py-1.5 text-xs font-medium text-slate-200 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-l transition-colors cursor-pointer"
-            title="Descargar informe oficial en PDF"
+            onClick={handlePrint}
+            className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700 rounded-lg transition-colors cursor-pointer"
+            title="Imprimir reporte"
           >
-            <Printer className="w-3.5 h-3.5 mr-1.5 text-slate-400" />
-            PDF
+            <Printer className="w-4 h-4 text-slate-500 dark:text-slate-400" />
+            <span>Imprimir</span>
           </button>
+
+          {/* Exportar Excel */}
           <button
             type="button"
             onClick={handleExportExcel}
-            className="flex items-center px-3.5 py-1.5 text-xs font-medium text-slate-200 bg-slate-800 hover:bg-slate-700 border-t border-b border-r border-slate-700 transition-colors cursor-pointer"
-            title="Descargar libro de cálculo en Excel"
+            className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700 rounded-lg transition-colors cursor-pointer"
+            title="Exportar a Excel"
           >
-            <FileSpreadsheet className="w-3.5 h-3.5 mr-1.5 text-slate-400" />
-            Excel
+            <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
+            <span>Excel</span>
           </button>
+
+          {/* Exportar CSV */}
           <button
             type="button"
             onClick={handleExportCSV}
-            className="flex items-center px-3.5 py-1.5 text-xs font-medium text-slate-200 bg-slate-800 hover:bg-slate-700 border-t border-b border-r border-slate-700 rounded-r transition-colors cursor-pointer"
+            className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700 rounded-lg transition-colors cursor-pointer"
             title="Exportar archivo CSV plano"
           >
-            <Download className="w-3.5 h-3.5 mr-1.5 text-slate-400" />
-            CSV
+            <Download className="w-4 h-4 text-slate-500 dark:text-slate-400" />
+            <span>CSV</span>
+          </button>
+
+          {/* Descargar PDF */}
+          <button
+            type="button"
+            onClick={handleExportPDF}
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-sm transition-colors cursor-pointer"
+            title="Descargar informe oficial en PDF"
+          >
+            <Download className="w-4 h-4" />
+            <span>Exportar PDF</span>
           </button>
         </div>
       </div>
 
       {/* 2. Panel Superior de Analítica y Rendimiento por Periodos */}
-      <div className="bg-white dark:bg-[#101726] border border-slate-200 dark:border-slate-800 p-6 space-y-6">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 dark:border-slate-800 pb-4">
+      <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl p-6 space-y-6 shadow-sm">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 dark:border-slate-800 pb-4">
           <div>
             <div className="flex items-center space-x-2">
-              <TrendingUp className="w-4 h-4 text-[#1D4ED8] dark:text-sky-400" />
-              <h3 className="text-sm font-bold font-heading uppercase tracking-wider text-slate-900 dark:text-slate-100">
+              <TrendingUp className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+              <h3 className="text-sm font-bold uppercase tracking-wider text-slate-900 dark:text-slate-100">
                 Analítica de Rendimiento y Desviación Temporal
               </h3>
             </div>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-              Métricas analíticas calculadas sobre las horas sexagesimales reales reportadas en el periodo.
+              Métricas calculadas sobre las horas registradas en el periodo seleccionado.
             </p>
           </div>
 
           <div className="flex items-center space-x-2 flex-wrap">
             <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">Periodo:</span>
-            <div className="inline-flex rounded border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-[#0B111E] p-0.5">
+            <div className="inline-flex rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 p-0.5">
               {(['semanal', 'quincenal', 'mensual', 'personalizado'] as AnalyticsPeriod[]).map(p => (
                 <button
                   key={p}
                   type="button"
                   onClick={() => setPeriod(p)}
-                  className={`px-2.5 py-1 text-xs font-medium capitalize rounded transition-colors cursor-pointer ${
+                  className={`px-2.5 py-1 text-xs font-medium capitalize rounded-md transition-colors cursor-pointer ${
                     period === p
-                      ? 'bg-[#1D4ED8] text-white'
+                      ? 'bg-blue-600 text-white shadow-xs'
                       : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
                   }`}
                 >
@@ -296,54 +315,54 @@ export function RayonerTimeReport({ initialProjectId }: RayonerTimeReportProps) 
           </div>
         </div>
 
-        {/* KPIs de Rendimiento Clave */}
+        {/* KPIs de Rendimiento Clave en Tarjetas Neutras */}
         <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
-          <div className="bg-slate-50 dark:bg-[#0B111E] p-4 border border-slate-200 dark:border-slate-800">
+          <div className="bg-slate-50/70 dark:bg-slate-800/40 p-4 rounded-xl border border-slate-100 dark:border-slate-800">
             <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">
               Promedio Diario / Colaborador
             </span>
-            <div className="text-2xl font-bold font-heading text-slate-900 dark:text-white mt-1">
+            <div className="text-2xl font-bold text-slate-900 dark:text-white mt-1">
               {formatHoursToSexagesimal(analyticsData.dailyAveragePerCollaborator)}
             </div>
-            <span className="text-[11px] text-slate-500 font-mono mt-1 block">
+            <span className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 block">
               {analyticsData.activeCollaboratorsCount} colaboradores activos
             </span>
           </div>
 
-          <div className="bg-slate-50 dark:bg-[#0B111E] p-4 border border-slate-200 dark:border-slate-800">
+          <div className="bg-slate-50/70 dark:bg-slate-800/40 p-4 rounded-xl border border-slate-100 dark:border-slate-800">
             <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">
               Tasa de Desviación
             </span>
-            <div className={`text-2xl font-bold font-heading mt-1 ${
-              analyticsData.estimationDeviationRate > 0 ? 'text-rose-400' : 'text-slate-900 dark:text-white'
+            <div className={`text-2xl font-bold mt-1 ${
+              analyticsData.estimationDeviationRate > 0 ? 'text-rose-500' : 'text-slate-900 dark:text-white'
             }`}>
               {analyticsData.estimationDeviationRate > 0 ? `+${analyticsData.estimationDeviationRate}%` : `${analyticsData.estimationDeviationRate}%`}
             </div>
-            <span className="text-[11px] text-slate-500 font-mono mt-1 block">
+            <span className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 block">
               {analyticsData.estimationDeviationRate > 0 ? 'Excediendo estimación inicial' : 'Dentro del rango planeado'}
             </span>
           </div>
 
-          <div className="bg-slate-50 dark:bg-[#0B111E] p-4 border border-slate-200 dark:border-slate-800">
+          <div className="bg-slate-50/70 dark:bg-slate-800/40 p-4 rounded-xl border border-slate-100 dark:border-slate-800">
             <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">
               Pico de Productividad
             </span>
-            <div className="text-2xl font-bold font-heading text-slate-900 dark:text-slate-200 mt-1">
+            <div className="text-2xl font-bold text-slate-900 dark:text-slate-200 mt-1">
               {analyticsData.peakProductivityWindow}
             </div>
-            <span className="text-[11px] text-slate-500 font-mono mt-1 block">
+            <span className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 block">
               Mayor imputación de avances
             </span>
           </div>
 
-          <div className="bg-slate-50 dark:bg-[#0B111E] p-4 border border-slate-200 dark:border-slate-800">
+          <div className="bg-slate-50/70 dark:bg-slate-800/40 p-4 rounded-xl border border-slate-100 dark:border-slate-800">
             <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">
               Distribución de Carga
             </span>
-            <div className="text-2xl font-bold font-heading text-[#1D4ED8] dark:text-sky-400 mt-1">
+            <div className="text-2xl font-bold text-blue-600 dark:text-blue-400 mt-1">
               {analyticsData.distribution[0]?.percentage || 100}% máx
             </div>
-            <span className="text-[11px] text-slate-500 font-mono mt-1 block truncate">
+            <span className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 block truncate">
               Líder: {analyticsData.distribution[0]?.name || 'Equipo'}
             </span>
           </div>

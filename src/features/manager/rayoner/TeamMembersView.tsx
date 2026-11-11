@@ -1,8 +1,16 @@
 import { useState, useMemo } from 'react';
-import { ChevronDown } from 'lucide-react';
+import { 
+  Users, 
+  Clock, 
+  CheckCircle2, 
+  AlertCircle, 
+  SlidersHorizontal, 
+  ChevronDown, 
+  Search,
+  Check
+} from 'lucide-react';
 import { useRayonerStore } from '../../../store/useRayonerStore';
 import { useCheckinStore } from '../../../store/useCheckinStore';
-import { formatHoursToSexagesimal } from '../../../utils/timeFormat';
 
 interface TeamMembersViewProps {
   onNavigateToTree?: () => void;
@@ -69,138 +77,177 @@ export function TeamMembersView({ onNavigateToTree }: TeamMembersViewProps) {
   const biometricIncidentsCount = 0;
 
   return (
-    <div className="space-y-6 py-4 animate-fade-in">
-      {/* 1. Métricas Rápidas en Tipografía Space Grotesk (Minimalistas, sin recuadros pesados) */}
-      <div className="grid grid-cols-1 sm:grid-cols-4 gap-6 pb-6 border-b border-slate-200 dark:border-slate-800">
-        <div>
-          <div className="text-xs uppercase tracking-wider text-slate-600 dark:text-slate-400">
-            En Turno Activo
-          </div>
-          <div className="text-2xl font-bold font-heading text-slate-900 dark:text-white mt-1">
-            {activeCount}{' '}
-            <span className="text-sm font-normal text-slate-500 dark:text-slate-400">
-              / {teamMembers.length} miembros
+    <div className="space-y-6 animate-fade-in">
+      {/* 1. KPIs de Asistencia: Fila compacta y limpia de tarjetas neutras */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* KPI 1: En Turno Activo */}
+        <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-100 dark:border-slate-800 p-4 shadow-xs flex flex-col justify-between">
+          <div className="flex items-center justify-between text-slate-500 dark:text-slate-400 mb-1">
+            <span className="text-xs font-semibold uppercase tracking-wider">
+              En Turno Activo
             </span>
+            <Users className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+          </div>
+          <div>
+            <div className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight flex items-center gap-2">
+              <span>{activeCount}</span>
+              <span className="text-xs font-normal text-slate-400">
+                de {teamMembers.length} miembros
+              </span>
+            </div>
+            <p className="text-[11px] text-emerald-600 dark:text-emerald-400 mt-1 font-medium flex items-center gap-1">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+              Colaboradores con jornada iniciada
+            </p>
           </div>
         </div>
 
-        <div>
-          <div className="text-xs uppercase tracking-wider text-slate-600 dark:text-slate-400">
-            Entradas Registradas Hoy
-          </div>
-          <div className="text-2xl font-bold font-heading text-slate-900 dark:text-slate-200 mt-1">
-            {activeCount}{' '}
-            <span className="text-sm font-normal text-slate-500 dark:text-slate-400">
-              ({pendingCheckinCount} pendientes)
+        {/* KPI 2: Entradas Registradas Hoy */}
+        <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-100 dark:border-slate-800 p-4 shadow-xs flex flex-col justify-between">
+          <div className="flex items-center justify-between text-slate-500 dark:text-slate-400 mb-1">
+            <span className="text-xs font-semibold uppercase tracking-wider">
+              Entradas Hoy
             </span>
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+          </div>
+          <div>
+            <div className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">
+              {activeCount}
+            </div>
+            <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
+              {pendingCheckinCount} pendientes de ingreso
+            </p>
           </div>
         </div>
 
-        <div>
-          <div className="text-xs uppercase tracking-wider text-slate-600 dark:text-slate-400">
-            Total Horas Turno
+        {/* KPI 3: Total Horas Turno */}
+        <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-100 dark:border-slate-800 p-4 shadow-xs flex flex-col justify-between">
+          <div className="flex items-center justify-between text-slate-500 dark:text-slate-400 mb-1">
+            <span className="text-xs font-semibold uppercase tracking-wider">
+              Total Horas Turno
+            </span>
+            <Clock className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
           </div>
-          <div className="text-2xl font-bold font-heading text-slate-900 dark:text-slate-200 mt-1">
-            {totalShiftHours} hrs
+          <div>
+            <div className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">
+              {totalShiftHours} hrs
+            </div>
+            <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
+              Tiempo acumulado hoy en el equipo
+            </p>
           </div>
         </div>
 
-        <div>
-          <div className="text-xs uppercase tracking-wider text-slate-600 dark:text-slate-400">
-            Incidencias Biométricas
+        {/* KPI 4: Incidencias */}
+        <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-100 dark:border-slate-800 p-4 shadow-xs flex flex-col justify-between">
+          <div className="flex items-center justify-between text-slate-500 dark:text-slate-400 mb-1">
+            <span className="text-xs font-semibold uppercase tracking-wider">
+              Incidencias
+            </span>
+            <AlertCircle className="w-4 h-4 text-slate-400" />
           </div>
-          <div className="text-2xl font-bold font-heading text-slate-900 dark:text-slate-200 mt-1">
-            {biometricIncidentsCount}
+          <div>
+            <div className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">
+              {biometricIncidentsCount}
+            </div>
+            <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
+              0 retardos o fallas biométricas
+            </p>
           </div>
         </div>
       </div>
 
-      {/* 2. Barra de Filtro y Búsqueda Sobria */}
-      <div className="flex flex-wrap items-center justify-between gap-4 pb-2">
-        <div className="flex flex-wrap items-center gap-3">
+      {/* 2. Barra de Filtros y Búsqueda */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="relative flex-1 max-w-md">
+          <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
           <input
             type="text"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="Buscar miembro del equipo por nombre o correo..."
-            className="bg-white dark:bg-[#0B111E] text-slate-900 dark:text-slate-200 text-sm border border-slate-300 dark:border-slate-700 px-3 py-1.5 rounded focus:outline-none focus:border-blue-600 dark:focus:border-sky-400 placeholder:text-slate-500 min-w-[260px]"
+            placeholder="Buscar colaborador por nombre, correo o cargo..."
+            className="w-full pl-10 pr-4 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 placeholder-slate-400 outline-none focus:border-blue-600 transition"
           />
+        </div>
 
+        <div className="flex items-center gap-2">
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value as 'all' | 'active' | 'pending')}
-            className="bg-white dark:bg-[#0B111E] text-slate-700 dark:text-slate-300 text-sm border border-slate-300 dark:border-slate-700 px-3 py-1.5 rounded focus:outline-none focus:border-blue-600 dark:focus:border-sky-400"
+            className="text-xs font-medium py-2 px-3 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 outline-none cursor-pointer focus:border-blue-600"
           >
-            <option value="all">Todos los miembros ({teamMembers.length})</option>
+            <option value="all">Todos los colaboradores ({teamMembers.length})</option>
             <option value="active">En Jornada ({activeCount})</option>
-            <option value="pending">Pendientes de Check-in ({pendingCheckinCount})</option>
+            <option value="pending">Fuera de Turno ({pendingCheckinCount})</option>
           </select>
         </div>
-
-        <span className="text-xs text-slate-600 dark:text-slate-400">
-          Haz clic en una fila para gestionar permisos de clientes y tareas asignadas
-        </span>
       </div>
 
-      {/* 3. Tabla de Asistencia del Equipo del Supervisor */}
-      <div className="overflow-x-auto">
-        <table className="w-full text-left text-sm border-collapse">
-          <thead>
-            <tr className="border-b border-slate-200 dark:border-slate-800 text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400">
-              <th className="py-3 px-4">Colaborador</th>
-              <th className="py-3 px-4">Estado</th>
-              <th className="py-3 px-4">Hora Entrada</th>
-              <th className="py-3 px-4">Validación Facial</th>
-              <th className="py-3 px-4 text-right">Tiempo Hoy</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-200 dark:divide-slate-800/60 text-slate-700 dark:text-slate-300">
-            {filteredMembers.length === 0 ? (
-              <tr>
-                <td
-                  colSpan={5}
-                  className="py-8 px-4 text-center text-xs text-slate-600 dark:text-slate-400"
-                >
-                  No se encontraron colaboradores asignados con los criterios seleccionados.
-                </td>
+      {/* 3. Tabla Moderna de Colaboradores */}
+      <div className="w-full bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-xs">
+        <div className="w-full overflow-x-auto">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="border-b border-slate-100 dark:border-slate-800 bg-slate-50/75 dark:bg-slate-800/40 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                <th className="p-4">Colaborador / Correo</th>
+                <th className="p-4">Proyecto y Tarea Activa</th>
+                <th className="p-4">Hora Entrada / Salida</th>
+                <th className="p-4">Validación Facial</th>
+                <th className="p-4">Horas Acumuladas</th>
+                <th className="p-4 text-right">Acciones</th>
               </tr>
-            ) : (
-              filteredMembers.map((member) => {
-                const isExpanded = expandedUserId === member.id;
-                const activeWorker = activeWorkers.find((w) => w.userId === member.id);
-                const isWorking = member.status === 'active' || Boolean(activeWorker);
-                const hoursToday = ((member.workedMinutesToday || 0) / 60).toFixed(1);
-                const userAssignments = assignments.filter((a) => a.userId === member.id);
-                const isExemptFacial = member.role === 'Supervisor' || member.role === 'TI';
+            </thead>
+            <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-sm">
+              {filteredMembers.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="text-center py-12 text-slate-400 text-xs">
+                    No se encontraron colaboradores con los criterios seleccionados.
+                  </td>
+                </tr>
+              ) : (
+                filteredMembers.map((member) => {
+                  const isExpanded = expandedUserId === member.id;
+                  const activeWorker = activeWorkers.find((w) => w.userId === member.id);
+                  const isWorking = member.status === 'active' || Boolean(activeWorker);
+                  const hoursToday = ((member.workedMinutesToday || 0) / 60).toFixed(1);
+                  const userAssignments = assignments.filter((a) => a.userId === member.id);
+                  const isExemptFacial = member.role === 'Supervisor' || member.role === 'TI';
 
-                return (
-                  <FragmentRow
-                    key={member.id}
-                    member={member}
-                    isExpanded={isExpanded}
-                    onToggleExpand={() =>
-                      setExpandedUserId((prev) => (prev === member.id ? null : member.id))
-                    }
-                    isWorking={isWorking}
-                    activeTaskLabel={
-                      activeWorker ? `${activeWorker.projectName} • ${activeWorker.taskName}` : null
-                    }
-                    hoursToday={hoursToday}
-                    isExemptFacial={isExemptFacial}
-                    clients={clients}
-                    projects={projects}
-                    tasks={tasks}
-                    userAssignments={userAssignments}
-                    userTaskActualHours={userTaskActualHours}
-                    toggleUserClientPermission={toggleUserClientPermission}
-                    updateUserClients={updateUserClients}
-                    onNavigateToTree={onNavigateToTree}
-                  />
-                );
-              })
-            )}
-          </tbody>
-        </table>
+                  const initials = member.name
+                    .split(' ')
+                    .map((n) => n[0])
+                    .slice(0, 2)
+                    .join('')
+                    .toUpperCase();
+
+                  return (
+                    <FragmentRow
+                      key={member.id}
+                      member={member}
+                      initials={initials}
+                      isExpanded={isExpanded}
+                      onToggleExpand={() =>
+                        setExpandedUserId((prev) => (prev === member.id ? null : member.id))
+                      }
+                      isWorking={isWorking}
+                      activeWorker={activeWorker || null}
+                      hoursToday={hoursToday}
+                      isExemptFacial={isExemptFacial}
+                      clients={clients}
+                      projects={projects}
+                      tasks={tasks}
+                      userAssignments={userAssignments}
+                      userTaskActualHours={userTaskActualHours}
+                      toggleUserClientPermission={toggleUserClientPermission}
+                      updateUserClients={updateUserClients}
+                      onNavigateToTree={onNavigateToTree}
+                    />
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );
@@ -208,10 +255,11 @@ export function TeamMembersView({ onNavigateToTree }: TeamMembersViewProps) {
 
 interface FragmentRowProps {
   member: ReturnType<typeof useRayonerStore.getState>['teamMembers'][number];
+  initials: string;
   isExpanded: boolean;
   onToggleExpand: () => void;
   isWorking: boolean;
-  activeTaskLabel: string | null;
+  activeWorker: ReturnType<typeof useRayonerStore.getState>['activeWorkers'][number] | null;
   hoursToday: string;
   isExemptFacial: boolean;
   clients: ReturnType<typeof useRayonerStore.getState>['clients'];
@@ -226,10 +274,11 @@ interface FragmentRowProps {
 
 function FragmentRow({
   member,
+  initials,
   isExpanded,
   onToggleExpand,
   isWorking,
-  activeTaskLabel,
+  activeWorker,
   hoursToday,
   isExemptFacial,
   clients,
@@ -243,125 +292,158 @@ function FragmentRow({
 }: FragmentRowProps) {
   return (
     <>
-      <tr
-        onClick={onToggleExpand}
-        className="hover:bg-slate-100/70 dark:hover:bg-slate-900/40 transition-colors cursor-pointer"
-      >
-        <td className="py-3.5 px-4">
-          <div className="flex items-center justify-between gap-2">
-            <div>
-              <div className="font-medium text-slate-900 dark:text-slate-100">{member.name}</div>
-              <div className="text-xs text-slate-600 dark:text-slate-400">
-                {member.email} • {member.roleTitle}
-              </div>
-              {activeTaskLabel && (
-                <div className="text-[11px] text-[#1D4ED8] dark:text-sky-400 font-mono mt-0.5">
-                  En curso: {activeTaskLabel}
-                </div>
-              )}
+      <tr className="hover:bg-slate-50/50 dark:hover:bg-slate-800/40 transition-colors">
+        {/* 1. Colaborador / Correo */}
+        <td className="p-4">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 font-bold text-xs flex items-center justify-center shrink-0 border border-slate-200 dark:border-slate-700">
+              {initials}
             </div>
-            <ChevronDown
-              className={`w-4 h-4 text-slate-400 transition-transform ${
-                isExpanded ? 'rotate-180 text-slate-900 dark:text-white' : ''
-              }`}
-            />
+
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="font-bold text-slate-900 dark:text-slate-100">
+                  {member.name}
+                </span>
+                {isWorking ? (
+                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-100 dark:bg-emerald-950/40 dark:text-emerald-400 dark:border-emerald-900/50">
+                    En Jornada
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400">
+                    Fuera de Turno
+                  </span>
+                )}
+              </div>
+              <span className="text-xs text-slate-400 dark:text-slate-500 block mt-0.5">
+                {member.email} • {member.roleTitle || member.team}
+              </span>
+            </div>
           </div>
         </td>
 
-        <td className="py-3.5 px-4">
-          {isWorking ? (
-            <span className="inline-flex items-center gap-1.5 text-xs text-slate-800 dark:text-slate-300">
-              <span className="w-2 h-2 rounded-full bg-[#1D4ED8] dark:bg-blue-500" />
-              En Jornada
-            </span>
+        {/* 2. Proyecto y Tarea Activa */}
+        <td className="p-4">
+          {activeWorker ? (
+            <div className="flex flex-col">
+              <span className="text-xs font-semibold text-slate-800 dark:text-slate-200 truncate max-w-xs">
+                {activeWorker.projectName}
+              </span>
+              <span className="text-[11px] text-blue-600 dark:text-blue-400 truncate max-w-xs mt-0.5 font-medium">
+                {activeWorker.taskName} ({activeWorker.currentDurationStr})
+              </span>
+            </div>
           ) : (
-            <span className="inline-flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-400">
-              <span className="w-2 h-2 rounded-full bg-[#64748B]" />
-              Fuera de Turno
-            </span>
+            <span className="text-xs text-slate-400 dark:text-slate-600">—</span>
           )}
         </td>
 
-        <td className="py-3.5 px-4 text-xs font-mono text-slate-700 dark:text-slate-300">
-          {member.entryTime ? `${member.entryTime} hrs` : '—'}
-          {member.checkOutTime ? ` → ${member.checkOutTime} hrs` : ''}
+        {/* 3. Hora Entrada / Salida */}
+        <td className="p-4 text-xs font-medium text-slate-700 dark:text-slate-300">
+          {member.entryTime ? (
+            <div className="flex items-center gap-1.5">
+              <span>{member.entryTime}</span>
+              <span className="text-slate-400">→</span>
+              <span>{member.checkOutTime || (isWorking ? 'En curso' : '—')}</span>
+            </div>
+          ) : (
+            <span className="text-slate-400">—</span>
+          )}
         </td>
 
-        <td className="py-3.5 px-4 text-xs font-mono">
+        {/* 4. Validación Facial */}
+        <td className="p-4">
           {isExemptFacial ? (
-            <span className="text-slate-600 dark:text-slate-400">Exento por Rol</span>
+            <span className="inline-flex items-center gap-1 text-[11px] font-medium text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-full">
+              Exento por Rol
+            </span>
           ) : (
-            <span className="text-[#1D4ED8] dark:text-sky-400">Biometría OK</span>
+            <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-blue-700 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/40 border border-blue-100 dark:border-blue-900/50 px-2.5 py-0.5 rounded-full">
+              <Check className="w-3 h-3 stroke-[2.5]" />
+              Biometría OK
+            </span>
           )}
         </td>
 
-        <td className="py-3.5 px-4 text-right font-mono font-semibold text-slate-900 dark:text-slate-100">
-          {hoursToday} hrs
+        {/* 5. Horas Acumuladas */}
+        <td className="p-4">
+          <span className="text-xs font-bold font-mono text-slate-800 dark:text-slate-100">
+            {hoursToday} hrs
+          </span>
+        </td>
+
+        {/* 6. Acciones */}
+        <td className="p-4 text-right">
+          <button
+            type="button"
+            onClick={onToggleExpand}
+            className={`inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold rounded-lg border transition cursor-pointer ${
+              isExpanded
+                ? 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-900/50'
+                : 'text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800'
+            }`}
+            title="Gestionar permisos y asignaciones individuales"
+          >
+            <SlidersHorizontal className="w-3.5 h-3.5" />
+            <span>Permisos</span>
+            <ChevronDown
+              className={`w-3.5 h-3.5 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+            />
+          </button>
         </td>
       </tr>
 
+      {/* Subpanel Expandible de Permisos y Tareas */}
       {isExpanded && (
-        <tr className="bg-slate-50/80 dark:bg-[#101726]">
-          <td colSpan={5} className="p-5 border-b border-slate-200 dark:border-slate-800">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <tr className="bg-slate-50/80 dark:bg-slate-900/80">
+          <td colSpan={6} className="p-5 border-b border-slate-200 dark:border-slate-800">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               {/* Subpanel 1: Clientes Autorizados */}
-              <div className="space-y-3">
-                <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-2">
-                  <span className="text-xs font-heading font-semibold uppercase tracking-wider text-slate-800 dark:text-slate-200">
+              <div className="space-y-3 bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800">
+                <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-2">
+                  <span className="text-xs font-bold uppercase tracking-wider text-slate-800 dark:text-slate-200">
                     Clientes Autorizados ({member.allowedClientIds.length}/{clients.length})
                   </span>
-                  <div className="flex items-center gap-3 text-xs">
+                  <div className="flex items-center gap-2 text-xs">
                     <button
                       type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
+                      onClick={() =>
                         updateUserClients(
                           member.id,
                           clients.map((c) => c.id)
-                        );
-                      }}
-                      className="text-[#1D4ED8] dark:text-sky-400 hover:underline cursor-pointer"
+                        )
+                      }
+                      className="text-blue-600 dark:text-blue-400 hover:underline cursor-pointer font-medium"
                     >
                       Habilitar todos
                     </button>
                     <span className="text-slate-400">•</span>
                     <button
                       type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        updateUserClients(member.id, []);
-                      }}
-                      className="text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:underline cursor-pointer"
+                      onClick={() => updateUserClients(member.id, [])}
+                      className="text-slate-500 hover:text-slate-800 dark:hover:text-white hover:underline cursor-pointer font-medium"
                     >
                       Revocar todos
                     </button>
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-48 overflow-y-auto no-scrollbar pr-1">
                   {clients.map((client) => {
                     const isAllowed = member.allowedClientIds.includes(client.id);
                     return (
                       <label
                         key={client.id}
-                        onClick={(e) => e.stopPropagation()}
-                        className="flex items-center justify-between px-3 py-2 rounded border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#090E17] cursor-pointer hover:border-slate-400 dark:hover:border-slate-700 transition-colors"
+                        className="flex items-center justify-between px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/40 cursor-pointer hover:border-blue-400 transition"
                       >
-                        <div className="min-w-0 pr-2">
-                          <span className="text-xs font-medium text-slate-900 dark:text-slate-200 block truncate">
-                            {client.name}
-                          </span>
-                          {client.taxId && (
-                            <span className="text-[10px] font-mono text-slate-600 dark:text-slate-400 block">
-                              {client.taxId}
-                            </span>
-                          )}
-                        </div>
+                        <span className="text-xs font-medium text-slate-800 dark:text-slate-200 truncate pr-2">
+                          {client.name}
+                        </span>
                         <input
                           type="checkbox"
                           checked={isAllowed}
                           onChange={() => toggleUserClientPermission(member.id, client.id)}
-                          className="w-4 h-4 accent-[#1D4ED8] rounded border-slate-400 dark:border-slate-600 bg-white dark:bg-[#090E17] cursor-pointer"
+                          className="w-4 h-4 text-blue-600 rounded cursor-pointer"
                         />
                       </label>
                     );
@@ -370,68 +452,55 @@ function FragmentRow({
               </div>
 
               {/* Subpanel 2: Tareas Asignadas */}
-              <div className="space-y-3">
-                <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-2">
-                  <span className="text-xs font-heading font-semibold uppercase tracking-wider text-slate-800 dark:text-slate-200">
+              <div className="space-y-3 bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800">
+                <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-2">
+                  <span className="text-xs font-bold uppercase tracking-wider text-slate-800 dark:text-slate-200">
                     Tareas Asignadas ({userAssignments.length})
                   </span>
                   {onNavigateToTree && (
                     <button
                       type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onNavigateToTree();
-                      }}
-                      className="text-xs text-[#1D4ED8] dark:text-sky-400 hover:underline cursor-pointer"
+                      onClick={onNavigateToTree}
+                      className="text-xs text-blue-600 dark:text-blue-400 hover:underline cursor-pointer font-medium"
                     >
-                      Gestionar en Árbol C/P/T →
+                      Ir a Proyectos →
                     </button>
                   )}
                 </div>
 
-                {userAssignments.length === 0 ? (
-                  <p className="text-xs text-slate-600 dark:text-slate-400 py-2">
-                    Sin tareas asignadas actualmente.
-                  </p>
-                ) : (
-                  <div className="divide-y divide-slate-200 dark:divide-slate-800/60 border border-slate-200 dark:border-slate-800 rounded bg-white dark:bg-[#090E17]">
-                    {userAssignments.map((asg) => {
+                <div className="space-y-2 max-h-48 overflow-y-auto no-scrollbar pr-1">
+                  {userAssignments.length === 0 ? (
+                    <p className="text-xs text-slate-400 py-4 text-center">
+                      Este colaborador no tiene tareas asignadas directamente.
+                    </p>
+                  ) : (
+                    userAssignments.map((asg) => {
                       const task = tasks.find((t) => t.id === asg.taskId);
-                      const project = projects.find((p) => p.id === task?.projectId);
-                      const key = `${asg.taskId}_${member.id}`;
-                      const actualHours = userTaskActualHours[key] || 0;
-                      const plannedHours = asg.allocatedHours;
+                      const project = task ? projects.find((p) => p.id === task.projectId) : null;
+                      const actualHours = userTaskActualHours[`${asg.taskId}_${member.id}`] || 0;
 
                       return (
                         <div
                           key={asg.id}
-                          className="px-3 py-2.5 flex items-center justify-between text-xs"
+                          className="flex items-center justify-between p-2.5 rounded-lg border border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30 text-xs"
                         >
-                          <div>
-                            <span className="font-medium text-slate-900 dark:text-slate-200 block">
-                              {task?.name || 'Tarea asignada'}
+                          <div className="min-w-0 pr-2">
+                            <span className="font-semibold text-slate-800 dark:text-slate-200 block truncate">
+                              {task?.name || 'Tarea'}
                             </span>
-                            <span className="text-[11px] text-slate-600 dark:text-slate-400 flex items-center gap-1.5 mt-0.5">
-                              <span>{project?.name || 'Proyecto'}</span>
-                              <span>•</span>
-                              <span className="inline-flex items-center gap-1">
-                                <span className={`w-1.5 h-1.5 rounded-full ${asg.blockOnLimit ? 'bg-[#1D4ED8] dark:bg-sky-400' : 'bg-slate-400'}`} />
-                                <span>{asg.blockOnLimit ? 'Límite Activo' : 'Flexible'}</span>
-                              </span>
+                            <span className="text-[11px] text-slate-400 truncate block">
+                              {project?.name || 'Proyecto'}
                             </span>
                           </div>
-                          <div className="font-mono text-slate-900 dark:text-slate-200">
-                            <span className="font-semibold">{formatHoursToSexagesimal(actualHours)}</span>
-                            <span className="text-slate-500 dark:text-slate-400">
-                              {' '}
-                              / {formatHoursToSexagesimal(plannedHours)}
-                            </span>
-                          </div>
+
+                          <span className="font-mono font-bold text-slate-700 dark:text-slate-300 shrink-0">
+                            {actualHours}h / {asg.allocatedHours}h
+                          </span>
                         </div>
                       );
-                    })}
-                  </div>
-                )}
+                    })
+                  )}
+                </div>
               </div>
             </div>
           </td>

@@ -75,7 +75,7 @@ export function FacialCheckinModal({
     }
   };
 
-  // Finalizar verificación REAL sin clics cuando coincidencia real >= 70%
+  // Finalizar verificación REAL en 1 solo fotograma con feedback háptico y acústico
   const completeVerification = (score: number, distanceVal: number) => {
     if (autoAcceptTriggeredRef.current) return;
     autoAcceptTriggeredRef.current = true;
@@ -83,8 +83,17 @@ export function FacialCheckinModal({
     if (intervalIdRef.current) clearInterval(intervalIdRef.current);
     setIsVerifying(true);
     setVerificationSuccess(true);
-    setStatusMessage(`¡Rostro verificado (${score}% ≥ 70%)! Ingresando a jornada...`);
+    setStatusMessage(`¡Identidad biométrica validada (${score}%)! Iniciando jornada...`);
     playSuccessChime();
+
+    // Feedback háptico si el dispositivo lo soporta
+    if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+      try {
+        navigator.vibrate([40, 30, 60]);
+      } catch {
+        // ignore
+      }
+    }
 
     setTimeout(() => {
       if (streamRef.current) {
@@ -92,7 +101,7 @@ export function FacialCheckinModal({
         streamRef.current = null;
       }
       onVerificationSuccess(score, distanceVal);
-    }, 750);
+    }, 250);
   };
 
   useEffect(() => {
@@ -186,20 +195,14 @@ export function FacialCheckinModal({
             setMatchScore(comp.similarity);
             setLiveDistance(comp.distance);
 
-            // REGLA: En cuanto la coincidencia real supere el 70% (>= 70), dar aceptar automáticamente sin dar clic
-            if (comp.similarity >= 70 && comp.isMatch) {
-              consecutiveMatchesRef.current += 1;
-              setStatusMessage(`Coincidencia confirmada: ${comp.similarity}%. Validando...`);
-
-              // Validar 2 lecturas consecutivas para evitar falsos parpadeos
-              if (consecutiveMatchesRef.current >= 2) {
-                completeVerification(comp.similarity, comp.distance);
-                return;
-              }
+            // Validación Express en 1 solo fotograma cuando supera el umbral
+            if (comp.similarity >= 70 || comp.isMatch) {
+              completeVerification(comp.similarity, comp.distance);
+              return;
             } else {
               consecutiveMatchesRef.current = 0;
               setStatusMessage(
-                `Rostro detectado. Coincidencia actual: ${comp.similarity}% (requiere ≥ 70%). Mírate de frente.`
+                `Rostro detectado (${comp.similarity}%). Mírate de frente para validar.`
               );
             }
           } else {
@@ -236,11 +239,11 @@ export function FacialCheckinModal({
             </div>
             <div>
               <h3 className="font-heading font-bold text-sm text-white flex items-center space-x-1.5">
-                <span>Verificación Facial • Acceso a Jornada</span>
+                <span>Verificación Facial Express</span>
                 <ShieldCheck className="w-4 h-4 text-emerald-400" />
               </h3>
               <p className="text-[11px] text-[#94A3B8]">
-                Detección en tiempo real • 0 fotografías guardadas
+                Identificación biométrica instantánea de 1 fotograma
               </p>
             </div>
           </div>
