@@ -9,20 +9,8 @@ import {
   Shield, UserCheck, KeyRound, Lock, Eye, EyeOff, ScanFace
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { 
-  AvatarCreatorModal, 
-  AVATAR_PRESETS, 
-  generateAvatarSvg, 
-  svgToDataUrl 
-} from '../../components/avatar';
 import { FacialEnrollmentModal } from '../checkin/FacialEnrollmentModal';
 import { isBiometricsRequiredForUser, getDefaultModulesForRole } from '../../services/rbac';
-
-// Avatares rápidos ilustrados basados en la imagen de referencia
-const ILLUSTRATED_AVATARS = AVATAR_PRESETS.map((p, idx) => ({
-  name: p.name,
-  url: svgToDataUrl(generateAvatarSvg(p.config, `quick-avatar-${idx}`))
-}));
 
 export function CompleteProfilePage() {
   const { user, updateProfile, addToast } = useCheckinStore();
@@ -43,8 +31,7 @@ export function CompleteProfilePage() {
     : 'employee';
   const [accountRole, setAccountRole] = useState<'employee' | 'supervisor'>(initialRoleFromInvite);
 
-  // Estado del creador de avatares interactivo y del enrolamiento biométrico obligatorio
-  const [isAvatarCreatorOpen, setIsAvatarCreatorOpen] = useState(false);
+  // Estado del enrolamiento biométrico obligatorio
   const [isBiometricModalOpen, setIsBiometricModalOpen] = useState(false);
   const [capturedVector, setCapturedVector] = useState<number[] | null>(
     user?.biometrics?.faceDescriptor || user?.faceDescriptor || null
@@ -67,9 +54,7 @@ export function CompleteProfilePage() {
   const [name, setName] = useState(user?.name || '');
   const [lastName, setLastName] = useState(user?.lastName || '');
   const [birthDate, setBirthDate] = useState(user?.birthDate || '');
-  const [profilePhoto, setProfilePhoto] = useState<string>(
-    user?.profileImage || ILLUSTRATED_AVATARS[0].url
-  );
+  const [profilePhoto, setProfilePhoto] = useState<string>(user?.profileImage || '');
   const [team, setTeam] = useState(user?.team || 'Auditoría Fiscal');
 
   // Campos específicos de Colaborador (código obtenido en automático si proviene de invitación previa)
@@ -339,97 +324,83 @@ export function CompleteProfilePage() {
 
         <form onSubmit={handleSubmit} className="space-y-4">
           
-          {/* 1. Selector de Tipo de Cuenta / Rol (Colaborador vs Supervisor) */}
-          <div className="space-y-1.5">
-            <label className="block text-xs font-heading font-semibold text-[#94A3B8] uppercase tracking-wider">
-              1. Selecciona tu Rol en el Despacho
-            </label>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              
-              {/* Opción A: Colaborador */}
-              <button
-                type="button"
-                onClick={() => {
-                  setAccountRole('employee');
-                  setErrorMsg('');
-                }}
-                className={`p-3.5 rounded-md border text-left transition-colors cursor-pointer relative ${
-                  accountRole === 'employee'
-                    ? 'bg-[#1E40AF]/20 border-[#1E40AF] ring-1 ring-[#1E40AF] text-[#F8FAFC]'
-                    : 'bg-[#1A2742] border-[#233354] text-[#94A3B8] hover:text-[#F8FAFC]'
-                }`}
-              >
-                <div className="flex items-center space-x-2">
-                  <UserCheck className="w-4 h-4 text-[#38BDF8]" />
-                  <span className="text-xs font-heading font-bold text-[#F8FAFC]">Soy Colaborador</span>
-                </div>
-                <p className="text-[11px] text-[#94A3B8] mt-1 leading-relaxed">
-                  Registro mi jornada diaria, realizo tareas asignadas y me vinculo con mi supervisor.
-                </p>
-                {accountRole === 'employee' && (
-                  <span className="inline-block mt-2 text-[9px] font-heading font-bold uppercase text-[#38BDF8] bg-[#0F172A] border border-[#233354] px-2 py-0.5 rounded-sm">
-                    Seleccionado
-                  </span>
-                )}
-              </button>
+          {/* 1. Selector de Tipo de Cuenta / Rol (Solo si no viene preasignado) */}
+          {!user?.role && (
+            <div className="space-y-1.5">
+              <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                1. Selecciona tu Rol en el Despacho
+              </label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                
+                {/* Opción A: Colaborador */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAccountRole('employee');
+                    setErrorMsg('');
+                  }}
+                  className={`p-3.5 rounded-xl border text-left transition-colors cursor-pointer relative ${
+                    accountRole === 'employee'
+                      ? 'bg-blue-50/50 border-blue-500 ring-1 ring-blue-500 text-slate-900'
+                      : 'bg-slate-50 border-slate-200 text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <div className="flex items-center space-x-2">
+                    <UserCheck className="w-4 h-4 text-blue-600" />
+                    <span className="text-xs font-bold text-slate-900">Soy Colaborador</span>
+                  </div>
+                  <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">
+                    Registro mi jornada diaria, realizo tareas asignadas y me vinculo con mi supervisor.
+                  </p>
+                </button>
 
-              {/* Opción B: Supervisor / Socio */}
-              <button
-                type="button"
-                onClick={() => {
-                  setAccountRole('supervisor');
-                  setErrorMsg('');
-                }}
-                className={`p-3.5 rounded-md border text-left transition-colors cursor-pointer relative ${
-                  accountRole === 'supervisor'
-                    ? 'bg-[#1E40AF]/20 border-[#1E40AF] ring-1 ring-[#1E40AF] text-[#F8FAFC]'
-                    : 'bg-[#1A2742] border-[#233354] text-[#94A3B8] hover:text-[#F8FAFC]'
-                }`}
-              >
-                <div className="flex items-center space-x-2">
-                  <Shield className="w-4 h-4 text-[#F59E0B]" />
-                  <span className="text-xs font-heading font-bold text-[#F8FAFC]">Soy Supervisor / Socio</span>
-                </div>
-                <p className="text-[11px] text-[#94A3B8] mt-1 leading-relaxed">
-                  Superviso equipos, creo proyectos, asigno presupuesto y gestiono tareas.
-                </p>
-                {accountRole === 'supervisor' && (
-                  <span className="inline-block mt-2 text-[9px] font-heading font-bold uppercase text-[#F59E0B] bg-[#0F172A] border border-[#233354] px-2 py-0.5 rounded-sm">
-                    Seleccionado
-                  </span>
-                )}
-              </button>
+                {/* Opción B: Supervisor / Socio */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAccountRole('supervisor');
+                    setErrorMsg('');
+                  }}
+                  className={`p-3.5 rounded-xl border text-left transition-colors cursor-pointer relative ${
+                    accountRole === 'supervisor'
+                      ? 'bg-blue-50/50 border-blue-500 ring-1 ring-blue-500 text-slate-900'
+                      : 'bg-slate-50 border-slate-200 text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <div className="flex items-center space-x-2">
+                    <Shield className="w-4 h-4 text-amber-600" />
+                    <span className="text-xs font-bold text-slate-900">Soy Supervisor / Socio</span>
+                  </div>
+                  <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">
+                    Superviso equipos, creo proyectos, asigno presupuesto y gestiono tareas.
+                  </p>
+                </button>
 
+              </div>
             </div>
-          </div>
+          )}
 
-          {/* 2. Selector y Subida de Foto de Perfil */}
-          <div className="space-y-2 bg-slate-50 p-4 rounded-2xl border border-slate-200/80">
-            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center justify-between">
-              <span>Foto de Perfil</span>
-              <span className="text-[10px] text-slate-400 font-normal lowercase">sube tu foto o elige un avatar</span>
+          {/* 2. Subida de Foto de Perfil Institucional Limpia */}
+          <div className="space-y-2 bg-slate-50 dark:bg-slate-800/40 p-4 rounded-xl border border-slate-200/80 dark:border-slate-700/60">
+            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider flex items-center justify-between">
+              <span>Fotografía de Perfil (Opcional)</span>
+              <span className="text-[10px] text-slate-400 font-normal">Formato JPG o PNG</span>
             </label>
 
             <div className="flex items-center space-x-4">
-              <div className="relative group shrink-0">
-                <div className="w-16 h-16 rounded-2xl overflow-hidden border-2 border-[#0D5C75] shadow-xs bg-white flex items-center justify-center">
+              <div className="w-14 h-14 rounded-xl overflow-hidden border border-slate-200 bg-white flex items-center justify-center shrink-0 text-slate-600 font-bold text-base">
+                {profilePhoto && !profilePhoto.startsWith('data:image/svg') ? (
                   <img
                     src={profilePhoto}
                     alt="Foto de perfil"
                     className="w-full h-full object-cover"
                   />
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setIsAvatarCreatorOpen(true)}
-                  className="absolute inset-0 bg-slate-900/60 rounded-2xl text-white opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center text-[10px] font-bold cursor-pointer"
-                >
-                  <Sparkles className="w-4 h-4 mb-0.5 text-amber-300" />
-                  Editar
-                </button>
+                ) : (
+                  <span>{((name[0] || 'U') + (lastName[0] || '')).toUpperCase()}</span>
+                )}
               </div>
 
-              <div className="flex-1 space-y-2">
+              <div className="flex-1 space-y-1.5">
                 <input
                   type="file"
                   ref={fileInputRef}
@@ -438,47 +409,26 @@ export function CompleteProfilePage() {
                   className="hidden"
                 />
 
-                <div className="flex flex-wrap items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setIsAvatarCreatorOpen(true)}
-                    className="inline-flex items-center space-x-1.5 px-3 py-1.5 bg-gradient-to-r from-[#0D5C75] to-cyan-600 hover:from-[#093e4f] hover:to-cyan-700 text-white rounded-xl text-xs font-black transition-all cursor-pointer shadow-xs active:scale-95"
-                  >
-                    <Sparkles className="w-3.5 h-3.5 text-amber-300" />
-                    <span>Diseñar mi Avatar (Piel, Lentes, Ropa)</span>
-                  </button>
-
+                <div className="flex items-center gap-2">
                   <button
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
-                    className="inline-flex items-center space-x-1.5 px-3 py-1.5 bg-white border border-slate-300 hover:border-[#0D5C75] rounded-xl text-xs font-bold text-slate-700 hover:text-[#0D5C75] transition-all cursor-pointer shadow-2xs"
+                    className="inline-flex items-center space-x-1.5 px-3 py-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 rounded-lg text-xs font-medium text-slate-700 dark:text-slate-200 transition-colors cursor-pointer shadow-2xs"
                   >
                     <Upload className="w-3.5 h-3.5" />
-                    <span>Subir foto</span>
+                    <span>Cargar fotografía</span>
                   </button>
+                  {profilePhoto && profilePhoto.startsWith('data:image') && (
+                    <button
+                      type="button"
+                      onClick={() => setProfilePhoto('')}
+                      className="text-[11px] text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
+                    >
+                      Remover
+                    </button>
+                  )}
                 </div>
-
-                {/* Avatares rápidos ilustrados de la imagen de referencia */}
-                <div className="flex items-center space-x-2 pt-1">
-                  <span className="text-[10px] text-slate-400 font-medium">O elige:</span>
-                  <div className="flex items-center space-x-2">
-                    {ILLUSTRATED_AVATARS.map((av, i) => (
-                      <button
-                        key={i}
-                        type="button"
-                        title={av.name}
-                        onClick={() => setProfilePhoto(av.url)}
-                        className={`w-9 h-9 rounded-full overflow-hidden border-2 transition-all cursor-pointer bg-white shadow-2xs ${
-                          profilePhoto === av.url 
-                            ? 'border-[#0D5C75] scale-110 shadow-md ring-2 ring-[#0D5C75]/30' 
-                            : 'border-slate-200 hover:scale-105 opacity-85 hover:opacity-100'
-                        }`}
-                      >
-                        <img src={av.url} alt={av.name} className="w-full h-full object-cover" />
-                      </button>
-                    ))}
-                  </div>
-                </div>
+                <p className="text-[11px] text-slate-400">Si no cargas una foto, se usarán tus iniciales corporativas.</p>
               </div>
             </div>
           </div>
@@ -889,17 +839,6 @@ export function CompleteProfilePage() {
         </form>
 
       </div>
-
-      {/* Modal del Estudio de Creación de Avatar */}
-      <AvatarCreatorModal
-        isOpen={isAvatarCreatorOpen}
-        onClose={() => setIsAvatarCreatorOpen(false)}
-        onSaveAvatar={(avatarUrl) => {
-          setProfilePhoto(avatarUrl);
-          updateProfile({ profileImage: avatarUrl, isProfileComplete: false });
-          addToast('¡Avatar personalizado generado y aplicado exitosamente!', 'success');
-        }}
-      />
 
       {/* Modal de Captura Inicial de Vector Biométrico (PUT /api/users/:id/biometrics) */}
       <FacialEnrollmentModal

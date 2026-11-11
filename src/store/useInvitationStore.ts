@@ -298,9 +298,7 @@ export const useInvitationStore = create<InvitationState>()(
           return {
             valid: false,
             error:
-              'Esta invitación ya fue utilizada previamente para registrar una cuenta. Por favor inicia sesión con ' +
-              inv.email +
-              '.',
+              'Este enlace de invitación ya fue utilizado o ha expirado. Inicia sesión con tus credenciales.',
             invitation: inv,
           };
         }
@@ -322,7 +320,7 @@ export const useInvitationStore = create<InvitationState>()(
 
           return {
             valid: false,
-            error: 'Este enlace de invitación ha expirado. Solicita un nuevo enlace.',
+            error: 'Este enlace de invitación ya fue utilizado o ha expirado. Inicia sesión con tus credenciales.',
             invitation: inv,
           };
         }
@@ -365,6 +363,8 @@ export const useInvitationStore = create<InvitationState>()(
               acceptedInv = {
                 ...i,
                 status: 'accepted',
+                usedAt: new Date().toISOString(),
+                registeredUserId: user.uid,
                 acceptedAt: now,
                 acceptedUserId: user.uid,
               };

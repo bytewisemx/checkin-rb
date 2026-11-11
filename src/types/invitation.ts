@@ -20,6 +20,8 @@ export interface Invitation {
   expiresAt: number;
   acceptedAt?: number;
   acceptedUserId?: string;
+  usedAt?: string;
+  registeredUserId?: string;
   sentCount: number;
   lastSentAt: number;
   notes?: string;
