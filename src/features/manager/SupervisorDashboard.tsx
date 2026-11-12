@@ -2,16 +2,17 @@ import { useState, useMemo } from 'react';
 import { useRayonerStore } from '../../store/useRayonerStore';
 import { useCheckinStore } from '../../store/useCheckinStore';
 import { useNotificationStore } from '../../store/useNotificationStore';
-import { getEffectiveModules } from '../../services/rbac';
+import { getEffectiveModules, getEffectivePermissions } from '../../services/rbac';
 import { ProjectsSupervisionTable } from './rayoner/ProjectsSupervisionTable';
 import { RayonerTimeReport } from './rayoner/RayonerTimeReport';
 import { RayonerTaskModal } from './rayoner/RayonerTaskModal';
 import { TeamMembersView } from './rayoner/TeamMembersView';
 import { SupervisorInvitationsView } from './invitations/SupervisorInvitationsView';
+import { ExecutiveAuditLogView } from '../audit/ExecutiveAuditLogView';
 import { CheckinPanel } from '../checkin/CheckinPanel';
 import { Users, AlertTriangle, TrendingUp } from 'lucide-react';
 
-export type SupervisorTab = 'tree' | 'report' | 'attendance' | 'invitations' | 'my_checkin';
+export type SupervisorTab = 'tree' | 'report' | 'attendance' | 'invitations' | 'my_checkin' | 'audit_logs';
 
 export interface SupervisorDashboardProps {
   initialTab?: SupervisorTab;
@@ -27,11 +28,15 @@ export function SupervisorDashboard({ initialTab }: SupervisorDashboardProps = {
   const { user, getEffectiveUserModules, addToast } = useCheckinStore();
   const { getNotificationsForRecipient, markAsRead } = useNotificationStore();
 
+  const userPerms = getEffectivePermissions(user);
   const effectiveModules = getEffectiveUserModules(user?.id) || getEffectiveModules(user);
-  const canSeeTree = effectiveModules.tasks || effectiveModules.clients;
-  const canSeeReports = effectiveModules.reports;
+
+  const canSeeTree = effectiveModules.tasks || effectiveModules.clients || userPerms.canManageClientsAndProjects;
+  const canSeeReports = userPerms.canExportReports || effectiveModules.reports;
+  const canInvite = userPerms.canInviteUsers;
+  const canSeeAudit = userPerms.canViewExecutiveAuditLogs;
   const forcedFacialByTI = effectiveModules.facialCheckIn;
-  const showPersonalCheckInTab = forcedFacialByTI || effectiveModules.checkIn;
+  const showPersonalCheckInTab = forcedFacialByTI || effectiveModules.checkIn || userPerms.canCheckIn;
 
   const supervisorNotifications = getNotificationsForRecipient(user?.id, user?.role);
   const unreadCompletedAlerts = supervisorNotifications.filter(
@@ -42,8 +47,6 @@ export function SupervisorDashboard({ initialTab }: SupervisorDashboardProps = {
     ? initialTab
     : canSeeTree
     ? 'tree'
-    : canSeeReports
-    ? 'report'
     : 'attendance';
 
   const [activeTab, setActiveTab] = useState<SupervisorTab>(defaultTab);
@@ -53,6 +56,12 @@ export function SupervisorDashboard({ initialTab }: SupervisorDashboardProps = {
       return canSeeReports ? 'report' : 'attendance';
     }
     if (activeTab === 'report' && !canSeeReports) {
+      return canSeeTree ? 'tree' : 'attendance';
+    }
+    if (activeTab === 'invitations' && !canInvite) {
+      return canSeeTree ? 'tree' : 'attendance';
+    }
+    if (activeTab === 'audit_logs' && !canSeeAudit) {
       return canSeeTree ? 'tree' : 'attendance';
     }
     if (activeTab === 'my_checkin' && !showPersonalCheckInTab) {
@@ -142,18 +151,22 @@ export function SupervisorDashboard({ initialTab }: SupervisorDashboardProps = {
               Asistencia y Equipos
             </button>
 
-            <button
-              type="button"
-              onClick={() => setActiveTab('invitations')}
-              className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                resolvedTab === 'invitations'
-                  ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs'
-                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-              }`}
-            >
-              Invitaciones/Whitelist
-            </button>
+            {/* Pestaña Invitaciones: SOLO para Gerente, Socio y TI */}
+            {canInvite && (
+              <button
+                type="button"
+                onClick={() => setActiveTab('invitations')}
+                className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                  resolvedTab === 'invitations'
+                    ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                }`}
+              >
+                Invitaciones
+              </button>
+            )}
 
+            {/* Pestaña Informes: SOLO roles autorizados (Gerente, Socio, TI) */}
             {canSeeReports && (
               <button
                 type="button"
@@ -165,6 +178,21 @@ export function SupervisorDashboard({ initialTab }: SupervisorDashboardProps = {
                 }`}
               >
                 Informes
+              </button>
+            )}
+
+            {/* Pestaña Bitácora de Auditoría: SOLO Socio y TI */}
+            {canSeeAudit && (
+              <button
+                type="button"
+                onClick={() => setActiveTab('audit_logs')}
+                className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                  resolvedTab === 'audit_logs'
+                    ? 'bg-white dark:bg-slate-900 text-blue-700 dark:text-sky-400 font-bold shadow-xs'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                }`}
+              >
+                Bitácora de Movimientos
               </button>
             )}
 
@@ -313,7 +341,9 @@ export function SupervisorDashboard({ initialTab }: SupervisorDashboardProps = {
         />
       )}
 
-      {resolvedTab === 'invitations' && <SupervisorInvitationsView />}
+      {resolvedTab === 'invitations' && canInvite && <SupervisorInvitationsView />}
+
+      {resolvedTab === 'audit_logs' && canSeeAudit && <ExecutiveAuditLogView />}
 
       {resolvedTab === 'my_checkin' && showPersonalCheckInTab && (
         <div className="pt-2">

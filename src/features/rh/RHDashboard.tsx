@@ -4,6 +4,7 @@ import { useCheckinStore } from '../../store/useCheckinStore';
 import {
   fetchRHAttendanceRecords,
   getEffectiveModules,
+  normalizeRole,
   type RHAttendanceRecord,
 } from '../../services/rbac';
 import { FacialEnrollmentModal } from '../checkin/FacialEnrollmentModal';
@@ -37,7 +38,7 @@ export function RHDashboard() {
 
   useEffect(() => {
     let active = true;
-    fetchRHAttendanceRecords({ id: user?.id, role: user?.role }).then((data) => {
+    fetchRHAttendanceRecords({ id: user?.id, role: user?.role }).then((data: RHAttendanceRecord[]) => {
       if (active) {
         setApiAttendanceRecords(data);
       }
@@ -166,10 +167,25 @@ export function RHDashboard() {
       });
     });
 
-    return Array.from(mapById.values()).sort(
+    // Filtrado de aislamiento de equipos para RH asignado por TI
+    const userRole = normalizeRole(user?.role);
+    const assignedTeams = user?.assignedTeams || [];
+
+    const allRecords = Array.from(mapById.values()).sort(
       (a, b) => new Date(b.checkIn.timestamp).getTime() - new Date(a.checkIn.timestamp).getTime()
     );
-  }, [apiAttendanceRecords, activeCheckin, history, mockEmployeesData, teamMembers, user?.name, user?.email]);
+
+    if (userRole === 'RH' && assignedTeams.length > 0) {
+      return allRecords.filter((rec) =>
+        assignedTeams.some((team) =>
+          rec.teamName.toLowerCase().includes(team.toLowerCase()) ||
+          team.toLowerCase().includes(rec.teamName.toLowerCase())
+        )
+      );
+    }
+
+    return allRecords;
+  }, [apiAttendanceRecords, activeCheckin, history, mockEmployeesData, teamMembers, user?.name, user?.email, user?.role, user?.assignedTeams]);
 
   const handleOpenRecordDetail = (userEmail: string, recordId?: string) => {
     setDrawerState({
@@ -195,6 +211,23 @@ export function RHDashboard() {
           <p className="text-xs text-slate-500 mt-0.5">
             Supervisión de jornadas, incidencias biométricas y consolidación de nómina.
           </p>
+          {user?.assignedTeams && user.assignedTeams.length > 0 && (
+            <div className="flex items-center gap-1.5 mt-2">
+              <span className="text-[11px] font-semibold text-slate-400">
+                Visibilidad Aislada por TI:
+              </span>
+              <div className="flex flex-wrap gap-1">
+                {user.assignedTeams.map((t) => (
+                  <span
+                    key={t}
+                    className="px-2 py-0.5 rounded text-[10px] font-semibold bg-rose-50 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300 border border-rose-200/60 dark:border-rose-900/60"
+                  >
+                    {t}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Pestañas de Vista Pills */}

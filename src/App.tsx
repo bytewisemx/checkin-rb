@@ -155,11 +155,11 @@ function MainLayout({
       <GlobalHeader />
 
       {normalizedRole === 'TI' && <TIDashboard initialTab={initialTiTab} />}
-      {normalizedRole === 'Supervisor' && (
+      {(normalizedRole === 'Socio' || normalizedRole === 'Gerente' || normalizedRole === 'Supervisor') && (
         <SupervisorDashboard initialTab={initialSupervisorTab} />
       )}
       {normalizedRole === 'RH' && <RHDashboard />}
-      {normalizedRole === 'Empleado' && <EmployeeDashboard initialTab={initialEmployeeTab} />}
+      {normalizedRole === 'Colaborador' && <EmployeeDashboard initialTab={initialEmployeeTab} />}
     </div>
   );
 }
@@ -282,6 +282,14 @@ export default function App() {
           />
           <Route
             path="/register"
+            element={
+              <PublicOnlyRoute>
+                <RegisterPage />
+              </PublicOnlyRoute>
+            }
+          />
+          <Route
+            path="/activar-cuenta"
             element={
               <PublicOnlyRoute>
                 <RegisterPage />

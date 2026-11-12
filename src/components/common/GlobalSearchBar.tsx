@@ -171,8 +171,8 @@ export function GlobalSearchBar({
       return [];
     }
 
-    // Empleado: ÚNICA Y EXCLUSIVAMENTE sus propias tareas asignadas
-    if (normalizedRole === 'Empleado') {
+    // Colaborador: ÚNICA Y EXCLUSIVAMENTE sus propias tareas asignadas
+    if (normalizedRole === 'Colaborador') {
       return tasks.filter(isTaskAssignedToCurrentUser);
     }
 
@@ -211,8 +211,8 @@ export function GlobalSearchBar({
   const allowedPeople = useMemo(() => {
     if (!user) return [];
 
-    // EMPLEADO: ESTRICTAMENTE PROHIBIDO ver o buscar otros colaboradores
-    if (normalizedRole === 'Empleado') {
+    // COLABORADOR: ESTRICTAMENTE PROHIBIDO ver o buscar otros colaboradores
+    if (normalizedRole === 'Colaborador') {
       return [];
     }
 
@@ -298,8 +298,8 @@ export function GlobalSearchBar({
       return projects.filter((p) => p.leadUserId === user.id || p.leadUserName === user.name);
     }
 
-    // Empleado: ÚNICA Y EXCLUSIVAMENTE proyectos donde tiene tareas asignadas
-    if (normalizedRole === 'Empleado') {
+    // Colaborador: ÚNICA Y EXCLUSIVAMENTE proyectos donde tiene tareas asignadas
+    if (normalizedRole === 'Colaborador') {
       const myProjectIds = new Set(
         allowedTasks.map((t) => t.projectId).filter(Boolean)
       );
@@ -313,8 +313,8 @@ export function GlobalSearchBar({
   const allowedClients = useMemo(() => {
     if (!user) return [];
 
-    // Empleado y RH: NO tienen acceso al catálogo de clientes
-    if (normalizedRole === 'Empleado' || normalizedRole === 'RH') {
+    // Colaborador y RH: NO tienen acceso al catálogo de clientes
+    if (normalizedRole === 'Colaborador' || normalizedRole === 'RH') {
       return [];
     }
 
@@ -731,8 +731,8 @@ export function GlobalSearchBar({
                 </button>
               )}
 
-              {/* Clientes: solo para Supervisor y TI */}
-              {normalizedRole !== 'Empleado' && normalizedRole !== 'RH' && counts.clients > 0 && (
+              {/* Clientes: solo para Supervisor, Gerente, Socio y TI */}
+              {normalizedRole !== 'Colaborador' && normalizedRole !== 'RH' && counts.clients > 0 && (
                 <button
                   type="button"
                   onClick={() => setActiveCategory('clients')}
@@ -763,8 +763,8 @@ export function GlobalSearchBar({
                 </button>
               )}
 
-              {/* Equipo: estrictamente oculto para Empleado */}
-              {normalizedRole !== 'Empleado' && counts.people > 0 && (
+              {/* Equipo: estrictamente oculto para Colaborador */}
+              {normalizedRole !== 'Colaborador' && counts.people > 0 && (
                 <button
                   type="button"
                   onClick={() => setActiveCategory('people')}
@@ -929,8 +929,8 @@ export function GlobalSearchBar({
                   </div>
                 )}
 
-              {/* SECCIÓN 3: CLIENTES CORPORATIVOS (Solo Supervisor y TI) */}
-              {normalizedRole !== 'Empleado' &&
+              {/* SECCIÓN 3: CLIENTES CORPORATIVOS (Solo Supervisor, Gerente, Socio y TI) */}
+              {normalizedRole !== 'Colaborador' &&
                 normalizedRole !== 'RH' &&
                 (activeCategory === 'all' || activeCategory === 'clients') &&
                 filteredClients.length > 0 && (
@@ -970,14 +970,14 @@ export function GlobalSearchBar({
                   </div>
                 )}
 
-              {/* SECCIÓN 4: TAREAS AUTORIZADAS (Para Empleado: SOLO sus propias tareas asignadas) */}
+              {/* SECCIÓN 4: TAREAS AUTORIZADAS (Para Colaborador: SOLO sus propias tareas asignadas) */}
               {normalizedRole !== 'RH' &&
                 (activeCategory === 'all' || activeCategory === 'tasks') &&
                 filteredTasks.length > 0 && (
                   <div>
                     <div className="flex items-center justify-between px-1 mb-1.5 text-[10px] font-heading font-bold uppercase tracking-wider text-slate-500 dark:text-[#94A3B8]">
-                      <span>{normalizedRole === 'Empleado' ? 'Mis Tareas Asignadas' : 'Tareas'}</span>
-                      {normalizedRole === 'Empleado' && (
+                      <span>{normalizedRole === 'Colaborador' ? 'Mis Tareas Asignadas' : 'Tareas'}</span>
+                      {normalizedRole === 'Colaborador' && (
                         <span className="text-[10px] text-blue-600 dark:text-[#38BDF8]">Solo asignadas a ti</span>
                       )}
                     </div>
@@ -1010,8 +1010,8 @@ export function GlobalSearchBar({
                   </div>
                 )}
 
-              {/* SECCIÓN 5: EQUIPO / COLABORADORES (Estrictamente bloqueado para Empleado) */}
-              {normalizedRole !== 'Empleado' &&
+              {/* SECCIÓN 5: EQUIPO / COLABORADORES (Estrictamente bloqueado para Colaborador) */}
+              {normalizedRole !== 'Colaborador' &&
                 (activeCategory === 'all' || activeCategory === 'people') &&
                 filteredPeople.length > 0 && (
                   <div>

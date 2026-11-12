@@ -26,14 +26,14 @@ export function generateSecureToken(): string {
 }
 
 /**
- * Construye la URL completa del enlace de registro por invitación
+ * Construye la URL completa del enlace de registro por invitación (/activar-cuenta)
  */
 export function buildInviteUrl(token: string): string {
-  if (typeof window === 'undefined') return '/register?token=' + encodeURIComponent(token);
+  if (typeof window === 'undefined') return '/activar-cuenta?token=' + encodeURIComponent(token);
   const origin = window.location.origin;
   const baseUrl = import.meta.env.BASE_URL || '/';
   const cleanBase = baseUrl.endsWith('/') ? baseUrl : baseUrl + '/';
-  return origin + cleanBase + 'register?token=' + encodeURIComponent(token);
+  return origin + cleanBase + 'activar-cuenta?token=' + encodeURIComponent(token);
 }
 
 interface InvitationState {
@@ -294,7 +294,7 @@ export const useInvitationStore = create<InvitationState>()(
           };
         }
 
-        if (inv.status === 'accepted') {
+        if (inv.status === 'accepted' || inv.status === 'confirmed') {
           return {
             valid: false,
             error:
@@ -362,7 +362,7 @@ export const useInvitationStore = create<InvitationState>()(
             if (i.id === inv.id) {
               acceptedInv = {
                 ...i,
-                status: 'accepted',
+                status: 'confirmed',
                 usedAt: new Date().toISOString(),
                 registeredUserId: user.uid,
                 acceptedAt: now,

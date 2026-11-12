@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { useRayonerStore } from '../../../store/useRayonerStore';
 import { useCheckinStore } from '../../../store/useCheckinStore';
+import { useAuditStore } from '../../../store/useAuditStore';
 import { 
   exportProjectReportToExcel, 
   exportProjectReportToPDF 
@@ -154,6 +155,7 @@ export function RayonerTimeReport({ initialProjectId }: RayonerTimeReportProps) 
   const handleExportPDF = () => {
     if (!currentProject) return;
     try {
+      const currentUser = useCheckinStore.getState().user;
       exportProjectReportToPDF({
         project: currentProject,
         client: currentClient,
@@ -161,8 +163,20 @@ export function RayonerTimeReport({ initialProjectId }: RayonerTimeReportProps) 
         assignments,
         taskActualHours,
         userTaskActualHours,
-        generatedBy: 'Supervisor de Auditoría',
+        generatedBy: currentUser?.name || 'Gerencia de Auditoría',
       });
+
+      useAuditStore.getState().logAuditEvent({
+        eventType: 'REPORT_DOWNLOADED',
+        actorId: currentUser?.id || 'admin-99',
+        actorName: currentUser?.name || 'Gerente',
+        actorEmail: currentUser?.email || '',
+        actorRole: currentUser?.role || 'Gerente',
+        targetResource: `Proyecto: ${currentProject.name} (${currentProject.code})`,
+        format: 'PDF',
+        details: `Descarga de informe corporativo en PDF para ${currentProject.name}`,
+      });
+
       addToast('Generando informe corporativo en PDF', 'info');
     } catch {
       addToast('Error al generar el informe en PDF', 'error');
@@ -172,6 +186,7 @@ export function RayonerTimeReport({ initialProjectId }: RayonerTimeReportProps) 
   const handleExportExcel = () => {
     if (!currentProject) return;
     try {
+      const currentUser = useCheckinStore.getState().user;
       exportProjectReportToExcel({
         project: currentProject,
         client: currentClient,
@@ -179,8 +194,20 @@ export function RayonerTimeReport({ initialProjectId }: RayonerTimeReportProps) 
         assignments,
         taskActualHours,
         userTaskActualHours,
-        generatedBy: 'Supervisor de Auditoría',
+        generatedBy: currentUser?.name || 'Gerencia de Auditoría',
       });
+
+      useAuditStore.getState().logAuditEvent({
+        eventType: 'REPORT_DOWNLOADED',
+        actorId: currentUser?.id || 'admin-99',
+        actorName: currentUser?.name || 'Gerente',
+        actorEmail: currentUser?.email || '',
+        actorRole: currentUser?.role || 'Gerente',
+        targetResource: `Proyecto: ${currentProject.name} (${currentProject.code})`,
+        format: 'Excel',
+        details: `Descarga de informe analítico en Excel para ${currentProject.name}`,
+      });
+
       addToast('Informe de proyecto exportado a Excel (.xls) con diseño corporativo', 'success');
     } catch {
       addToast('Error al exportar a Excel', 'error');

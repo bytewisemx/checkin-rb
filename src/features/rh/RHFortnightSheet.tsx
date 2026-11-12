@@ -9,6 +9,7 @@ import {
 import type { RHAttendanceRecord } from '../../services/rbac';
 import { useRayonerStore } from '../../store/useRayonerStore';
 import { useCheckinStore, type AbsenceJustification } from '../../store/useCheckinStore';
+import { useAuditStore } from '../../store/useAuditStore';
 
 export interface RHFortnightSheetProps {
   allRecords: RHAttendanceRecord[];
@@ -383,6 +384,21 @@ export function RHFortnightSheet({ allRecords, onOpenRecordDetail }: RHFortnight
       notes: modalData.notes.trim() || undefined,
       hoursCredit: modalData.resolution === 'justified' ? modalData.hoursCredit : 0,
       justifiedBy: user?.name || 'Recursos Humanos',
+    });
+
+    // Registrar en Bitácora de Auditoría para Socios y TI
+    useAuditStore.getState().logAuditEvent({
+      eventType: 'ATTENDANCE_ADJUSTED',
+      actorId: user?.id || 'rh-01',
+      actorName: user?.name || 'Recursos Humanos',
+      actorEmail: user?.email || '',
+      actorRole: user?.role || 'RH',
+      targetResource: `Jornada: ${modalData.dayData.dateStr}`,
+      targetUserId: modalData.collaborator.id,
+      targetUserName: modalData.collaborator.name,
+      previousValue: modalData.dayData.status,
+      newValue: modalData.resolution === 'justified' ? 'Justificada' : 'Injustificada',
+      details: `Ajuste de inasistencia: ${reasonLabel}. ${modalData.notes || ''}`.trim(),
     });
 
     addToast(

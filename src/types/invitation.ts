@@ -1,20 +1,23 @@
-import type { UserRole } from '../services/rbac';
+import type { UserRole, LegacyOrCurrentRole } from '../services/rbac';
 
-export type InvitationStatus = 'pending' | 'accepted' | 'expired' | 'revoked';
+export type InvitationStatus = 'pending' | 'accepted' | 'confirmed' | 'expired' | 'revoked';
 
 export interface Invitation {
   id: string;
   token: string;
   email: string;
-  supervisorId: string;       // ID del Supervisor (si invita a Empleado) o ID de TI (si invita a Supervisor)
-  supervisorName: string;     // Nombre del emisor (TI o Supervisor)
+  supervisorId: string;       // ID del emisor (Gerente, Socio o TI)
+  supervisorName: string;     // Nombre del emisor
   supervisorEmail?: string;
-  created_by_ti_id?: string | null; // Si fue emitida por TI para dar de alta a un Supervisor
-  issuerRole?: 'TI' | 'Supervisor';
+  invitedBy?: string;         // Nombre o ID de quien invitó
+  created_by_ti_id?: string | null;
+  issuerRole?: LegacyOrCurrentRole;
   team: string;
+  assignedTeamId?: string;
   roleTitle: string;
-  role: UserRole | 'employee' | 'supervisor'; // 'Supervisor' (emitido por TI) o 'Empleado' (emitido por Supervisor)
-  targetRole?: UserRole;
+  role: UserRole | string;
+  targetRole?: UserRole | string;
+  assignedRole?: UserRole | string;
   status: InvitationStatus;
   createdAt: number;
   expiresAt: number;
@@ -33,9 +36,11 @@ export interface CreateInvitationDTO {
   supervisorName: string;
   supervisorEmail?: string;
   created_by_ti_id?: string | null;
-  issuerRole?: 'TI' | 'Supervisor';
-  targetRole?: UserRole;
+  issuerRole?: LegacyOrCurrentRole;
+  targetRole?: UserRole | string;
+  assignedRole?: UserRole | string;
   team: string;
+  assignedTeamId?: string;
   roleTitle?: string;
   expiresInHours?: number;
   notes?: string;

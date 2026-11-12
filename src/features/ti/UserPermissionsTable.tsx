@@ -2,59 +2,107 @@ import { useState, useMemo } from 'react';
 import {
   Search,
   Plus,
-  Trash2,
-  RotateCcw,
-  SlidersHorizontal,
   X,
+  Check,
+  Building,
+  Sliders,
 } from 'lucide-react';
 import { useCheckinStore, type ManagedUserPermissionEntry } from '../../store/useCheckinStore';
 import { useRayonerStore } from '../../store/useRayonerStore';
 import { UserAvatar } from '../../components/common/UserAvatar';
 import {
   normalizeRole,
-  getDefaultModulesForRole,
-  type UserModules,
+  getRoleDisplayName,
+  getDefaultPermissionsForRole,
+  getEffectivePermissions,
+  type CanonicalRole,
+  type UserGranularPermissions,
 } from '../../services/rbac';
 
 export interface UserPermissionsTableProps {
   onNewUser?: () => void;
 }
 
-const MODULE_LIST: Array<{
-  key: keyof UserModules;
+export const AVAILABLE_TEAMS = [
+  'Equipo Prueba',
+  'Auditoría Fiscal',
+  'Consultoría e Impuestos',
+  'Contabilidad Corporativa',
+  'Precios de Transferencia',
+  'Dirección y Supervisión de Auditoría',
+];
+
+export const GRANULAR_PERMISSION_DEFINITIONS: Array<{
+  key: keyof UserGranularPermissions;
   label: string;
-  shortLabel: string;
-  hint: string;
+  category: 'operativo' | 'gestion' | 'ejecutivo';
+  description: string;
 }> = [
   {
-    key: 'checkIn',
-    label: 'Reloj Checador',
-    shortLabel: 'Checador',
-    hint: 'Entrada y salida con registro de horas (Check-In / Check-Out)',
+    key: 'canCheckIn',
+    label: 'Check-in y Cronómetro',
+    category: 'operativo',
+    description: 'Permite registrar entradas, salidas y cronometrar jornadas.',
   },
   {
-    key: 'tasks',
-    label: 'Tablero Kanban y Tareas',
-    shortLabel: 'Kanban',
-    hint: 'Asignación, seguimiento y ejecución de tareas',
+    key: 'canCreateTasks',
+    label: 'Crear Tareas en Proyecto',
+    category: 'operativo',
+    description: 'Crear nuevas tareas dentro de proyectos asignados.',
   },
   {
-    key: 'clients',
-    label: 'Cartera de Clientes y Proyectos',
-    shortLabel: 'Clientes',
-    hint: 'Visualización y gestión de clientes y proyectos asignados',
+    key: 'canAdjustTeamTimes',
+    label: 'Supervisar y Ajustar Tiempos',
+    category: 'gestion',
+    description: 'Supervisar cronómetros y ajustar registros de su equipo.',
   },
   {
-    key: 'reports',
-    label: 'Auditoría y Reportes de Tiempos',
-    shortLabel: 'Auditorías',
-    hint: 'Reportes ejecutivos de horas, rendimientos y asistencias',
+    key: 'canManageClientsAndProjects',
+    label: 'Alta de Clientes y Proyectos',
+    category: 'gestion',
+    description: 'Creación y configuración de clientes y proyectos.',
   },
   {
-    key: 'facialCheckIn',
-    label: 'Validación Facial Biométrica',
-    shortLabel: 'Facial',
-    hint: 'Verificación facial express obligatoria al iniciar jornada',
+    key: 'canAssignProjectMembers',
+    label: 'Asignar Personal a Proyectos',
+    category: 'gestion',
+    description: 'Vincular y desvincular colaboradores de los proyectos.',
+  },
+  {
+    key: 'canViewFinancials',
+    label: 'Costos y Presupuestos',
+    category: 'gestion',
+    description: 'Visualizar finanzas, tarifas por hora y costos acumulados.',
+  },
+  {
+    key: 'canExportReports',
+    label: 'Descargar Informes (Excel/PDF)',
+    category: 'gestion',
+    description: 'Exportar Kardex laboral, sábana y reportes ejecutivos.',
+  },
+  {
+    key: 'canInviteUsers',
+    label: 'Emitir Invitaciones',
+    category: 'gestion',
+    description: 'Generar enlaces y correos de invitación a nuevos usuarios.',
+  },
+  {
+    key: 'canAdjustAttendanceRH',
+    label: 'Ajuste de Asistencias e Incidencias',
+    category: 'ejecutivo',
+    description: 'Modificar retardos, justificar faltas y ajustar checadas RH.',
+  },
+  {
+    key: 'canViewExecutiveAuditLogs',
+    label: 'Bitácora de Auditoría Ejecutiva',
+    category: 'ejecutivo',
+    description: 'Ver historial de movimientos, descargas de reportes y presupuestos.',
+  },
+  {
+    key: 'canManageSystemRBAC',
+    label: 'Consola Central TI (Root)',
+    category: 'ejecutivo',
+    description: 'Administración total de roles, switches y políticas de acceso.',
   },
 ];
 
@@ -62,27 +110,35 @@ export function UserPermissionsTable({ onNewUser }: UserPermissionsTableProps) {
   const {
     userPermissionsDirectory,
     mockEmployeesData,
-    updateUserModules,
+    updateUserPermissions,
+    updateUserAssignedTeams,
+    changeUserRole,
     toggleUserAccessRevoked,
-    reassignEmployeeSupervisor,
     addToast,
   } = useCheckinStore();
   const { teamMembers } = useRayonerStore();
 
   const [search, setSearch] = useState('');
-  const [roleFilter, setRoleFilter] = useState<'ALL' | 'TI' | 'RH' | 'Supervisor' | 'Empleado'>('ALL');
+  const [roleFilter, setRoleFilter] = useState<'ALL' | CanonicalRole>('ALL');
   const [editingUser, setEditingUser] = useState<ManagedUserPermissionEntry | null>(null);
-  const [modalDraftModules, setModalDraftModules] = useState<UserModules | null>(null);
+  const [draftRole, setDraftRole] = useState<CanonicalRole>('Colaborador');
+  const [draftPermissions, setDraftPermissions] = useState<UserGranularPermissions>(
+    getDefaultPermissionsForRole('Colaborador')
+  );
+  const [draftAssignedTeams, setDraftAssignedTeams] = useState<string[]>([]);
 
-  // Unificación de usuarios desde directorio de permisos, miembros y mocks
+  // Unificación de usuarios
   const mergedUsers = useMemo<ManagedUserPermissionEntry[]>(() => {
     const map = new Map<string, ManagedUserPermissionEntry>();
 
     Object.values(userPermissionsDirectory).forEach((entry) => {
+      const role = normalizeRole(entry.role);
+      const effectivePerms = getEffectivePermissions(entry);
       map.set(entry.id, {
         ...entry,
-        role: normalizeRole(entry.role),
-        modules: { ...entry.modules },
+        role,
+        permissions: effectivePerms,
+        assignedTeams: entry.assignedTeams || (role === 'RH' ? ['Equipo Prueba', 'Auditoría Fiscal'] : undefined),
       });
     });
 
@@ -96,17 +152,23 @@ export function UserPermissionsTable({ onNewUser }: UserPermissionsTableProps) {
           email: tm.email || existing.email,
           role,
           team: tm.team || existing.team,
-          supervisor_id: tm.supervisor_id || tm.supervisorId || existing.supervisor_id,
         });
       } else {
+        const perms = getDefaultPermissionsForRole(role);
         map.set(tm.id, {
           id: tm.id,
           name: tm.name,
           email: tm.email,
           role,
           team: tm.team,
-          supervisor_id: tm.supervisor_id || tm.supervisorId,
-          modules: getDefaultModulesForRole(role),
+          permissions: perms,
+          modules: {
+            checkIn: perms.canCheckIn,
+            facialCheckIn: false,
+            tasks: perms.canCreateTasks,
+            reports: perms.canExportReports,
+            clients: perms.canManageClientsAndProjects,
+          },
         });
       }
     });
@@ -115,6 +177,7 @@ export function UserPermissionsTable({ onNewUser }: UserPermissionsTableProps) {
       const existing = map.get(emp.id);
       const role = normalizeRole(emp.role);
       if (!existing) {
+        const perms = getDefaultPermissionsForRole(role);
         map.set(emp.id, {
           id: emp.id,
           name: emp.name,
@@ -122,7 +185,14 @@ export function UserPermissionsTable({ onNewUser }: UserPermissionsTableProps) {
           role,
           team: emp.team,
           supervisor_id: emp.supervisor_id || 'admin-99',
-          modules: getDefaultModulesForRole(role),
+          permissions: perms,
+          modules: {
+            checkIn: perms.canCheckIn,
+            facialCheckIn: false,
+            tasks: perms.canCreateTasks,
+            reports: perms.canExportReports,
+            clients: perms.canManageClientsAndProjects,
+          },
         });
       }
     });
@@ -133,7 +203,8 @@ export function UserPermissionsTable({ onNewUser }: UserPermissionsTableProps) {
   // Filtro por rol y búsqueda en tiempo real
   const filteredUsers = useMemo(() => {
     return mergedUsers.filter((u) => {
-      if (roleFilter !== 'ALL' && u.role !== roleFilter) return false;
+      const uRole = normalizeRole(u.role);
+      if (roleFilter !== 'ALL' && uRole !== roleFilter) return false;
       if (search.trim()) {
         const q = search.toLowerCase();
         return (
@@ -147,217 +218,184 @@ export function UserPermissionsTable({ onNewUser }: UserPermissionsTableProps) {
     });
   }, [mergedUsers, roleFilter, search]);
 
-  const allSupervisors = useMemo(() => {
-    return mergedUsers.filter((u) => u.role === 'Supervisor');
-  }, [mergedUsers]);
-
-  // Conmutación rápida de módulo con guardado directo
-  const handleToggleModuleQuick = (userEntry: ManagedUserPermissionEntry, key: keyof UserModules) => {
-    if (userEntry.role === 'TI') {
-      addToast('Las cuentas TI (Root) conservan todos los módulos activos por seguridad.', 'info');
+  // Conmutación rápida de un permiso individual desde la tabla
+  const handleQuickTogglePermission = (
+    userEntry: ManagedUserPermissionEntry,
+    permKey: keyof UserGranularPermissions
+  ) => {
+    if (normalizeRole(userEntry.role) === 'TI' && permKey === 'canManageSystemRBAC') {
+      addToast('El permiso maestro RBAC no puede desactivarse para TI Root.', 'info');
       return;
     }
 
-    if (userEntry.role === 'RH' && (key === 'tasks' || key === 'clients')) {
-      addToast('Política RBAC 403: Recursos Humanos tiene restringido el acceso a Tareas y Clientes.', 'error');
-      return;
-    }
+    const currentPerms = userEntry.permissions || getDefaultPermissionsForRole(userEntry.role);
+    const updatedValue = !currentPerms[permKey];
 
-    const currentModules = userEntry.modules;
-    const nextModules: UserModules = {
-      ...currentModules,
-      [key]: !currentModules[key],
-    };
+    updateUserPermissions(userEntry.id, {
+      [permKey]: updatedValue,
+    });
 
-    updateUserModules(userEntry.id, nextModules);
     addToast(
-      `Módulo "${key}" ${nextModules[key] ? 'habilitado' : 'deshabilitado'} para ${userEntry.name}.`,
+      `Permiso "${permKey}" ${updatedValue ? 'habilitado' : 'deshabilitado'} para ${userEntry.name}.`,
       'success'
     );
   };
 
-  // Abrir modal de edición
+  // Abrir modal de personalización avanzada
   const handleOpenEditModal = (userEntry: ManagedUserPermissionEntry) => {
+    const norm = normalizeRole(userEntry.role);
     setEditingUser(userEntry);
-    setModalDraftModules({ ...userEntry.modules });
+    setDraftRole(norm);
+    setDraftPermissions(userEntry.permissions || getDefaultPermissionsForRole(norm));
+    setDraftAssignedTeams(userEntry.assignedTeams || ['Equipo Prueba', 'Auditoría Fiscal']);
   };
 
-  // Guardar desde el modal
+  // Cambio de rol en el modal: preselecciona los permisos por defecto del nuevo rol
+  const handleModalRoleChange = (newRole: CanonicalRole) => {
+    setDraftRole(newRole);
+    setDraftPermissions(getDefaultPermissionsForRole(newRole));
+    if (newRole === 'RH' && draftAssignedTeams.length === 0) {
+      setDraftAssignedTeams(['Auditoría Fiscal', 'Equipo Prueba']);
+    }
+  };
+
+  // Guardar cambios del modal
   const handleSaveModal = () => {
-    if (!editingUser || !modalDraftModules) return;
-    updateUserModules(editingUser.id, modalDraftModules);
-    addToast(`Permisos actualizados para ${editingUser.name}.`, 'success');
-    setEditingUser(null);
-    setModalDraftModules(null);
-  };
-
-  // Aplicar presets en el modal
-  const handleApplyPresetInModal = (preset: 'entry_exit_only' | 'full_role') => {
     if (!editingUser) return;
-    if (editingUser.role === 'TI') return;
 
-    const nextModules: UserModules =
-      preset === 'entry_exit_only'
-        ? {
-            checkIn: true,
-            tasks: false,
-            clients: false,
-            reports: false,
-            facialCheckIn: true,
-          }
-        : getDefaultModulesForRole(editingUser.role);
+    // 1. Si cambió el rol
+    if (normalizeRole(editingUser.role) !== draftRole) {
+      changeUserRole(editingUser.id, draftRole);
+    }
 
-    setModalDraftModules(nextModules);
+    // 2. Aplicar overrides de permisos
+    updateUserPermissions(editingUser.id, draftPermissions);
+
+    // 3. Si es RH o Gerente, guardar los equipos autorizados
+    if (draftRole === 'RH' || draftRole === 'Gerente') {
+      updateUserAssignedTeams(editingUser.id, draftAssignedTeams);
+    }
+
+    addToast(`Perfil y permisos actualizados para ${editingUser.name}.`, 'success');
+    setEditingUser(null);
   };
 
-  // Conmutar revocación de acceso
+  // Restablecer a defaults del rol actual
+  const handleResetToRoleDefaults = () => {
+    setDraftPermissions(getDefaultPermissionsForRole(draftRole));
+    addToast(`Permisos restablecidos a los valores base de ${getRoleDisplayName(draftRole)}.`, 'info');
+  };
+
+  // Conmutar equipo en la lista de asignados para RH
+  const handleToggleAssignedTeam = (teamName: string) => {
+    setDraftAssignedTeams((prev) => {
+      if (prev.includes(teamName)) {
+        return prev.filter((t) => t !== teamName);
+      } else {
+        return [...prev, teamName];
+      }
+    });
+  };
+
+  // Revocación / suspensión de acceso
   const handleToggleRevoke = (u: ManagedUserPermissionEntry) => {
-    if (u.role === 'TI') {
-      addToast('No es posible revocar la cuenta TI Root principal.', 'error');
+    if (normalizeRole(u.role) === 'TI') {
+      addToast('No es posible suspender la cuenta TI Root maestra.', 'error');
       return;
     }
     const isRevoked = Boolean(u.accessRevoked);
     toggleUserAccessRevoked(u.id);
     addToast(
       isRevoked
-        ? `Acceso restaurado por TI para ${u.name}.`
-        : `Acceso REVOCADO / SUSPENDIDO para ${u.name}.`,
+        ? `Acceso restaurado para ${u.name}.`
+        : `Acceso REVOCADO para ${u.name}.`,
       isRevoked ? 'success' : 'error'
     );
   };
 
   return (
     <div className="w-full space-y-4 animate-fade-in">
-      {/* 2. Barra de Filtros y Búsqueda */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        {/* Input de Búsqueda */}
+      {/* 1. Barra de Búsqueda, Filtros y Acciones */}
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
         <div className="relative flex-1 max-w-md">
-          <span className="absolute inset-y-0 left-0 flex items-center pl-3.5 text-slate-400 pointer-events-none">
-            <Search className="w-4 h-4" />
-          </span>
+          <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
           <input
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Buscar por nombre, correo, rol o ID..."
-            className="w-full pl-10 pr-4 py-2 text-xs rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:border-blue-600 focus:ring-2 focus:ring-blue-100 dark:focus:ring-blue-900/30 outline-none transition"
+            placeholder="Buscar por colaborador, correo, rol o ID..."
+            className="w-full pl-10 pr-4 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500/20"
           />
         </div>
 
-        {/* Filtro Rápido Segmentado por Rol y Botón de Acción Principal */}
-        <div className="flex flex-wrap items-center gap-2.5">
-          <div className="flex items-center border border-slate-200 dark:border-slate-800 rounded-lg p-0.5 bg-slate-50 dark:bg-slate-800/60 text-xs">
-            <button
-              type="button"
-              onClick={() => setRoleFilter('ALL')}
-              className={`px-2.5 py-1 rounded-md transition-colors cursor-pointer ${
-                roleFilter === 'ALL'
-                  ? 'bg-white dark:bg-slate-900 font-semibold text-slate-800 dark:text-slate-100 shadow-xs'
-                  : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
-              }`}
-            >
-              Todos
-            </button>
-            <button
-              type="button"
-              onClick={() => setRoleFilter('TI')}
-              className={`px-2.5 py-1 rounded-md transition-colors cursor-pointer ${
-                roleFilter === 'TI'
-                  ? 'bg-white dark:bg-slate-900 font-semibold text-slate-800 dark:text-slate-100 shadow-xs'
-                  : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
-              }`}
-            >
-              TI Root
-            </button>
-            <button
-              type="button"
-              onClick={() => setRoleFilter('RH')}
-              className={`px-2.5 py-1 rounded-md transition-colors cursor-pointer ${
-                roleFilter === 'RH'
-                  ? 'bg-white dark:bg-slate-900 font-semibold text-slate-800 dark:text-slate-100 shadow-xs'
-                  : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
-              }`}
-            >
-              RH
-            </button>
-            <button
-              type="button"
-              onClick={() => setRoleFilter('Supervisor')}
-              className={`px-2.5 py-1 rounded-md transition-colors cursor-pointer ${
-                roleFilter === 'Supervisor'
-                  ? 'bg-white dark:bg-slate-900 font-semibold text-slate-800 dark:text-slate-100 shadow-xs'
-                  : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
-              }`}
-            >
-              Supervisores
-            </button>
-            <button
-              type="button"
-              onClick={() => setRoleFilter('Empleado')}
-              className={`px-2.5 py-1 rounded-md transition-colors cursor-pointer ${
-                roleFilter === 'Empleado'
-                  ? 'bg-white dark:bg-slate-900 font-semibold text-slate-800 dark:text-slate-100 shadow-xs'
-                  : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
-              }`}
-            >
-              Operativos
-            </button>
+        {/* Filtro por los 6 Roles */}
+        <div className="flex items-center gap-2 overflow-x-auto pb-1 lg:pb-0">
+          <div className="flex items-center border border-slate-200 dark:border-slate-800 rounded-xl p-1 bg-slate-50 dark:bg-slate-900/60 text-xs">
+            {(
+              [
+                ['ALL', 'Todos'],
+                ['Colaborador', 'Colaborador'],
+                ['Supervisor', 'Supervisor'],
+                ['Gerente', 'Gerente'],
+                ['Socio', 'Socio'],
+                ['RH', 'RH'],
+                ['TI', 'TI Root'],
+              ] as const
+            ).map(([val, label]) => (
+              <button
+                key={val}
+                type="button"
+                onClick={() => setRoleFilter(val as 'ALL' | CanonicalRole)}
+                className={`px-3 py-1 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
+                  roleFilter === val
+                    ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 shadow-xs'
+                    : 'text-slate-500 hover:text-slate-900 dark:hover:text-slate-200'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
           </div>
 
           {onNewUser && (
             <button
               type="button"
               onClick={onNewUser}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 active:scale-95 rounded-lg shadow-xs transition cursor-pointer"
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 active:scale-95 rounded-xl shadow-xs transition cursor-pointer shrink-0"
             >
               <Plus className="w-3.5 h-3.5" />
-              Nuevo Usuario / Supervisor
+              Alta / Invitar Usuario
             </button>
           )}
         </div>
       </div>
 
-      {/* 3. Tabla Jerárquica y de Permisos (Table Project) */}
-      <div className="w-full bg-white dark:bg-[#0B111E] rounded-2xl border border-slate-100 dark:border-slate-800/80 shadow-xs overflow-hidden">
+      {/* 2. Tabla de Usuarios y Permisos Personalizables */}
+      <div className="w-full bg-white dark:bg-[#0B111E] rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs overflow-hidden">
         <div className="w-full overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
-              <tr className="border-b border-slate-100 dark:border-slate-800 bg-slate-50/75 dark:bg-slate-900/50 text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                <th className="py-3.5 px-4">Usuario / Cuenta</th>
-                <th className="py-3.5 px-4">Jerarquía y Equipo</th>
-                <th className="py-3.5 px-4">Matriz de Permisos / Módulos</th>
-                <th className="py-3.5 px-4">Estado de Cuenta</th>
-                <th className="py-3.5 px-4 text-right">Acciones</th>
+              <tr className="border-b border-slate-200/80 dark:border-slate-800 bg-slate-50/75 dark:bg-slate-900/50 text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                <th className="py-3.5 px-4">Usuario / Correo</th>
+                <th className="py-3.5 px-4">Rol Asignado</th>
+                <th className="py-3.5 px-4">Equipo / Visibilidad</th>
+                <th className="py-3.5 px-4">Switches Clave de Acceso</th>
+                <th className="py-3.5 px-4">Estado</th>
+                <th className="py-3.5 px-4 text-right">Personalizar</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60 text-xs">
               {filteredUsers.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="py-10 text-center text-slate-400">
-                    No se encontraron usuarios con los filtros seleccionados.
+                  <td colSpan={6} className="py-12 text-center text-slate-400 text-xs">
+                    No se encontraron usuarios bajo los criterios de búsqueda.
                   </td>
                 </tr>
               ) : (
                 filteredUsers.map((u) => {
+                  const normRole = normalizeRole(u.role);
                   const isRevoked = Boolean(u.accessRevoked);
-                  const isTI = u.role === 'TI';
-                  const isRH = u.role === 'RH';
-                  const isSupervisor = u.role === 'Supervisor';
-
-                  // Resolución del equipo y supervisor a cargo
-                  const supervisorUser = allSupervisors.find(
-                    (s) => s.id === (isSupervisor ? u.id : u.supervisor_id || 'admin-99')
-                  );
-                  const supervisorIndex = allSupervisors.findIndex(
-                    (s) => s.id === (isSupervisor ? u.id : u.supervisor_id || 'admin-99')
-                  );
-                  const teamNumber = supervisorIndex >= 0 ? supervisorIndex + 1 : 1;
-                  const supervisorName = supervisorUser?.name || 'Supervisor Líder';
-
-                  // Cantidad de colaboradores subordinados a este supervisor
-                  const subordinateCount = isSupervisor
-                    ? mergedUsers.filter((m) => (m.supervisor_id || 'admin-99') === u.id).length
-                    : 0;
+                  const perms = u.permissions || getDefaultPermissionsForRole(normRole);
 
                   return (
                     <tr
@@ -366,7 +404,7 @@ export function UserPermissionsTable({ onNewUser }: UserPermissionsTableProps) {
                         isRevoked ? 'opacity-60 bg-slate-50/30 dark:bg-slate-900/20' : ''
                       }`}
                     >
-                      {/* Columna 1: Usuario / Credenciales */}
+                      {/* Usuario */}
                       <td className="py-3.5 px-4">
                         <div className="flex items-center gap-3">
                           <UserAvatar
@@ -384,138 +422,163 @@ export function UserPermissionsTable({ onNewUser }: UserPermissionsTableProps) {
                               {u.name}
                             </span>
                             <span className="text-slate-400 font-mono text-[11px] truncate">
-                              {u.email} • {u.id}
+                              {u.email}
                             </span>
                           </div>
                         </div>
                       </td>
 
-                      {/* Columna 2: Jerarquía y Equipo */}
+                      {/* Rol */}
                       <td className="py-3.5 px-4">
-                        <div className="space-y-1">
-                          {isTI && (
-                            <div>
-                              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-blue-50 text-blue-700 border border-blue-200/60 dark:bg-blue-950/50 dark:text-sky-300 dark:border-blue-800/60">
-                                Nivel 1 • TI Root
-                              </span>
-                              <p className="text-[11px] text-slate-400 mt-0.5">Control global del sistema</p>
-                            </div>
-                          )}
-
-                          {isRH && (
-                            <div>
-                              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-purple-50 text-purple-700 border border-purple-200/60 dark:bg-purple-950/50 dark:text-purple-300 dark:border-purple-800/60">
-                                Nivel 2 • Recursos Humanos
-                              </span>
-                              <p className="text-[11px] text-slate-400 mt-0.5">
-                                Auditoría de checadas • {u.allowedSupervisorIds?.length ?? allSupervisors.length} equipo(s)
-                              </p>
-                            </div>
-                          )}
-
-                          {isSupervisor && (
-                            <div>
-                              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-slate-100 text-slate-700 border border-slate-200/60 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700">
-                                Nivel 3 • Supervisor
-                              </span>
-                              <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-                                {u.team || `Equipo #${teamNumber}`} • Lidera {subordinateCount} {subordinateCount === 1 ? 'colaborador' : 'colaboradores'}
-                              </p>
-                            </div>
-                          )}
-
-                          {u.role === 'Empleado' && (
-                            <div>
-                              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-slate-50 text-slate-600 border border-slate-200/60 dark:bg-slate-800/60 dark:text-slate-400 dark:border-slate-700/60">
-                                Nivel 4 • Operativo
-                              </span>
-                              <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-                                Equipo #{teamNumber} • Reporta a {supervisorName}
-                              </p>
-                            </div>
-                          )}
-                        </div>
+                        <span
+                          className={`inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-semibold ${
+                            normRole === 'TI'
+                              ? 'bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300 border border-blue-200 dark:border-blue-800'
+                              : normRole === 'Socio'
+                              ? 'bg-purple-50 text-purple-700 dark:bg-purple-950/60 dark:text-purple-300 border border-purple-200 dark:border-purple-800'
+                              : normRole === 'Gerente'
+                              ? 'bg-amber-50 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-200 dark:border-amber-800'
+                              : normRole === 'Supervisor'
+                              ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800'
+                              : normRole === 'RH'
+                              ? 'bg-rose-50 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300 border border-rose-200 dark:border-rose-800'
+                              : 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300'
+                          }`}
+                        >
+                          {getRoleDisplayName(normRole)}
+                        </span>
                       </td>
 
-                      {/* Columna 3: Matriz de Permisos / Módulos (Badges Interactivos) */}
+                      {/* Equipo / Visibilidad Aislada */}
                       <td className="py-3.5 px-4">
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          {MODULE_LIST.map((mod) => {
-                            const isEnabled = Boolean(u.modules[mod.key]);
-                            const isPolicyLocked = isTI || (isRH && (mod.key === 'tasks' || mod.key === 'clients'));
-
-                            return (
-                              <button
-                                key={mod.key}
-                                type="button"
-                                disabled={isPolicyLocked || isRevoked}
-                                onClick={() => handleToggleModuleQuick(u, mod.key)}
-                                title={
-                                  isPolicyLocked
-                                    ? isTI
-                                      ? 'TI Root mantiene todos los módulos activos'
-                                      : 'Política RBAC 403: No permitido para RH'
-                                    : `${isEnabled ? 'Desactivar' : 'Activar'} ${mod.label}`
-                                }
-                                className={`px-2 py-0.5 rounded text-[10px] font-medium transition-all ${
-                                  isPolicyLocked
-                                    ? isTI
-                                      ? 'bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-sky-300 cursor-default'
-                                      : 'bg-slate-100 text-slate-400 dark:bg-slate-800/60 dark:text-slate-500 cursor-not-allowed opacity-60'
-                                    : isEnabled
-                                    ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200/60 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800/50 cursor-pointer active:scale-95'
-                                    : 'bg-slate-100 text-slate-400 hover:bg-slate-200 border border-slate-200/60 dark:bg-slate-800/60 dark:text-slate-500 dark:border-slate-700/60 cursor-pointer active:scale-95'
-                                }`}
-                              >
-                                {mod.shortLabel}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </td>
-
-                      {/* Columna 4: Estado de Cuenta */}
-                      <td className="py-3.5 px-4">
-                        {isRevoked ? (
-                          <span className="inline-flex items-center gap-1.5 text-rose-600 dark:text-rose-400 font-medium text-xs">
-                            <span className="w-1.5 h-1.5 rounded-full bg-rose-500"></span> Suspendido
-                          </span>
+                        {normRole === 'RH' ? (
+                          <div className="space-y-1">
+                            <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">
+                              Equipos Autorizados ({u.assignedTeams?.length || 0}):
+                            </span>
+                            <div className="flex flex-wrap gap-1">
+                              {(u.assignedTeams || ['Equipo Prueba']).map((t) => (
+                                <span
+                                  key={t}
+                                  className="px-2 py-0.5 rounded text-[10px] font-medium bg-rose-50 text-rose-700 dark:bg-rose-950 dark:text-rose-300 border border-rose-100 dark:border-rose-900"
+                                >
+                                  {t}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
                         ) : (
-                          <span className="inline-flex items-center gap-1.5 text-emerald-700 dark:text-emerald-400 font-medium text-xs">
-                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> Activo
+                          <span className="text-slate-700 dark:text-slate-300 font-medium">
+                            {u.team || 'Equipo Prueba'}
                           </span>
                         )}
                       </td>
 
-                      {/* Columna 5: Acciones */}
-                      <td className="py-3.5 px-4 text-right">
-                        <div className="flex items-center justify-end gap-1">
-                          {/* Botón Editar Permisos */}
+                      {/* Switches de Acceso Rápido */}
+                      <td className="py-3.5 px-4">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          {/* Crear Tareas */}
                           <button
                             type="button"
-                            onClick={() => handleOpenEditModal(u)}
-                            className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/40 rounded-lg transition-colors cursor-pointer"
-                            title="Gestionar permisos y equipo"
+                            onClick={() => handleQuickTogglePermission(u, 'canCreateTasks')}
+                            title={`Crear Tareas: ${perms.canCreateTasks ? 'Habilitado' : 'Deshabilitado'}`}
+                            className={`px-2 py-1 rounded text-[10px] font-semibold border transition cursor-pointer ${
+                              perms.canCreateTasks
+                                ? 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950 dark:text-blue-300 dark:border-blue-800'
+                                : 'bg-slate-100 text-slate-400 border-slate-200 dark:bg-slate-800 dark:text-slate-500 dark:border-slate-700'
+                            }`}
                           >
-                            <SlidersHorizontal className="w-4 h-4" />
+                            Tareas
                           </button>
 
-                          {/* Botón Revocar / Restaurar */}
-                          {!isTI && (
-                            <button
-                              type="button"
-                              onClick={() => handleToggleRevoke(u)}
-                              className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
-                                isRevoked
-                                  ? 'text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-950/40'
-                                  : 'text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40'
-                              }`}
-                              title={isRevoked ? 'Restaurar Acceso' : 'Revocar Acceso / Suspender'}
-                            >
-                              {isRevoked ? <RotateCcw className="w-4 h-4" /> : <Trash2 className="w-4 h-4" />}
-                            </button>
-                          )}
+                          {/* Ajustar Tiempos */}
+                          <button
+                            type="button"
+                            onClick={() => handleQuickTogglePermission(u, 'canAdjustTeamTimes')}
+                            title={`Ajustar Tiempos: ${perms.canAdjustTeamTimes ? 'Habilitado' : 'Deshabilitado'}`}
+                            className={`px-2 py-1 rounded text-[10px] font-semibold border transition cursor-pointer ${
+                              perms.canAdjustTeamTimes
+                                ? 'bg-indigo-50 text-indigo-700 border-indigo-200 dark:bg-indigo-950 dark:text-indigo-300 dark:border-indigo-800'
+                                : 'bg-slate-100 text-slate-400 border-slate-200 dark:bg-slate-800 dark:text-slate-500 dark:border-slate-700'
+                            }`}
+                          >
+                            Ajustar Horas
+                          </button>
+
+                          {/* Clientes y Proyectos */}
+                          <button
+                            type="button"
+                            onClick={() => handleQuickTogglePermission(u, 'canManageClientsAndProjects')}
+                            title={`Clientes/Proyectos: ${perms.canManageClientsAndProjects ? 'Habilitado' : 'Deshabilitado'}`}
+                            className={`px-2 py-1 rounded text-[10px] font-semibold border transition cursor-pointer ${
+                              perms.canManageClientsAndProjects
+                                ? 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950 dark:text-amber-300 dark:border-amber-800'
+                                : 'bg-slate-100 text-slate-400 border-slate-200 dark:bg-slate-800 dark:text-slate-500 dark:border-slate-700'
+                            }`}
+                          >
+                            Proyectos
+                          </button>
+
+                          {/* Descargar Informes */}
+                          <button
+                            type="button"
+                            onClick={() => handleQuickTogglePermission(u, 'canExportReports')}
+                            title={`Descargar Informes: ${perms.canExportReports ? 'Habilitado' : 'Deshabilitado'}`}
+                            className={`px-2 py-1 rounded text-[10px] font-semibold border transition cursor-pointer ${
+                              perms.canExportReports
+                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-300 dark:border-emerald-800'
+                                : 'bg-slate-100 text-slate-400 border-slate-200 dark:bg-slate-800 dark:text-slate-500 dark:border-slate-700'
+                            }`}
+                          >
+                            Informes
+                          </button>
+
+                          {/* Emitir Invitaciones */}
+                          <button
+                            type="button"
+                            onClick={() => handleQuickTogglePermission(u, 'canInviteUsers')}
+                            title={`Invitar Usuarios: ${perms.canInviteUsers ? 'Habilitado' : 'Deshabilitado'}`}
+                            className={`px-2 py-1 rounded text-[10px] font-semibold border transition cursor-pointer ${
+                              perms.canInviteUsers
+                                ? 'bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950 dark:text-purple-300 dark:border-purple-800'
+                                : 'bg-slate-100 text-slate-400 border-slate-200 dark:bg-slate-800 dark:text-slate-500 dark:border-slate-700'
+                            }`}
+                          >
+                            Invitar
+                          </button>
                         </div>
+                      </td>
+
+                      {/* Estado */}
+                      <td className="py-3.5 px-4 whitespace-nowrap">
+                        <button
+                          type="button"
+                          onClick={() => handleToggleRevoke(u)}
+                          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold transition cursor-pointer ${
+                            isRevoked
+                              ? 'bg-red-50 text-red-700 dark:bg-red-950/50 dark:text-red-300 border border-red-200 dark:border-red-800'
+                              : 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800'
+                          }`}
+                        >
+                          <span
+                            className={`w-1.5 h-1.5 rounded-full ${
+                              isRevoked ? 'bg-red-500' : 'bg-emerald-500'
+                            }`}
+                          />
+                          {isRevoked ? 'Suspendido' : 'Activo'}
+                        </button>
+                      </td>
+
+                      {/* Acciones */}
+                      <td className="py-3.5 px-4 text-right whitespace-nowrap">
+                        <button
+                          type="button"
+                          onClick={() => handleOpenEditModal(u)}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 text-xs font-semibold rounded-lg transition cursor-pointer"
+                        >
+                          <Sliders className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                          Permisos RBAC
+                        </button>
                       </td>
                     </tr>
                   );
@@ -526,145 +589,151 @@ export function UserPermissionsTable({ onNewUser }: UserPermissionsTableProps) {
         </div>
       </div>
 
-      {/* 4. Modal de Edición de Permisos y Estructura */}
-      {editingUser && modalDraftModules && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs animate-fade-in">
-          <div className="bg-white dark:bg-[#0B111E] rounded-2xl border border-slate-100 dark:border-slate-800 shadow-2xl max-w-lg w-full p-6 space-y-6">
+      {/* 3. Modal de Personalización de Permisos y Rol */}
+      {editingUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-fade-in">
+          <div className="bg-white dark:bg-[#101726] rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden">
             {/* Cabecera del Modal */}
-            <div className="flex items-start justify-between gap-4 border-b border-slate-100 dark:border-slate-800 pb-4">
-              <div>
-                <h3 className="text-base font-bold text-slate-900 dark:text-white">
-                  Gestionar Permisos y Accesos
-                </h3>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  {editingUser.name} • <span className="font-mono">{editingUser.email}</span> ({editingUser.role})
-                </p>
+            <div className="flex items-center justify-between p-6 border-b border-slate-200 dark:border-slate-800">
+              <div className="flex items-center gap-3">
+                <UserAvatar
+                  photoURL={editingUser.photoURL}
+                  name={editingUser.name}
+                  size="md"
+                />
+                <div>
+                  <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">
+                    Configuración de Permisos: {editingUser.name}
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    {editingUser.email} • ID: {editingUser.id}
+                  </p>
+                </div>
               </div>
               <button
                 type="button"
-                onClick={() => {
-                  setEditingUser(null);
-                  setModalDraftModules(null);
-                }}
-                className="p-1 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+                onClick={() => setEditingUser(null)}
+                className="p-2 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 rounded-lg cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            {/* Presets Rápidos */}
-            {editingUser.role !== 'TI' && (
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-slate-500 font-medium">Ajuste rápido:</span>
-                <button
-                  type="button"
-                  onClick={() => handleApplyPresetInModal('entry_exit_only')}
-                  className="px-2.5 py-1 text-xs font-medium rounded-md bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-200 cursor-pointer transition-colors"
-                >
-                  Solo Checador
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleApplyPresetInModal('full_role')}
-                  className="px-2.5 py-1 text-xs font-medium rounded-md bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-200 cursor-pointer transition-colors"
-                >
-                  Perfil Completo de {editingUser.role}
-                </button>
-              </div>
-            )}
-
-            {/* Lista de Módulos con Switches */}
-            <div className="space-y-3 max-h-64 overflow-y-auto pr-1">
-              {MODULE_LIST.map((mod) => {
-                const isEnabled = Boolean(modalDraftModules[mod.key]);
-                const isPolicyLocked =
-                  editingUser.role === 'TI' ||
-                  (editingUser.role === 'RH' && (mod.key === 'tasks' || mod.key === 'clients'));
-
-                return (
-                  <div
-                    key={mod.key}
-                    className="flex items-center justify-between p-3 rounded-xl border border-slate-100 dark:border-slate-800 hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-colors"
+            {/* Cuerpo con Scroll */}
+            <div className="p-6 overflow-y-auto space-y-6">
+              {/* Selector de Rol */}
+              <div className="space-y-2">
+                <label className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center justify-between">
+                  <span>Rol Jerárquico Corporativo</span>
+                  <button
+                    type="button"
+                    onClick={handleResetToRoleDefaults}
+                    className="text-blue-600 hover:underline cursor-pointer lowercase first-letter:uppercase text-[11px] font-normal"
                   >
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs font-semibold text-slate-800 dark:text-slate-200">
-                          {mod.label}
-                        </span>
-                        {isPolicyLocked && editingUser.role === 'RH' && (
-                          <span className="text-[10px] font-mono text-rose-500 bg-rose-50 px-1.5 py-0.5 rounded">
-                            RBAC 403
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-[11px] text-slate-400 mt-0.5">{mod.hint}</p>
-                    </div>
-
-                    <button
-                      type="button"
-                      disabled={isPolicyLocked}
-                      onClick={() =>
-                        setModalDraftModules((prev) =>
-                          prev ? { ...prev, [mod.key]: !prev[mod.key] } : prev
-                        )
-                      }
-                      className={`w-11 h-6 flex items-center rounded-full p-1 transition-colors cursor-pointer ${
-                        isPolicyLocked
-                          ? 'opacity-40 cursor-not-allowed bg-slate-300 dark:bg-slate-700'
-                          : isEnabled
-                          ? 'bg-blue-600 justify-end'
-                          : 'bg-slate-200 dark:bg-slate-700 justify-start'
-                      }`}
-                    >
-                      <span className="w-4 h-4 rounded-full bg-white shadow-xs" />
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* Reasignación de Equipo para Empleados */}
-            {editingUser.role === 'Empleado' && allSupervisors.length > 0 && (
-              <div className="border-t border-slate-100 dark:border-slate-800 pt-3">
-                <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-1.5">
-                  Supervisor y Equipo Asignado
+                    Restablecer a plantilla base
+                  </button>
                 </label>
                 <select
-                  value={editingUser.supervisor_id || allSupervisors[0]?.id}
-                  onChange={(e) => {
-                    reassignEmployeeSupervisor(editingUser.id, e.target.value);
-                    setEditingUser((prev) => (prev ? { ...prev, supervisor_id: e.target.value } : prev));
-                    addToast(`Supervisor reasignado a ${editingUser.name}.`, 'info');
-                  }}
-                  className="w-full py-2 px-3 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-800 dark:text-slate-200 outline-none focus:border-blue-600"
+                  value={draftRole}
+                  onChange={(e) => handleModalRoleChange(e.target.value as CanonicalRole)}
+                  className="w-full p-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-semibold text-slate-800 dark:text-slate-200 focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 cursor-pointer"
                 >
-                  {allSupervisors.map((s, idx) => (
-                    <option key={s.id} value={s.id}>
-                      Equipo #{idx + 1}: {s.name} ({s.team || 'Equipo Corporativo'})
-                    </option>
-                  ))}
+                  <option value="Colaborador">1. Colaborador (Operativo)</option>
+                  <option value="Supervisor">2. Supervisor (Gestión de Equipo)</option>
+                  <option value="Gerente">3. Gerente (Clientes, Proyectos, Invitaciones e Informes)</option>
+                  <option value="Socio">4. Socio / Jefatura (Acceso Total, Ajuste RH y Bitácora)</option>
+                  <option value="RH">5. Recursos Humanos (Control y Ajuste de Jornadas)</option>
+                  <option value="TI">6. Administrador TI Root (Máxima Autoridad Técnica)</option>
                 </select>
               </div>
-            )}
 
-            {/* Botones de Acción del Modal */}
-            <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-slate-100 dark:border-slate-800">
+              {/* Selector de Equipos para RH */}
+              {draftRole === 'RH' && (
+                <div className="p-4 bg-rose-50/50 dark:bg-rose-950/20 border border-rose-200 dark:border-rose-900/60 rounded-xl space-y-3">
+                  <div className="flex items-center gap-2 text-rose-800 dark:text-rose-300 text-xs font-bold">
+                    <Building className="w-4 h-4" />
+                    <span>Equipos Autorizados a Visualizar (Aislamiento RH):</span>
+                  </div>
+                  <p className="text-[11px] text-rose-700/80 dark:text-rose-300/80">
+                    Este usuario de RH únicamente tendrá visibilidad y permiso de ajuste sobre las asistencias y colaboradores de los equipos seleccionados.
+                  </p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                    {AVAILABLE_TEAMS.map((team) => {
+                      const isSelected = draftAssignedTeams.includes(team);
+                      return (
+                        <button
+                          key={team}
+                          type="button"
+                          onClick={() => handleToggleAssignedTeam(team)}
+                          className={`flex items-center justify-between p-2 rounded-lg text-xs font-medium border transition cursor-pointer text-left ${
+                            isSelected
+                              ? 'bg-rose-100 text-rose-900 border-rose-300 dark:bg-rose-900/40 dark:text-rose-200 dark:border-rose-700'
+                              : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-800'
+                          }`}
+                        >
+                          <span>{team}</span>
+                          {isSelected && <Check className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400" />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Switches Granulares de Permisos */}
+              <div className="space-y-3">
+                <label className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                  Matriz de Permisos Individuales (Overrides de TI)
+                </label>
+                <div className="space-y-2">
+                  {GRANULAR_PERMISSION_DEFINITIONS.map((def) => {
+                    const isChecked = Boolean(draftPermissions[def.key]);
+                    return (
+                      <label
+                        key={def.key}
+                        className="flex items-start justify-between p-3 rounded-xl border border-slate-200/80 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/30 hover:bg-slate-50 dark:hover:bg-slate-900 transition cursor-pointer"
+                      >
+                        <div className="pr-4">
+                          <p className="text-xs font-semibold text-slate-900 dark:text-slate-100">
+                            {def.label}
+                          </p>
+                          <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                            {def.description}
+                          </p>
+                        </div>
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={(e) =>
+                            setDraftPermissions((prev) => ({
+                              ...prev,
+                              [def.key]: e.target.checked,
+                            }))
+                          }
+                          className="w-4 h-4 mt-0.5 text-blue-600 rounded-sm border-slate-300 dark:border-slate-700 focus:ring-blue-500 cursor-pointer"
+                        />
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+
+            {/* Pie del Modal */}
+            <div className="flex items-center justify-end gap-3 p-4 border-t border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50">
               <button
                 type="button"
-                onClick={() => {
-                  setEditingUser(null);
-                  setModalDraftModules(null);
-                }}
-                className="px-4 py-2 text-xs font-medium text-slate-600 hover:text-slate-800 dark:text-slate-400 dark:hover:text-white rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                onClick={() => setEditingUser(null)}
+                className="px-4 py-2 text-xs font-semibold text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 transition cursor-pointer"
               >
                 Cancelar
               </button>
               <button
                 type="button"
                 onClick={handleSaveModal}
-                className="px-4 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-xs transition-colors cursor-pointer"
+                className="px-4 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-xl shadow-xs transition cursor-pointer"
               >
-                Guardar Permisos
+                Guardar Permisos Personalizados
               </button>
             </div>
           </div>

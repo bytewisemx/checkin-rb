@@ -55,13 +55,21 @@ export function GlobalHeader() {
       ? 'Equipo TI & Ciberseguridad'
       : normalizedRole === 'RH'
       ? 'Equipo Recursos Humanos'
+      : normalizedRole === 'Socio'
+      ? 'Jefatura y Dirección'
+      : normalizedRole === 'Gerente'
+      ? 'Gerencia de Auditoría'
       : 'Equipo General');
 
   const roleLabel =
-    normalizedRole === 'Supervisor'
+    normalizedRole === 'TI'
+      ? 'Admin TI Root'
+      : normalizedRole === 'Socio'
+      ? 'Socio / Jefatura'
+      : normalizedRole === 'Gerente'
+      ? 'Gerente'
+      : normalizedRole === 'Supervisor'
       ? 'Supervisor'
-      : normalizedRole === 'TI'
-      ? 'Admin TI'
       : normalizedRole === 'RH'
       ? 'Recursos Humanos'
       : 'Colaborador';

@@ -5,10 +5,13 @@ import {
   normalizeRole,
   getDefaultModulesForRole,
   getEffectiveModules,
+  getDefaultPermissionsForRole,
+  getEffectivePermissions,
   updateUserModulesApi,
   updateUserBiometricsApi,
   type UserRole,
   type UserModules,
+  type UserGranularPermissions,
   type BiometricVectorRecord,
 } from '../services/rbac';
 import {
@@ -40,10 +43,11 @@ export interface User {
   name: string;
   lastName?: string;
   email: string;
-  role: UserRole | 'employee' | 'supervisor';
+  role: UserRole | 'employee' | 'supervisor' | string;
   verified: boolean;
   birthDate?: string;
   team?: string;
+  assignedTeams?: string[];
   status?: 'active' | 'inactive';
   isProfileComplete: boolean;
   expectedEntryTime: string;
@@ -55,6 +59,8 @@ export interface User {
   biometricThreshold?: number;
   isBiometricsEnrolled?: boolean;
   // Permisos granulares por usuario gestionados por TI
+  permissions?: UserGranularPermissions;
+  customPermissions?: Partial<UserGranularPermissions>;
   modules?: UserModules;
   // Referencias jerárquicas requeridas
   supervisor_id?: string | null;
@@ -71,8 +77,11 @@ export interface ManagedUserPermissionEntry {
   id: string;
   name: string;
   email: string;
-  role: UserRole;
+  role: UserRole | string;
   team?: string;
+  assignedTeams?: string[];
+  permissions?: UserGranularPermissions;
+  customPermissions?: Partial<UserGranularPermissions>;
   modules: UserModules;
   biometrics?: BiometricVectorRecord | null;
   photoURL?: string | null;
@@ -139,6 +148,8 @@ export interface MockEmployee {
   name: string;
   role?: UserRole;
   team: string;
+  assignedTeams?: string[];
+  permissions?: UserGranularPermissions;
   status: 'active' | 'inactive';
   workedMinutesToday: number;
   isProfileComplete: boolean;
@@ -214,7 +225,11 @@ interface CheckinState {
   setTheme: (theme: 'dark' | 'light') => void;
   toggleTheme: () => void;
 
-  // Gestión granular de módulos y estructura jerárquica por usuario (Panel TI)
+  // Gestión granular de permisos y estructura jerárquica por usuario (Panel TI)
+  updateUserPermissions: (userId: string, permissions: Partial<UserGranularPermissions>) => void;
+  updateUserAssignedTeams: (userId: string, assignedTeams: string[]) => void;
+  changeUserRole: (userId: string, newRole: UserRole) => void;
+  getEffectiveUserPermissions: (userId?: string) => UserGranularPermissions;
   updateUserModules: (
     targetUserId: string,
     modules: UserModules,
@@ -320,19 +335,46 @@ const initialPermissionsDirectory: Record<string, ManagedUserPermissionEntry> = 
     id: 'ti-root-01',
     name: 'TI Prueba',
     email: 'ti.root@russellbedford.mx',
-    role: 'TI',
+    role: 'ti',
     team: 'Equipo Prueba (TI Root)',
-    modules: getDefaultModulesForRole('TI'),
+    permissions: getDefaultPermissionsForRole('ti'),
+    modules: getDefaultModulesForRole('ti'),
     biometrics: null,
     accessRevoked: false,
+  },
+  'socio-01': {
+    id: 'socio-01',
+    name: 'Socio Director Prueba',
+    email: 'socio.prueba@russellbedford.mx',
+    role: 'socio',
+    team: 'Jefatura y Dirección de Práctica',
+    permissions: getDefaultPermissionsForRole('socio'),
+    modules: getDefaultModulesForRole('socio'),
+    biometrics: null,
+    accessRevoked: false,
+    created_by_ti_id: 'ti-root-01',
+  },
+  'gerente-01': {
+    id: 'gerente-01',
+    name: 'Gerente Prueba',
+    email: 'gerente.prueba@russellbedford.mx',
+    role: 'gerente',
+    team: 'Auditoría Fiscal',
+    assignedTeams: ['Auditoría Fiscal', 'Equipo Prueba'],
+    permissions: getDefaultPermissionsForRole('gerente'),
+    modules: getDefaultModulesForRole('gerente'),
+    biometrics: null,
+    accessRevoked: false,
+    created_by_ti_id: 'ti-root-01',
   },
   'admin-99': {
     id: 'admin-99',
     name: 'Supervisor Prueba',
     email: 'supervisor.prueba@russellbedford.mx',
-    role: 'Supervisor',
+    role: 'supervisor',
     team: 'Equipo Prueba',
-    modules: getDefaultModulesForRole('Supervisor'), // facialCheckIn: false por defecto (Exento)
+    permissions: getDefaultPermissionsForRole('supervisor'),
+    modules: getDefaultModulesForRole('supervisor'),
     biometrics: null,
     accessRevoked: false,
     created_by_ti_id: 'ti-root-01',
@@ -341,9 +383,11 @@ const initialPermissionsDirectory: Record<string, ManagedUserPermissionEntry> = 
     id: 'rh-01',
     name: 'RH Prueba',
     email: 'rh.prueba@russellbedford.mx',
-    role: 'RH',
-    team: 'Equipo Prueba (Recursos Humanos)',
-    modules: getDefaultModulesForRole('RH'),
+    role: 'rh',
+    team: 'Recursos Humanos',
+    assignedTeams: ['Equipo Prueba', 'Auditoría Fiscal'],
+    permissions: getDefaultPermissionsForRole('rh'),
+    modules: getDefaultModulesForRole('rh'),
     biometrics: null,
     accessRevoked: false,
     allowedSupervisorIds: ['admin-99'],
@@ -351,11 +395,12 @@ const initialPermissionsDirectory: Record<string, ManagedUserPermissionEntry> = 
   },
   'usr-ana': {
     id: 'usr-ana',
-    name: 'Empleado Prueba',
+    name: 'Colaborador Prueba',
     email: 'colaborador.prueba@russellbedford.mx',
-    role: 'Empleado',
+    role: 'colaborador',
     team: 'Equipo Prueba',
-    modules: getDefaultModulesForRole('Empleado'),
+    permissions: getDefaultPermissionsForRole('colaborador'),
+    modules: getDefaultModulesForRole('colaborador'),
     biometrics: null,
     accessRevoked: false,
     supervisor_id: 'admin-99',
@@ -489,6 +534,136 @@ export const useCheckinStore = create<CheckinState>()(
           return getEffectiveModules({ role: dirEntry.role, modules: dirEntry.modules });
         }
         return getEffectiveModules(user);
+      },
+
+      getEffectiveUserPermissions: (userId) => {
+        const { user, userPermissionsDirectory } = get();
+        const targetId = userId || user?.id;
+        const entry = targetId ? userPermissionsDirectory[targetId] : null;
+        if (entry) {
+          return getEffectivePermissions(entry);
+        }
+        return getEffectivePermissions(user);
+      },
+
+      updateUserPermissions: (userId, permissions) => {
+        const { userPermissionsDirectory, user } = get();
+        const existing = userPermissionsDirectory[userId];
+        if (!existing) return;
+
+        const currentPerms = existing.permissions || getDefaultPermissionsForRole(existing.role);
+        const updatedPerms: UserGranularPermissions = {
+          ...currentPerms,
+          ...permissions,
+        };
+
+        const updatedEntry: ManagedUserPermissionEntry = {
+          ...existing,
+          permissions: updatedPerms,
+          customPermissions: {
+            ...(existing.customPermissions || {}),
+            ...permissions,
+          },
+        };
+
+        const nextDirectory = {
+          ...userPermissionsDirectory,
+          [userId]: updatedEntry,
+        };
+
+        const nextCurrentUser =
+          user && user.id === userId
+            ? {
+                ...user,
+                permissions: updatedPerms,
+                customPermissions: updatedEntry.customPermissions,
+              }
+            : user;
+
+        set({
+          userPermissionsDirectory: nextDirectory,
+          user: nextCurrentUser,
+        });
+
+        broadcastPermissionsUpdate({ userId, permissions: updatedPerms });
+      },
+
+      updateUserAssignedTeams: (userId, assignedTeams) => {
+        const { userPermissionsDirectory, user } = get();
+        const existing = userPermissionsDirectory[userId];
+        if (!existing) return;
+
+        const updatedEntry = {
+          ...existing,
+          assignedTeams,
+        };
+
+        const nextCurrentUser =
+          user && user.id === userId
+            ? { ...user, assignedTeams }
+            : user;
+
+        set({
+          userPermissionsDirectory: {
+            ...userPermissionsDirectory,
+            [userId]: updatedEntry,
+          },
+          user: nextCurrentUser,
+        });
+
+        broadcastPermissionsUpdate({ userId, assignedTeams });
+      },
+
+      changeUserRole: (userId, newRole) => {
+        const { userPermissionsDirectory, user, mockEmployeesData } = get();
+        const existing = userPermissionsDirectory[userId];
+        if (!existing) return;
+
+        const normRole = normalizeRole(newRole);
+        const defaultPerms = getDefaultPermissionsForRole(normRole);
+        const defaultMods = getDefaultModulesForRole(normRole);
+
+        const updatedEntry: ManagedUserPermissionEntry = {
+          ...existing,
+          role: normRole,
+          permissions: defaultPerms,
+          customPermissions: undefined,
+          modules: defaultMods,
+        };
+
+        const nextDirectory = {
+          ...userPermissionsDirectory,
+          [userId]: updatedEntry,
+        };
+
+        const nextMock = mockEmployeesData.map((emp) =>
+          emp.id === userId
+            ? {
+                ...emp,
+                role: normRole,
+                modules: defaultMods,
+              }
+            : emp
+        );
+
+        const nextCurrentUser =
+          user && user.id === userId
+            ? {
+                ...user,
+                role: normRole,
+                permissions: defaultPerms,
+                customPermissions: undefined,
+                modules: defaultMods,
+              }
+            : user;
+
+        set({
+          userPermissionsDirectory: nextDirectory,
+          mockEmployeesData: nextMock,
+          user: nextCurrentUser,
+        });
+
+        broadcastPermissionsUpdate({ userId, role: normRole, permissions: defaultPerms });
       },
 
       updateUserModules: async (targetUserId, modules, meta) => {
@@ -700,7 +875,7 @@ export const useCheckinStore = create<CheckinState>()(
           return false;
         }
 
-        // 1. NIVEL TI (Puesto Más Alto - TI Prueba)
+        // 1. NIVEL TI (Administrador TI Root)
         if (
           lowerEmail.includes('ti.') ||
           lowerEmail.startsWith('ti@') ||
@@ -716,13 +891,14 @@ export const useCheckinStore = create<CheckinState>()(
               name: 'TI',
               lastName: 'Prueba',
               email: 'ti.root@russellbedford.mx',
-              role: 'TI',
+              role: 'ti',
               verified: true,
               isProfileComplete: true,
               team: 'Equipo Prueba (TI Root)',
               expectedEntryTime: '09:00',
               status: 'active',
-              modules: dir?.modules || getDefaultModulesForRole('TI'),
+              permissions: dir?.permissions || getDefaultPermissionsForRole('ti'),
+              modules: dir?.modules || getDefaultModulesForRole('ti'),
               biometrics: dir?.biometrics || null,
               faceDescriptor: dir?.biometrics?.faceDescriptor,
               isBiometricsEnrolled: Boolean(dir?.biometrics?.faceDescriptor?.length),
@@ -735,7 +911,89 @@ export const useCheckinStore = create<CheckinState>()(
           return true;
         }
 
-        // 2. NIVEL RH (RH Prueba - Visualiza solo equipos asignados por TI)
+        // 2. NIVEL SOCIO / JEFATURA
+        if (
+          lowerEmail.includes('socio') ||
+          lowerEmail.includes('partner') ||
+          lowerEmail.includes('jefatura') ||
+          lowerEmail === 'socio.prueba@russellbedford.mx'
+        ) {
+          const dir = userPermissionsDirectory['socio-01'];
+          if (dir?.accessRevoked) {
+            addToast('Acceso revocado por TI: Tus permisos de Socio han sido suspendidos.', 'error');
+            return false;
+          }
+          const userActive = get().userActiveCheckins?.['socio-01'] || null;
+          const userHist = get().userHistories?.['socio-01'] || [];
+          set({
+            user: {
+              id: 'socio-01',
+              name: 'Socio Director',
+              lastName: 'Prueba',
+              email: 'socio.prueba@russellbedford.mx',
+              role: 'socio',
+              verified: true,
+              isProfileComplete: true,
+              team: 'Jefatura y Dirección de Práctica',
+              expectedEntryTime: '09:00',
+              status: 'active',
+              created_by_ti_id: 'ti-root-01',
+              permissions: dir?.permissions || getDefaultPermissionsForRole('socio'),
+              modules: dir?.modules || getDefaultModulesForRole('socio'),
+              biometrics: dir?.biometrics || null,
+              faceDescriptor: dir?.biometrics?.faceDescriptor,
+              isBiometricsEnrolled: Boolean(dir?.biometrics?.faceDescriptor?.length),
+              biometricThreshold: DEFAULT_BIOMETRIC_THRESHOLD,
+            },
+            isAuthenticated: true,
+            activeCheckin: userActive,
+            history: userHist,
+          });
+          return true;
+        }
+
+        // 3. NIVEL GERENTE
+        if (
+          lowerEmail.includes('gerente') ||
+          lowerEmail.includes('manager') ||
+          lowerEmail === 'gerente.prueba@russellbedford.mx'
+        ) {
+          const dir = userPermissionsDirectory['gerente-01'];
+          if (dir?.accessRevoked) {
+            addToast('Acceso revocado por TI: Tus permisos de Gerente han sido suspendidos.', 'error');
+            return false;
+          }
+          const userActive = get().userActiveCheckins?.['gerente-01'] || null;
+          const userHist = get().userHistories?.['gerente-01'] || [];
+          set({
+            user: {
+              id: 'gerente-01',
+              name: 'Gerente',
+              lastName: 'Prueba',
+              email: 'gerente.prueba@russellbedford.mx',
+              role: 'gerente',
+              verified: true,
+              isProfileComplete: true,
+              team: 'Auditoría Fiscal',
+              assignedTeams: ['Auditoría Fiscal', 'Equipo Prueba'],
+              expectedEntryTime: '09:00',
+              status: 'active',
+              created_by_ti_id: 'ti-root-01',
+              permissions: dir?.permissions || getDefaultPermissionsForRole('gerente'),
+              modules: dir?.modules || getDefaultModulesForRole('gerente'),
+              biometrics: dir?.biometrics || null,
+              faceDescriptor: dir?.biometrics?.faceDescriptor,
+              isBiometricsEnrolled: Boolean(dir?.biometrics?.faceDescriptor?.length),
+              biometricThreshold: DEFAULT_BIOMETRIC_THRESHOLD,
+            },
+            isAuthenticated: true,
+            activeCheckin: userActive,
+            history: userHist,
+          });
+          return true;
+        }
+
+        // 4. NIVEL RH (Recursos Humanos)
         if (
           lowerEmail.includes('rh.') ||
           lowerEmail.startsWith('rh@') ||
@@ -756,13 +1014,15 @@ export const useCheckinStore = create<CheckinState>()(
               name: 'RH',
               lastName: 'Prueba',
               email: 'rh.prueba@russellbedford.mx',
-              role: 'RH',
+              role: 'rh',
               verified: true,
               isProfileComplete: true,
-              team: 'Equipo Prueba (Recursos Humanos)',
+              team: 'Recursos Humanos',
+              assignedTeams: ['Equipo Prueba', 'Auditoría Fiscal'],
               expectedEntryTime: '09:00',
               status: 'active',
-              modules: dir?.modules || getDefaultModulesForRole('RH'),
+              permissions: dir?.permissions || getDefaultPermissionsForRole('rh'),
+              modules: dir?.modules || getDefaultModulesForRole('rh'),
               biometrics: dir?.biometrics || null,
               faceDescriptor: dir?.biometrics?.faceDescriptor,
               isBiometricsEnrolled: Boolean(dir?.biometrics?.faceDescriptor?.length),
@@ -775,12 +1035,12 @@ export const useCheckinStore = create<CheckinState>()(
           return true;
         }
 
-        // 3. NIVEL SUPERVISOR / SOCIO (Supervisor Prueba - Gestionado por TI)
+        // 5. NIVEL SUPERVISOR
         if (lowerEmail.includes('supervisor')) {
           const supId = 'admin-99';
           const dir = userPermissionsDirectory[supId];
           if (dir?.accessRevoked) {
-            addToast('Acceso revocado por TI: Tus permisos de Socio / Supervisor han sido revocados.', 'error');
+            addToast('Acceso revocado por TI: Tus permisos de Supervisor han sido revocados.', 'error');
             return false;
           }
           const userActive = get().userActiveCheckins?.[supId] || null;
@@ -791,7 +1051,7 @@ export const useCheckinStore = create<CheckinState>()(
               name: 'Supervisor',
               lastName: 'Prueba',
               email: 'supervisor.prueba@russellbedford.mx',
-              role: 'Supervisor',
+              role: 'supervisor',
               verified: true,
               isProfileComplete: true,
               team: 'Equipo Prueba',
@@ -800,7 +1060,8 @@ export const useCheckinStore = create<CheckinState>()(
               created_by_ti_id: 'ti-root-01',
               createdByTiId: 'ti-root-01',
               assigned_team_members: ['usr-ana'],
-              modules: dir?.modules || getDefaultModulesForRole('Supervisor'),
+              permissions: dir?.permissions || getDefaultPermissionsForRole('supervisor'),
+              modules: dir?.modules || getDefaultModulesForRole('supervisor'),
               biometrics: dir?.biometrics || null,
               faceDescriptor: dir?.biometrics?.faceDescriptor,
               isBiometricsEnrolled: Boolean(dir?.biometrics?.faceDescriptor?.length),
@@ -813,7 +1074,7 @@ export const useCheckinStore = create<CheckinState>()(
           return true;
         }
 
-        // 4. NIVEL EMPLEADO / OPERATIVO (Empleado Prueba - Subordinado a Supervisor Prueba)
+        // 6. NIVEL COLABORADOR (Operativo)
         if (
           lowerEmail.includes('colaborador') ||
           lowerEmail.includes('empleado') ||
@@ -824,7 +1085,7 @@ export const useCheckinStore = create<CheckinState>()(
         ) {
           const dir = userPermissionsDirectory['usr-ana'];
           if (dir?.accessRevoked) {
-            addToast('Acceso revocado por TI: Tu cuenta de Empleado tiene los permisos revocados.', 'error');
+            addToast('Acceso revocado por TI: Tu cuenta de Colaborador tiene los permisos revocados.', 'error');
             return false;
           }
           const anaActive = get().userActiveCheckins?.['usr-ana'] || null;
@@ -832,10 +1093,10 @@ export const useCheckinStore = create<CheckinState>()(
           set({
             user: {
               id: 'usr-ana',
-              name: 'Empleado',
+              name: 'Colaborador',
               lastName: 'Prueba',
               email: 'colaborador.prueba@russellbedford.mx',
-              role: 'Empleado',
+              role: 'colaborador',
               verified: true,
               isProfileComplete: true,
               team: 'Equipo Prueba',
@@ -844,7 +1105,8 @@ export const useCheckinStore = create<CheckinState>()(
               supervisor_id: 'admin-99',
               supervisorId: 'admin-99',
               supervisorName: 'Supervisor Prueba',
-              modules: dir?.modules || getDefaultModulesForRole('Empleado'),
+              permissions: dir?.permissions || getDefaultPermissionsForRole('colaborador'),
+              modules: dir?.modules || getDefaultModulesForRole('colaborador'),
               biometrics: dir?.biometrics || null,
               faceDescriptor: dir?.biometrics?.faceDescriptor,
               isBiometricsEnrolled: Boolean(dir?.biometrics?.faceDescriptor?.length),
@@ -965,7 +1227,11 @@ export const useCheckinStore = create<CheckinState>()(
             : Boolean(existingEmp?.isProfileComplete || (existingEmp?.name && existingEmp?.role));
 
         // 3. Determinar rol asignado (priorizando perfil existente, luego invitación, luego heurística)
-        let assignedRole: UserRole = existingEmp?.role || existingDir?.role || 'Empleado';
+        let assignedRole: UserRole =
+          (existingEmp?.role ? normalizeRole(existingEmp.role) : undefined) ||
+          (existingDir?.role ? normalizeRole(existingDir.role) : undefined) ||
+          'Colaborador';
+
         if (invitationData?.role) {
           assignedRole = normalizeRole(invitationData.role);
         } else if (!existingEmp?.role && !existingDir?.role) {
@@ -1002,7 +1268,7 @@ export const useCheckinStore = create<CheckinState>()(
           (assignedRole === 'Supervisor' ? 'Supervisión General' : 'Auditoría Fiscal');
 
         const resolvedSupervisorId =
-          assignedRole === 'Empleado'
+          assignedRole === 'Colaborador'
             ? invitationData?.supervisorId || existingEmp?.supervisor_id || existingDir?.supervisor_id || 'admin-99'
             : null;
 
@@ -1011,12 +1277,20 @@ export const useCheckinStore = create<CheckinState>()(
             ? invitationData?.created_by_ti_id || existingEmp?.created_by_ti_id || existingDir?.created_by_ti_id || 'ti-root-01'
             : null;
 
+        const defaultPerms = getDefaultPermissionsForRole(assignedRole);
+        const resolvedPermissions =
+          existingDir?.permissions || existingEmp?.permissions || defaultPerms;
+        const resolvedAssignedTeams =
+          existingDir?.assignedTeams || existingEmp?.assignedTeams || (assignedRole === 'Gerente' || assignedRole === 'RH' ? [resolvedTeam] : undefined);
+
         const updatedEmp: MockEmployee = {
           id: fbUser.uid,
           email: userEmail,
           name: rawName,
           role: assignedRole,
           team: resolvedTeam,
+          assignedTeams: resolvedAssignedTeams,
+          permissions: resolvedPermissions,
           status: 'active',
           isProfileComplete,
           workedMinutesToday: existingEmp?.workedMinutesToday || 0,
@@ -1048,6 +1322,8 @@ export const useCheckinStore = create<CheckinState>()(
               email: userEmail,
               role: assignedRole,
               team: updatedEmp.team,
+              assignedTeams: resolvedAssignedTeams,
+              permissions: resolvedPermissions,
               modules: effectiveMods,
               biometrics: updatedEmp.biometrics || null,
               photoURL: resolvedPhotoURL,
@@ -1066,6 +1342,7 @@ export const useCheckinStore = create<CheckinState>()(
             verified: true,
             isProfileComplete,
             team: updatedEmp.team,
+            assignedTeams: resolvedAssignedTeams,
             expectedEntryTime: '09:00',
             supervisor_id: updatedEmp.supervisor_id,
             supervisorId: updatedEmp.supervisor_id || undefined,
@@ -1075,6 +1352,7 @@ export const useCheckinStore = create<CheckinState>()(
             created_by_ti_id: updatedEmp.created_by_ti_id,
             createdByTiId: updatedEmp.created_by_ti_id || undefined,
             assigned_team_members: assignedRole === 'Supervisor' ? [] : undefined,
+            permissions: resolvedPermissions,
             modules: effectiveMods,
             biometrics: updatedEmp.biometrics || null,
             faceDescriptor: updatedEmp.biometrics?.faceDescriptor,

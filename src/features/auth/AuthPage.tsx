@@ -10,6 +10,7 @@ import {
   isFirebaseConfigured 
 } from '../../services/firebase';
 import { handleUserSession } from '../../services/userService';
+import { normalizeRole } from '../../services/rbac';
 import { ArrowDown, ChevronUp } from 'lucide-react';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
@@ -186,8 +187,9 @@ export function AuthPage() {
     let invitationData = undefined;
     if (invitation) {
       const supervisorCode = getSupervisorCode(invitation.supervisorId);
+      const role = normalizeRole(invitation.targetRole || invitation.role);
       invitationData = {
-        role: invitation.targetRole || invitation.role,
+        role,
         team: invitation.team,
         roleTitle: invitation.roleTitle,
         supervisorId: invitation.supervisorId,
@@ -213,12 +215,16 @@ export function AuthPage() {
         if (success) {
           const lower = email.toLowerCase();
           const roleLabel = lower.includes('ti')
-            ? 'TI Prueba (Nivel Más Alto)'
+            ? 'TI Root (Nivel Más Alto)'
+            : lower.includes('socio')
+            ? 'Socio / Jefatura'
+            : lower.includes('gerente')
+            ? 'Gerente'
             : lower.includes('rh')
             ? 'RH Prueba'
             : lower.includes('supervisor')
-            ? 'Supervisor Prueba'
-            : 'Empleado Prueba';
+            ? 'Supervisor'
+            : 'Colaborador';
           addToast(`Bienvenido: ${roleLabel}`, 'success');
           navigate('/');
           return;

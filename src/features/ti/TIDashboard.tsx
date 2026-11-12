@@ -5,8 +5,10 @@ import { useInvitationStore, buildInviteUrl } from '../../store/useInvitationSto
 import { RBAC_MATRIX } from '../../services/rbac';
 import { SupervisorDashboard } from '../manager/SupervisorDashboard';
 import { UserPermissionsTable } from './UserPermissionsTable';
+import { ExecutiveAuditLogView } from '../audit/ExecutiveAuditLogView';
 import type { Invitation } from '../../types/invitation';
 import { Copy, Check, Send } from 'lucide-react';
+import type { UserRole } from '../../services/rbac';
 
 const SUPERVISOR_TEAMS = [
   'Equipo Prueba',
@@ -26,7 +28,7 @@ const SUPERVISOR_TITLES = [
 ];
 
 export interface TIDashboardProps {
-  initialTab?: 'invitations' | 'users_permissions' | 'audit_accounts' | 'rbac_matrix' | 'supervisor_view';
+  initialTab?: 'invitations' | 'users_permissions' | 'audit_accounts' | 'rbac_matrix' | 'supervisor_view' | 'audit_logs';
 }
 
 export function TIDashboard({ initialTab = 'users_permissions' }: TIDashboardProps) {
@@ -45,13 +47,14 @@ export function TIDashboard({ initialTab = 'users_permissions' }: TIDashboardPro
     deleteInvitation,
   } = useInvitationStore();
 
-  const [activeTab, setActiveTab] = useState<'invitations' | 'users_permissions' | 'audit_accounts' | 'rbac_matrix' | 'supervisor_view'>(initialTab);
+  const [activeTab, setActiveTab] = useState<'invitations' | 'users_permissions' | 'audit_accounts' | 'rbac_matrix' | 'supervisor_view' | 'audit_logs'>(initialTab);
 
-  // Formulario para invitar a nuevos Supervisores
+  // Formulario para invitar a nuevos usuarios (TI puede invitar a todos los niveles)
   const [emailsInput, setEmailsInput] = useState('');
+  const [selectedTargetRole, setSelectedTargetRole] = useState<UserRole>('supervisor');
   const [selectedTeam, setSelectedTeam] = useState(SUPERVISOR_TEAMS[0]);
   const [selectedTitle, setSelectedTitle] = useState(SUPERVISOR_TITLES[0]);
-  const [expiresInHours, setExpiresInHours] = useState(72);
+  const [expiresInHours, setExpiresInHours] = useState(48);
   const [recentGenerated, setRecentGenerated] = useState<Invitation[] | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
@@ -102,11 +105,11 @@ export function TIDashboard({ initialTab = 'users_permissions' }: TIDashboardPro
       supervisorEmail: user?.email || 'ti.root@russellbedford.mx',
       created_by_ti_id: user?.id || 'ti-root-01',
       issuerRole: 'TI',
-      targetRole: 'Supervisor',
+      targetRole: selectedTargetRole,
       team: selectedTeam,
-      roleTitle: selectedTitle,
+      roleTitle: selectedTitle || selectedTargetRole,
       expiresInHours,
-      notes: 'Alta de Supervisor autorizada por TI (Root)',
+      notes: `Alta de ${selectedTargetRole} autorizada por TI (Root)`,
     });
 
     setRecentGenerated(created);
@@ -161,6 +164,17 @@ export function TIDashboard({ initialTab = 'users_permissions' }: TIDashboardPro
             }`}
           >
             Invitar Supervisores
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('audit_logs')}
+            className={`px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer ${
+              activeTab === 'audit_logs'
+                ? 'bg-white dark:bg-slate-900 text-blue-700 dark:text-sky-400 font-semibold shadow-xs border border-slate-200/80 dark:border-slate-700/80'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+            }`}
+          >
+            Bitácora de Movimientos
           </button>
           <button
             type="button"
@@ -253,27 +267,44 @@ export function TIDashboard({ initialTab = 'users_permissions' }: TIDashboardPro
           <div className="bg-white dark:bg-[#0B111E] rounded-2xl border border-slate-100 dark:border-slate-800 p-6 shadow-xs">
             <div className="mb-4">
               <h2 className="text-base font-bold text-slate-900 dark:text-white">
-                Emitir Enlace de Invitación para Supervisor
+                Emitir Enlace de Invitación Corporativa (TI Root)
               </h2>
               <p className="text-xs text-slate-500 mt-0.5">
-                Los Supervisores registrados quedan vinculados con autorización directa de TI (Root).
+                TI puede autorizar invitaciones directas para cualquier nivel jerárquico de la organización.
               </p>
             </div>
 
             <form onSubmit={handleGenerateSupervisorInvite} className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="md:col-span-3">
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div className="md:col-span-4">
                   <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-1">
-                    Correo(s) Electrónico(s) del Supervisor
+                    Correo(s) Electrónico(s) a Invitar
                   </label>
                   <textarea
                     required
                     rows={2}
                     value={emailsInput}
                     onChange={(e) => setEmailsInput(e.target.value)}
-                    placeholder="supervisor.lider@russellbedford.mx, socio.auditoria@russellbedford.mx"
+                    placeholder="usuario@russellbedford.mx, colega@russellbedford.mx"
                     className="w-full px-3.5 py-2 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white placeholder:text-slate-400 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100 dark:focus:ring-blue-900/30"
                   />
+                </div>
+
+                <div>
+                  <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-1">
+                    Rol a Asignar
+                  </label>
+                  <select
+                    value={selectedTargetRole}
+                    onChange={(e) => setSelectedTargetRole(e.target.value as UserRole)}
+                    className="w-full px-3 py-2 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white outline-none focus:border-blue-600 font-semibold"
+                  >
+                    <option value="socio">Socio / Jefatura</option>
+                    <option value="gerente">Gerente</option>
+                    <option value="rh">Recursos Humanos (RH)</option>
+                    <option value="supervisor">Supervisor</option>
+                    <option value="colaborador">Colaborador</option>
+                  </select>
                 </div>
 
                 <div>
@@ -295,7 +326,7 @@ export function TIDashboard({ initialTab = 'users_permissions' }: TIDashboardPro
 
                 <div>
                   <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-1">
-                    Cargo Ejecutivo
+                    Título / Cargo
                   </label>
                   <select
                     value={selectedTitle}
@@ -320,8 +351,8 @@ export function TIDashboard({ initialTab = 'users_permissions' }: TIDashboardPro
                     className="w-full px-3 py-2 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white outline-none focus:border-blue-600"
                   >
                     <option value={24}>24 Horas</option>
-                    <option value={48}>48 Horas</option>
-                    <option value={72}>72 Horas (Recomendado)</option>
+                    <option value={48}>48 Horas (Recomendado)</option>
+                    <option value={72}>72 Horas</option>
                     <option value={168}>7 Días</option>
                   </select>
                 </div>
@@ -477,6 +508,9 @@ export function TIDashboard({ initialTab = 'users_permissions' }: TIDashboardPro
           </div>
         </div>
       )}
+
+      {/* PESTAÑA: BITÁCORA DE AUDITORÍA EJECUTIVA */}
+      {activeTab === 'audit_logs' && <ExecutiveAuditLogView />}
 
       {/* PESTAÑA 2: AUDITORÍA DE JERARQUÍA */}
       {activeTab === 'audit_accounts' && (
@@ -642,9 +676,11 @@ export function TIDashboard({ initialTab = 'users_permissions' }: TIDashboardPro
                 <tr className="border-b border-slate-100 dark:border-slate-800 bg-slate-50/75 dark:bg-slate-900/50 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
                   <th className="py-3 px-4">Recurso / Entidad</th>
                   <th className="py-3 px-4">TI (Root)</th>
+                  <th className="py-3 px-4">Socio</th>
+                  <th className="py-3 px-4">Gerente</th>
                   <th className="py-3 px-4">Supervisor</th>
-                  <th className="py-3 px-4">Empleado</th>
-                  <th className="py-3 px-4">RH (Auditoría)</th>
+                  <th className="py-3 px-4">RH</th>
+                  <th className="py-3 px-4">Colaborador</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60">
@@ -657,13 +693,19 @@ export function TIDashboard({ initialTab = 'users_permissions' }: TIDashboardPro
                       {RBAC_MATRIX[resource].TI.description}
                     </td>
                     <td className="py-3 px-4 text-slate-600 dark:text-slate-400">
+                      {RBAC_MATRIX[resource].Socio.description}
+                    </td>
+                    <td className="py-3 px-4 text-slate-600 dark:text-slate-400">
+                      {RBAC_MATRIX[resource].Gerente.description}
+                    </td>
+                    <td className="py-3 px-4 text-slate-600 dark:text-slate-400">
                       {RBAC_MATRIX[resource].Supervisor.description}
                     </td>
                     <td className="py-3 px-4 text-slate-600 dark:text-slate-400">
-                      {RBAC_MATRIX[resource].Empleado.description}
+                      {RBAC_MATRIX[resource].RH.description}
                     </td>
                     <td className="py-3 px-4 text-slate-600 dark:text-slate-400">
-                      {RBAC_MATRIX[resource].RH.description}
+                      {RBAC_MATRIX[resource].Colaborador.description}
                     </td>
                   </tr>
                 ))}

@@ -32,16 +32,16 @@ export function getN8nInviteWebhookUrl(): string {
 }
 
 /**
- * Construye la URL de activación para el correo y registro
+ * Construye la URL de activación para el correo y registro (/activar-cuenta)
  */
 export function buildActivationUrl(inviteToken: string, email: string): string {
   if (typeof window === 'undefined') {
-    return `/register?token=${encodeURIComponent(inviteToken)}&email=${encodeURIComponent(email)}`;
+    return `/activar-cuenta?token=${encodeURIComponent(inviteToken)}&email=${encodeURIComponent(email)}`;
   }
   const origin = window.location.origin;
   const baseUrl = import.meta.env.BASE_URL || '/';
   const cleanBase = baseUrl.endsWith('/') ? baseUrl : baseUrl + '/';
-  return `${origin}${cleanBase}register?token=${encodeURIComponent(inviteToken)}&email=${encodeURIComponent(email)}`;
+  return `${origin}${cleanBase}activar-cuenta?token=${encodeURIComponent(inviteToken)}&email=${encodeURIComponent(email)}`;
 }
 
 /**

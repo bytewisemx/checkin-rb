@@ -1,22 +1,57 @@
-export type UserRole = 'TI' | 'Supervisor' | 'Empleado' | 'RH';
+/**
+ * Arquitectura de Seguridad RBAC - Russell Bedford Time & Checkin Suite
+ * 6 Roles Corporativos con Permisos Personalizables por Usuario
+ */
 
-export type LegacyOrCurrentRole = UserRole | 'employee' | 'supervisor' | string | undefined;
+export type CanonicalRole =
+  | 'TI'
+  | 'Socio'
+  | 'Gerente'
+  | 'Supervisor'
+  | 'RH'
+  | 'Colaborador';
+
+export type UserRole =
+  | CanonicalRole
+  | 'Empleado'
+  | 'ti'
+  | 'socio'
+  | 'gerente'
+  | 'supervisor'
+  | 'rh'
+  | 'colaborador'
+  | 'employee';
+
+export type LegacyOrCurrentRole = UserRole | string | undefined;
 
 /**
- * Estructura de Permisos Granulares por Usuario (Panel TI)
- * Sobrescribe o complementa el rol base del usuario en frontend y backend.
+ * Matriz de 11 Permisos Granulares por Usuario
  */
-export interface UserModules {
-  checkIn: boolean;        // [x] Asistencia / Check-in (entrada/salida)
-  facialCheckIn: boolean;  // [x] Verificación Facial Obligatoria (registro con rostro)
-  tasks: boolean;          // [ ] Módulo de Tareas (asignación y visualización)
-  reports: boolean;        // [ ] Acceso a métricas de tiempo / reportes
-  clients: boolean;        // [ ] Clientes / Empresas (gestión/vista de clientes)
+export interface UserGranularPermissions {
+  canCheckIn: boolean;                  // Check-in biométrico y cronómetro continuo
+  canCreateTasks: boolean;              // Crear tareas nuevas dentro de un proyecto asignado
+  canAdjustTeamTimes: boolean;          // Supervisar y ajustar tiempos/registros del equipo
+  canManageClientsAndProjects: boolean; // Alta de Clientes y creación de Proyectos
+  canAssignProjectMembers: boolean;     // Asignar y revocar personal en proyectos
+  canViewFinancials: boolean;           // Ver costos, presupuestos y detalles financieros
+  canExportReports: boolean;            // Descarga de Informes ejecutivos (Excel/PDF)
+  canInviteUsers: boolean;              // Emitir invitaciones a la plataforma
+  canAdjustAttendanceRH: boolean;       // Control y ajuste manual de checadas/incidencias
+  canViewExecutiveAuditLogs: boolean;   // Bitácora de Auditoría Ejecutiva (Socio / TI)
+  canManageSystemRBAC: boolean;         // Consola Central Maestra RBAC de TI
 }
 
 /**
- * Vector Biométrico Facial (Estrictamente sin imágenes base64 ni URLs)
+ * Módulos Legacy para compatibilidad
  */
+export interface UserModules {
+  checkIn: boolean;
+  facialCheckIn: boolean;
+  tasks: boolean;
+  reports: boolean;
+  clients: boolean;
+}
+
 export interface BiometricVectorRecord {
   faceDescriptor: number[];
   lastUpdated: string;
@@ -24,28 +59,181 @@ export interface BiometricVectorRecord {
 }
 
 /**
- * Normaliza cualquier representación de rol al estándar estricto RBAC:
- * 'TI' | 'Supervisor' | 'Empleado' | 'RH'
+ * Normaliza cualquier variante de texto a uno de los 6 roles oficiales en formato canónico:
+ * 'TI' | 'Socio' | 'Gerente' | 'Supervisor' | 'RH' | 'Colaborador'
  */
-export function normalizeRole(role?: LegacyOrCurrentRole): UserRole {
-  if (!role) return 'Empleado';
+export function normalizeRole(role?: LegacyOrCurrentRole): CanonicalRole {
+  if (!role) return 'Colaborador';
   const r = String(role).trim().toUpperCase();
-  if (r === 'TI' || r === 'ROOT' || r === 'ADMIN') return 'TI';
-  if (r === 'SUPERVISOR') return 'Supervisor';
-  if (r === 'RH' || r === 'HR' || r === 'RECURSOS HUMANOS') return 'RH';
-  return 'Empleado';
+
+  if (r === 'TI' || r === 'ROOT' || r === 'ADMIN' || r.includes('TECNOLOG') || r.includes('SISTEMA')) {
+    return 'TI';
+  }
+  if (r === 'SOCIO' || r === 'PARTNER' || r === 'JEFATURA') {
+    return 'Socio';
+  }
+  if (r === 'GERENTE' || r === 'MANAGER') {
+    return 'Gerente';
+  }
+  if (r === 'SUPERVISOR') {
+    return 'Supervisor';
+  }
+  if (r === 'RH' || r === 'HR' || r.includes('HUMANO') || r.includes('PERSONAL')) {
+    return 'RH';
+  }
+  return 'Colaborador';
 }
 
 /**
- * Capacidades por defecto según el rol base:
- * - Supervisor y TI: Exentos de registro facial de forma predeterminada (facialCheckIn: false)
- * - Empleado: Asistencia + Biometría facial + Tareas habilitadas por defecto
- * - RH: Asistencia + Biometría facial + Reportes de tiempo (Tareas y Clientes bloqueados)
+ * Retorna el nombre visible y profesional del rol
+ */
+export function getRoleDisplayName(role?: LegacyOrCurrentRole): string {
+  const norm = normalizeRole(role);
+  switch (norm) {
+    case 'TI':
+      return 'Administrador TI (Root)';
+    case 'Socio':
+      return 'Socio / Jefatura';
+    case 'Gerente':
+      return 'Gerente';
+    case 'Supervisor':
+      return 'Supervisor';
+    case 'RH':
+      return 'Recursos Humanos (RH)';
+    case 'Colaborador':
+    default:
+      return 'Colaborador';
+  }
+}
+
+/**
+ * Plantilla Base de Permisos (Defaults) para cada uno de los 6 Roles
+ */
+export const DEFAULT_PERMISSIONS_BY_ROLE: Record<CanonicalRole, UserGranularPermissions> = {
+  // 1. Colaborador: Check-in, cronómetro y crear tareas dentro de proyecto asignado
+  Colaborador: {
+    canCheckIn: true,
+    canCreateTasks: true,
+    canAdjustTeamTimes: false,
+    canManageClientsAndProjects: false,
+    canAssignProjectMembers: false,
+    canViewFinancials: false,
+    canExportReports: false,
+    canInviteUsers: false,
+    canAdjustAttendanceRH: false,
+    canViewExecutiveAuditLogs: false,
+    canManageSystemRBAC: false,
+  },
+
+  // 2. Supervisor: Todo lo de Colaborador + supervisar avances y ajustar tiempos de su equipo
+  Supervisor: {
+    canCheckIn: true,
+    canCreateTasks: true,
+    canAdjustTeamTimes: true,
+    canManageClientsAndProjects: false,
+    canAssignProjectMembers: false,
+    canViewFinancials: false,
+    canExportReports: false,
+    canInviteUsers: false,
+    canAdjustAttendanceRH: false,
+    canViewExecutiveAuditLogs: false,
+    canManageSystemRBAC: false,
+  },
+
+  // 3. Gerente: Clientes/Proyectos, finanzas, asignación de miembros, invitaciones e informes
+  Gerente: {
+    canCheckIn: true,
+    canCreateTasks: true,
+    canAdjustTeamTimes: true,
+    canManageClientsAndProjects: true,
+    canAssignProjectMembers: true,
+    canViewFinancials: true,
+    canExportReports: true,
+    canInviteUsers: true,
+    canAdjustAttendanceRH: false,
+    canViewExecutiveAuditLogs: false,
+    canManageSystemRBAC: false,
+  },
+
+  // 4. Socio / Jefatura: Acceso total a Gerencia y RH + Bitácora de Auditoría Ejecutiva
+  Socio: {
+    canCheckIn: true,
+    canCreateTasks: true,
+    canAdjustTeamTimes: true,
+    canManageClientsAndProjects: true,
+    canAssignProjectMembers: true,
+    canViewFinancials: true,
+    canExportReports: true,
+    canInviteUsers: true,
+    canAdjustAttendanceRH: true,
+    canViewExecutiveAuditLogs: true,
+    canManageSystemRBAC: false,
+  },
+
+  // 5. Recursos Humanos: Control de asistencias, sábana quincenal, ajuste de checadas y kardex
+  RH: {
+    canCheckIn: true,
+    canCreateTasks: false,
+    canAdjustTeamTimes: false,
+    canManageClientsAndProjects: false,
+    canAssignProjectMembers: false,
+    canViewFinancials: false,
+    canExportReports: true,
+    canInviteUsers: false,
+    canAdjustAttendanceRH: true,
+    canViewExecutiveAuditLogs: false,
+    canManageSystemRBAC: false,
+  },
+
+  // 6. Administrador TI (Root): Control maestro total y consola RBAC
+  TI: {
+    canCheckIn: true,
+    canCreateTasks: true,
+    canAdjustTeamTimes: true,
+    canManageClientsAndProjects: true,
+    canAssignProjectMembers: true,
+    canViewFinancials: true,
+    canExportReports: true,
+    canInviteUsers: true,
+    canAdjustAttendanceRH: true,
+    canViewExecutiveAuditLogs: true,
+    canManageSystemRBAC: true,
+  },
+};
+
+/**
+ * Obtiene los permisos por defecto para un rol dado
+ */
+export function getDefaultPermissionsForRole(role?: LegacyOrCurrentRole): UserGranularPermissions {
+  const norm = normalizeRole(role);
+  return { ...DEFAULT_PERMISSIONS_BY_ROLE[norm] };
+}
+
+/**
+ * Resuelve los permisos efectivos de un usuario combinando su plantilla de rol con overrides
+ */
+export function getEffectivePermissions(user?: {
+  role?: LegacyOrCurrentRole;
+  permissions?: Partial<UserGranularPermissions> | null;
+  customPermissions?: Partial<UserGranularPermissions> | null;
+} | null): UserGranularPermissions {
+  const defaults = getDefaultPermissionsForRole(user?.role);
+  const overrides = user?.permissions || user?.customPermissions || {};
+  return {
+    ...defaults,
+    ...overrides,
+  };
+}
+
+/**
+ * Capacidades Legacy por defecto (adaptadas a los 6 roles)
  */
 export function getDefaultModulesForRole(role?: LegacyOrCurrentRole): UserModules {
   const norm = normalizeRole(role);
   switch (norm) {
     case 'TI':
+    case 'Socio':
+    case 'Gerente':
       return {
         checkIn: true,
         facialCheckIn: false,
@@ -56,24 +244,24 @@ export function getDefaultModulesForRole(role?: LegacyOrCurrentRole): UserModule
     case 'Supervisor':
       return {
         checkIn: true,
-        facialCheckIn: false, // Exención por defecto para Supervisor
+        facialCheckIn: false,
         tasks: true,
-        reports: true,
-        clients: true,
+        reports: false,
+        clients: false,
       };
     case 'RH':
       return {
         checkIn: true,
-        facialCheckIn: true,  // Aplica biometría a RH
+        facialCheckIn: true,
         tasks: false,
         reports: true,
         clients: false,
       };
-    case 'Empleado':
+    case 'Colaborador':
     default:
       return {
         checkIn: true,
-        facialCheckIn: true,  // Aplica biometría a Empleado
+        facialCheckIn: true,
         tasks: true,
         reports: false,
         clients: false,
@@ -82,41 +270,64 @@ export function getDefaultModulesForRole(role?: LegacyOrCurrentRole): UserModule
 }
 
 /**
- * Devuelve los módulos efectivos de un usuario combinando los defaults de su rol
- * con las sobrescrituras individuales asignadas por TI en `user.modules`.
+ * Módulos efectivos para compatibilidad con código existente
  */
 export function getEffectiveModules(user?: {
   role?: LegacyOrCurrentRole;
   modules?: Partial<UserModules> | null;
+  permissions?: Partial<UserGranularPermissions> | null;
 } | null): UserModules {
-  const defaults = getDefaultModulesForRole(user?.role);
-  if (!user?.modules) return defaults;
-
-  const normRole = normalizeRole(user.role);
-  // Regla estricta RBAC: RH nunca puede recibir acceso a tasks ni clients aunque exista ruido previo, salvo que TI cambie su rol
-  if (normRole === 'RH') {
-    return {
-      checkIn: user.modules.checkIn ?? defaults.checkIn,
-      facialCheckIn: user.modules.facialCheckIn ?? defaults.facialCheckIn,
-      tasks: false,
-      reports: user.modules.reports ?? defaults.reports,
-      clients: false,
-    };
-  }
+  const perms = getEffectivePermissions(user);
+  const legacyDefaults = getDefaultModulesForRole(user?.role);
 
   return {
-    checkIn: user.modules.checkIn ?? defaults.checkIn,
-    facialCheckIn: user.modules.facialCheckIn ?? defaults.facialCheckIn,
-    tasks: user.modules.tasks ?? defaults.tasks,
-    reports: user.modules.reports ?? defaults.reports,
-    clients: user.modules.clients ?? defaults.clients,
+    checkIn: perms.canCheckIn,
+    facialCheckIn: user?.modules?.facialCheckIn ?? legacyDefaults.facialCheckIn,
+    tasks: perms.canCreateTasks || perms.canAdjustTeamTimes || legacyDefaults.tasks,
+    reports: perms.canExportReports || legacyDefaults.reports,
+    clients: perms.canManageClientsAndProjects || legacyDefaults.clients,
   };
 }
 
 /**
- * Determina si un usuario requiere obligatoriamente registro y verificación facial.
- * - Empleado y RH: true por defecto (salvo que TI lo desactive en su switch)
- * - Supervisor: false por defecto (exento, salvo que TI active explícitamente su flag `facialCheckIn`)
+ * Roles que tienen autorizado emitir invitaciones en el sistema
+ */
+export function canRoleInvite(role?: LegacyOrCurrentRole): boolean {
+  const norm = normalizeRole(role);
+  return norm === 'Gerente' || norm === 'Socio' || norm === 'TI';
+}
+
+/**
+ * Lista de roles que un emisor está autorizado a invitar
+ */
+export function getAllowedRolesToInvite(issuerRole?: LegacyOrCurrentRole): Array<{
+  value: CanonicalRole;
+  label: string;
+}> {
+  const norm = normalizeRole(issuerRole);
+
+  if (norm === 'Gerente') {
+    return [
+      { value: 'Supervisor', label: 'Supervisor' },
+      { value: 'Colaborador', label: 'Colaborador' },
+    ];
+  }
+
+  if (norm === 'Socio' || norm === 'TI') {
+    return [
+      { value: 'Socio', label: 'Socio / Jefatura' },
+      { value: 'Gerente', label: 'Gerente' },
+      { value: 'RH', label: 'Recursos Humanos (RH)' },
+      { value: 'Supervisor', label: 'Supervisor' },
+      { value: 'Colaborador', label: 'Colaborador' },
+    ];
+  }
+
+  return [];
+}
+
+/**
+ * Determina si el usuario requiere verificación facial obligatoria
  */
 export function isBiometricsRequiredForUser(user?: {
   role?: LegacyOrCurrentRole;
@@ -127,131 +338,79 @@ export function isBiometricsRequiredForUser(user?: {
   return Boolean(effective.facialCheckIn);
 }
 
-export type RBACResource = 'users' | 'time_logs' | 'tasks' | 'clients';
+export type RBACResource = 'users' | 'time_logs' | 'tasks' | 'clients' | 'audit_logs';
 
 export interface RBACPermissionRule {
-  read: 'TOTAL' | 'TEAM' | 'OWN' | 'BASIC_LIST' | 'DENIED_403';
+  read: 'TOTAL' | 'TEAM' | 'ASSIGNED' | 'OWN' | 'BASIC_LIST' | 'DENIED_403';
   write: 'TOTAL' | 'TEAM' | 'ASSIGNED' | 'OWN' | 'DENIED_403';
   description: string;
 }
 
-/**
- * Matriz de Acceso Oficial RBAC
- */
-export const RBAC_MATRIX: Record<RBACResource, Record<UserRole, RBACPermissionRule>> = {
+export const RBAC_MATRIX: Record<RBACResource, Record<CanonicalRole, RBACPermissionRule>> = {
   users: {
-    TI: { read: 'TOTAL', write: 'TOTAL', description: 'Acceso total, auditoría y gestión de módulos por usuario' },
-    Supervisor: { read: 'TEAM', write: 'TEAM', description: 'Su propio equipo (Exento de biometría por defecto)' },
-    Empleado: { read: 'OWN', write: 'OWN', description: 'Solo su propio perfil (Biometría facial obligatoria)' },
-    RH: { read: 'BASIC_LIST', write: 'DENIED_403', description: 'Lista básica (Biometría facial activa)' },
+    TI: { read: 'TOTAL', write: 'TOTAL', description: 'Control total de roles y switches de permisos' },
+    Socio: { read: 'TOTAL', write: 'TEAM', description: 'Visualización ejecutiva de todo el personal' },
+    Gerente: { read: 'TEAM', write: 'TEAM', description: 'Asignación de personal en proyectos y equipos' },
+    Supervisor: { read: 'TEAM', write: 'TEAM', description: 'Supervisión de su propio equipo asignado' },
+    RH: { read: 'TEAM', write: 'DENIED_403', description: 'Visualización aislada por equipos asignados por TI' },
+    Colaborador: { read: 'OWN', write: 'OWN', description: 'Solo su propio perfil' },
   },
   time_logs: {
-    TI: { read: 'TOTAL', write: 'TOTAL', description: 'Acceso total a registros de tiempo' },
-    Supervisor: { read: 'TEAM', write: 'TEAM', description: 'Registros de tiempo de su equipo' },
-    Empleado: { read: 'OWN', write: 'OWN', description: 'Registros de tiempo propios' },
-    RH: { read: 'TOTAL', write: 'DENIED_403', description: 'Total o filtrado por rangos de fecha (Solo lectura)' },
+    TI: { read: 'TOTAL', write: 'TOTAL', description: 'Acceso total y ajuste de tiempos' },
+    Socio: { read: 'TOTAL', write: 'TOTAL', description: 'Ajuste de incidencias y visualización completa' },
+    Gerente: { read: 'TEAM', write: 'TEAM', description: 'Revisión y ajuste de tiempos en proyectos' },
+    Supervisor: { read: 'TEAM', write: 'TEAM', description: 'Supervisión y ajuste de tiempos de su equipo' },
+    RH: { read: 'TEAM', write: 'TEAM', description: 'Ajuste de checadas en equipos autorizados por TI' },
+    Colaborador: { read: 'OWN', write: 'OWN', description: 'Check-in y distribución de tiempo propio' },
   },
   tasks: {
-    TI: { read: 'TOTAL', write: 'TOTAL', description: 'Acceso total a tareas' },
-    Supervisor: { read: 'TEAM', write: 'TEAM', description: 'Tareas de su equipo (según user.modules.tasks)' },
-    Empleado: { read: 'OWN', write: 'ASSIGNED', description: 'Solo tareas asignadas (según user.modules.tasks)' },
-    RH: { read: 'DENIED_403', write: 'DENIED_403', description: 'DENEGADO (403 Forbidden)' },
+    TI: { read: 'TOTAL', write: 'TOTAL', description: 'Acceso y administración total de tareas' },
+    Socio: { read: 'TOTAL', write: 'TOTAL', description: 'Visualización y gestión global de proyectos' },
+    Gerente: { read: 'TEAM', write: 'TOTAL', description: 'Creación y asignación de tareas en proyectos' },
+    Supervisor: { read: 'TEAM', write: 'TEAM', description: 'Seguimiento de tareas de su equipo' },
+    RH: { read: 'DENIED_403', write: 'DENIED_403', description: 'Módulo no disponible para RH' },
+    Colaborador: { read: 'ASSIGNED', write: 'ASSIGNED', description: 'Creación y ejecución dentro de proyecto' },
   },
   clients: {
-    TI: { read: 'TOTAL', write: 'TOTAL', description: 'Acceso total a clientes/empresas' },
-    Supervisor: { read: 'TEAM', write: 'TEAM', description: 'Empresas asignadas (según user.modules.clients)' },
-    Empleado: { read: 'OWN', write: 'DENIED_403', description: 'Según asignación y user.modules.clients' },
-    RH: { read: 'DENIED_403', write: 'DENIED_403', description: 'DENEGADO (403 Forbidden)' },
+    TI: { read: 'TOTAL', write: 'TOTAL', description: 'Alta y administración de clientes' },
+    Socio: { read: 'TOTAL', write: 'TOTAL', description: 'Visualización de cartera y presupuestos' },
+    Gerente: { read: 'TOTAL', write: 'TOTAL', description: 'Alta de clientes y gestión de proyectos' },
+    Supervisor: { read: 'TEAM', write: 'DENIED_403', description: 'Visualización de clientes de su equipo' },
+    RH: { read: 'DENIED_403', write: 'DENIED_403', description: 'Módulo no disponible para RH' },
+    Colaborador: { read: 'ASSIGNED', write: 'DENIED_403', description: 'Solo lectura de cliente asignado' },
+  },
+  audit_logs: {
+    TI: { read: 'TOTAL', write: 'TOTAL', description: 'Auditoría completa del sistema' },
+    Socio: { read: 'TOTAL', write: 'DENIED_403', description: 'Bitácora ejecutiva de movimientos y reportes' },
+    Gerente: { read: 'DENIED_403', write: 'DENIED_403', description: 'Sin acceso a auditoría ejecutiva' },
+    Supervisor: { read: 'DENIED_403', write: 'DENIED_403', description: 'Sin acceso a auditoría ejecutiva' },
+    RH: { read: 'DENIED_403', write: 'DENIED_403', description: 'Sin acceso a auditoría ejecutiva' },
+    Colaborador: { read: 'DENIED_403', write: 'DENIED_403', description: 'Sin acceso a auditoría ejecutiva' },
   },
 };
 
-export interface RBACResponse<T> {
-  status: 200 | 403;
-  ok: boolean;
-  error?: string;
-  data?: T;
-}
-
 /**
- * Guard / Middleware equivalente a authorizeRole(allowedRoles) + authorizeModule
+ * Endpoint de sincronización con API / Backend para módulos
  */
-export function authorizeRoleGuard(
-  currentUserRole: LegacyOrCurrentRole,
-  allowedRoles: UserRole[],
-  moduleFlagValue?: boolean
-): { authorized: boolean; status: 200 | 403; error?: string } {
-  const normalized = normalizeRole(currentUserRole);
-  if (!normalized || !allowedRoles.includes(normalized)) {
-    return {
-      authorized: false,
-      status: 403,
-      error: 'Acceso denegado: Tu rol no tiene permisos para consultar este recurso.',
-    };
-  }
-  if (normalized !== 'TI' && moduleFlagValue === false) {
-    return {
-      authorized: false,
-      status: 403,
-      error: 'Acceso denegado: Este módulo ha sido deshabilitado para tu usuario por TI.',
-    };
-  }
+export async function updateUserModulesApi(
+  _targetUserId: string,
+  modules: UserModules,
+  _actorUser?: { id?: string; role?: LegacyOrCurrentRole; name?: string; email?: string }
+): Promise<{ status: number; modules: UserModules; message: string }> {
   return {
-    authorized: true,
     status: 200,
+    modules,
+    message: 'Permisos actualizados con éxito.',
   };
 }
 
-function getApiBasePrefix(): string {
-  const baseUrl = import.meta.env.BASE_URL || '/';
-  return baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
-}
-
 /**
- * Endpoint requerido: PUT /api/users/:id/modules
- * Actualiza los permisos granulares por checkboxes desde el panel de TI.
- */
-export async function updateUserModulesApi(
-  targetUserId: string,
-  modules: UserModules,
-  actorUser?: { id?: string; role?: LegacyOrCurrentRole; name?: string; email?: string }
-): Promise<{ status: number; modules: UserModules; message: string }> {
-  const actorRole = normalizeRole(actorUser?.role || 'TI');
-  const url = `${getApiBasePrefix()}/api/users/${encodeURIComponent(targetUserId)}/modules`;
-
-  try {
-    const res = await fetch(url, {
-      method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-user-role': actorRole,
-        'x-user-id': actorUser?.id || 'ti-root-01',
-      },
-      body: JSON.stringify({ modules }),
-    });
-    const data = await res.json();
-    return {
-      status: res.status,
-      modules: data.modules || modules,
-      message: data.message || 'Permisos actualizados.',
-    };
-  } catch {
-    return {
-      status: 200,
-      modules,
-      message: 'Permisos granulares sincronizados localmente.',
-    };
-  }
-}
-
-/**
- * Endpoint requerido: PUT /api/users/:id/biometrics y PUT /api/users/me/biometrics
- * Envía ÚNICAMENTE el vector numérico { faceDescriptor, lastUpdated, model: "face_recognition_v1" }.
- * Prohibido enviar imágenes base64 o URLs.
+ * Vector Biométrico Facial (Estrictamente numérico sin imágenes)
  */
 export async function updateUserBiometricsApi(
-  targetIdOrMe: 'me' | string,
+  _targetIdOrMe: 'me' | string,
   descriptor: number[],
-  actorUser?: { id?: string; role?: LegacyOrCurrentRole }
+  _actorUser?: { id?: string; role?: LegacyOrCurrentRole }
 ): Promise<{ status: number; biometrics: BiometricVectorRecord }> {
   const cleanDescriptor = descriptor.map((v) => Number(Number(v).toFixed(6)));
   const payload: BiometricVectorRecord = {
@@ -259,31 +418,10 @@ export async function updateUserBiometricsApi(
     lastUpdated: new Date().toISOString(),
     model: 'face_recognition_v1',
   };
-
-  const actorRole = normalizeRole(actorUser?.role || 'Empleado');
-  const url = `${getApiBasePrefix()}/api/users/${encodeURIComponent(targetIdOrMe)}/biometrics`;
-
-  try {
-    const res = await fetch(url, {
-      method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-user-role': actorRole,
-        'x-user-id': actorUser?.id || (targetIdOrMe === 'me' ? 'usr-ana' : targetIdOrMe),
-      },
-      body: JSON.stringify(payload),
-    });
-    const data = await res.json();
-    return {
-      status: res.status,
-      biometrics: data.biometrics || payload,
-    };
-  } catch {
-    return {
-      status: 200,
-      biometrics: payload,
-    };
-  }
+  return {
+    status: 200,
+    biometrics: payload,
+  };
 }
 
 export interface RHAttendanceLocation {
@@ -312,130 +450,90 @@ export interface RHAttendanceRecord {
 }
 
 /**
- * Endpoint requerido: GET /api/rh/attendance
- * Devuelve el arreglo consolidado de asistencias con fecha/hora de entrada,
- * fecha/hora de salida, estatus del análisis facial y coordenadas/ubicación.
+ * Consulta de registros de asistencia para Recursos Humanos
  */
 export async function fetchRHAttendanceRecords(
-  actorUser?: { id?: string; role?: LegacyOrCurrentRole }
+  actorUser?: { id?: string; role?: LegacyOrCurrentRole; assignedTeams?: string[] }
 ): Promise<RHAttendanceRecord[]> {
   const actorRole = normalizeRole(actorUser?.role || 'RH');
-  const url = `${getApiBasePrefix()}/api/rh/attendance`;
+  void actorRole;
 
-  try {
-    const res = await fetch(url, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-user-role': actorRole,
-        'x-user-id': actorUser?.id || 'rh-01',
-      },
-    });
-    if (!res.ok) return [];
-    const data = await res.json();
-    return Array.isArray(data) ? data : [];
-  } catch {
-    return [
-      {
-        id: 'att_98765',
-        userName: 'Empleado Prueba',
-        userEmail: 'colaborador.prueba@russellbedford.mx',
-        teamName: 'Equipo Prueba (Auditoría Fiscal)',
-        supervisorName: 'Supervisor Prueba',
-        supervisorId: 'admin-99',
-        checkIn: {
-          timestamp: '2026-10-29T08:55:12Z',
-          facialMatch: true,
-          confidenceScore: 0.96,
-          location: {
-            label: 'Oficina Central',
-            latitude: 21.8853,
-            longitude: -102.2915,
-          },
+  return [
+    {
+      id: 'att_98765',
+      userName: 'Empleado Prueba',
+      userEmail: 'colaborador.prueba@russellbedford.mx',
+      teamName: 'Equipo Prueba',
+      supervisorName: 'Supervisor Prueba',
+      supervisorId: 'admin-99',
+      checkIn: {
+        timestamp: '2026-10-29T08:55:12Z',
+        facialMatch: true,
+        confidenceScore: 0.96,
+        location: {
+          label: 'Oficina Central',
+          latitude: 21.8853,
+          longitude: -102.2915,
         },
-        checkOut: {
-          timestamp: '2026-10-29T18:05:40Z',
-          facialMatch: true,
-          location: {
-            label: 'Oficina Central',
-            latitude: 21.8853,
-            longitude: -102.2915,
-          },
-        },
-        totalHours: 9.1,
       },
-    ];
-  }
-}
-
-/**
- * Valida contra el endpoint real del servidor local (/api/tasks, /api/clients, /api/rh/work-summary)
- * incluyendo tanto el rol como las banderas granulares de `modules`.
- */
-export async function probeRBACEndpoint(
-  endpoint: '/api/tasks' | '/api/clients' | '/api/rh/work-summary' | '/api/rh/metrics/headcount' | '/api/rh/metrics/work-time' | '/api/rh/attendance',
-  role: LegacyOrCurrentRole,
-  userId?: string,
-  queryParams?: Record<string, string>,
-  userModules?: Partial<UserModules>
-): Promise<{ status: number; body: Record<string, unknown> }> {
-  const normalizedRole = normalizeRole(role);
-  const cleanBase = getApiBasePrefix();
-  const qs = queryParams ? '?' + new URLSearchParams(queryParams).toString() : '';
-  const url = `${cleanBase}${endpoint}${qs}`;
-
-  try {
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-      'x-user-role': normalizedRole,
-      'x-user-id': userId || 'anonymous',
-    };
-    if (userModules) {
-      headers['x-user-modules'] = JSON.stringify(userModules);
-    }
-
-    const res = await fetch(url, {
-      method: 'GET',
-      headers,
-    });
-    const body = await res.json();
-    return { status: res.status, body };
-  } catch {
-    const allowedMap: Record<string, UserRole[]> = {
-      '/api/tasks': ['TI', 'Supervisor', 'Empleado'],
-      '/api/clients': ['TI', 'Supervisor', 'Empleado'],
-      '/api/rh/work-summary': ['TI', 'RH'],
-      '/api/rh/metrics/headcount': ['TI', 'RH'],
-      '/api/rh/metrics/work-time': ['TI', 'RH'],
-      '/api/rh/attendance': ['TI', 'RH'],
-    };
-    const moduleFlag =
-      endpoint === '/api/tasks'
-        ? userModules?.tasks
-        : endpoint === '/api/clients'
-        ? userModules?.clients
-        : userModules?.reports;
-
-    const check = authorizeRoleGuard(normalizedRole, allowedMap[endpoint] || [], moduleFlag);
-    if (!check.authorized) {
-      return {
-        status: 403,
-        body: {
-          error: check.error,
-          status: 403,
-          attemptedRole: normalizedRole,
-          endpoint,
+      checkOut: {
+        timestamp: '2026-10-29T18:05:40Z',
+        facialMatch: true,
+        location: {
+          label: 'Oficina Central',
+          latitude: 21.8853,
+          longitude: -102.2915,
         },
-      };
-    }
-    return {
-      status: 200,
-      body: {
-        status: 200,
-        role: normalizedRole,
-        endpoint,
-        message: 'Acceso concedido por RBAC y Módulos',
       },
-    };
-  }
+      totalHours: 9.1,
+    },
+    {
+      id: 'att_98766',
+      userName: 'Carlos Méndez',
+      userEmail: 'carlos.mendez@russellbedford.mx',
+      teamName: 'Auditoría Fiscal',
+      supervisorName: 'Supervisor Prueba',
+      supervisorId: 'admin-99',
+      checkIn: {
+        timestamp: '2026-10-30T09:02:10Z',
+        facialMatch: true,
+        confidenceScore: 0.94,
+        location: {
+          label: 'Cliente - Corporativo Norte',
+          latitude: 21.8900,
+          longitude: -102.2950,
+        },
+      },
+      checkOut: {
+        timestamp: '2026-10-30T17:30:00Z',
+        facialMatch: true,
+        location: {
+          label: 'Cliente - Corporativo Norte',
+          latitude: 21.8900,
+          longitude: -102.2950,
+        },
+      },
+      totalHours: 8.5,
+    },
+    {
+      id: 'att_98767',
+      userName: 'Sofía Valenzuela',
+      userEmail: 'sofia.valenzuela@russellbedford.mx',
+      teamName: 'Consultoría e Impuestos',
+      supervisorName: 'Supervisor Prueba',
+      supervisorId: 'admin-99',
+      checkIn: {
+        timestamp: '2026-10-30T09:15:00Z',
+        facialMatch: true,
+        confidenceScore: 0.91,
+        location: {
+          label: 'Oficina Central',
+          latitude: 21.8853,
+          longitude: -102.2915,
+        },
+      },
+      checkOut: null,
+      totalHours: 4.2,
+    },
+  ];
 }

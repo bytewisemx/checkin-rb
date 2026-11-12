@@ -6,20 +6,13 @@ import {
 import { useInvitationStore } from '../../../store/useInvitationStore';
 import { useCheckinStore } from '../../../store/useCheckinStore';
 import { useRayonerStore } from '../../../store/useRayonerStore';
+import { useAuditStore } from '../../../store/useAuditStore';
 import type { InvitationStatus } from '../../../types/invitation';
 import { 
   dispatchInviteWebhook, 
   buildActivationUrl 
 } from '../../../services/n8nWebhookService';
-
-const ROLES_LIST = [
-  'Auditor Junior',
-  'Auditor Senior',
-  'Especialista Tributario',
-  'Consultor Financiero',
-  'Asistente de Auditoría',
-  'Gerente de Proyecto',
-];
+import { getAllowedRolesToInvite, normalizeRole, type UserRole } from '../../../services/rbac';
 
 export function SupervisorInvitationsView() {
   const { user, addToast } = useCheckinStore();
@@ -31,6 +24,10 @@ export function SupervisorInvitationsView() {
     deleteInvitation 
   } = useInvitationStore();
 
+  const allowedRoles = useMemo(() => {
+    return getAllowedRolesToInvite(user?.role);
+  }, [user?.role]);
+
   const [copiedCode, setCopiedCode] = useState(false);
   const supervisorCode = getSupervisorCode(user?.id || '') || 'SUP-RB-9901';
 
@@ -41,9 +38,9 @@ export function SupervisorInvitationsView() {
     setTimeout(() => setCopiedCode(false), 2500);
   };
 
-  // Estados del Formulario Rápido de Emisión (Integrado en 1 fila)
+  // Estados del Formulario Rápido de Emisión
   const [emailInput, setEmailInput] = useState('');
-  const [selectedRole, setSelectedRole] = useState(ROLES_LIST[0]);
+  const [selectedRole, setSelectedRole] = useState<UserRole>(allowedRoles[0]?.value || 'colaborador');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Estados de Filtros y Búsqueda
@@ -86,22 +83,37 @@ export function SupervisorInvitationsView() {
 
     setIsSubmitting(true);
     try {
+      const normRole = normalizeRole(user?.role);
+      const roleTitle = allowedRoles.find((r) => r.value === selectedRole)?.label || selectedRole;
+
       // 1. Generar la invitación en el store con token único y expiración
       const created = createInvitations({
         emails: [emailInput.trim().toLowerCase()],
         supervisorId: user?.id || 'admin-99',
-        supervisorName: `${user?.name || 'Supervisor'} ${user?.lastName || 'Prueba'}`.trim(),
-        supervisorEmail: user?.email || 'supervisor.prueba@russellbedford.mx',
-        team: 'Auditoría Fiscal',
-        roleTitle: selectedRole,
+        supervisorName: `${user?.name || 'Líder'} ${user?.lastName || ''}`.trim(),
+        supervisorEmail: user?.email || '',
+        team: user?.team || 'Auditoría Fiscal',
+        targetRole: selectedRole,
+        roleTitle,
         expiresInHours: 48,
-        notes: 'Invitación emitida desde panel de supervisión',
+        notes: `Invitación emitida por ${user?.name} (${normRole})`,
       });
 
       if (created.length > 0) {
         const inv = created[0];
 
-        // 2. Construir la URL de activación: /register?token=...&email=...
+        // Registrar en Bitácora de Auditoría
+        useAuditStore.getState().logAuditEvent({
+          eventType: 'INVITATION_CREATED',
+          actorId: user?.id || 'admin-99',
+          actorName: user?.name || 'Emisor',
+          actorEmail: user?.email || '',
+          actorRole: normRole,
+          targetResource: `Invitación: ${inv.email}`,
+          details: `Emisión de invitación con rol ${roleTitle} en equipo ${inv.team}`,
+        });
+
+        // 2. Construir la URL de activación: /activar-cuenta?token=...&email=...
         const activationUrl = buildActivationUrl(inv.token, inv.email);
 
         // 3. Despachar payload al Webhook de n8n
@@ -259,11 +271,13 @@ export function SupervisorInvitationsView() {
             <div className="w-full sm:w-56 shrink-0">
               <select
                 value={selectedRole}
-                onChange={(e) => setSelectedRole(e.target.value)}
-                className="w-full text-xs font-medium py-2 px-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 outline-none cursor-pointer focus:border-blue-600"
+                onChange={(e) => setSelectedRole(e.target.value as UserRole)}
+                className="w-full text-xs font-semibold py-2 px-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 outline-none cursor-pointer focus:border-blue-600"
               >
-                {ROLES_LIST.map((role) => (
-                  <option key={role} value={role}>{role}</option>
+                {allowedRoles.map((role) => (
+                  <option key={role.value} value={role.value}>
+                    {role.label}
+                  </option>
                 ))}
               </select>
             </div>

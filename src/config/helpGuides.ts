@@ -14,9 +14,9 @@ export interface HelpGuideItem {
   steps: HelpStep[];
 }
 
-export type HelpCatalog = Record<UserRole, HelpGuideItem[]>;
+export type HelpCatalog = Partial<Record<UserRole, HelpGuideItem[]>>;
 
-export const HELP_CATALOG: HelpCatalog = {
+const BASE_CATALOG: HelpCatalog = {
   RH: [
     {
       id: "rh_time_by_user",
@@ -164,5 +164,12 @@ export const HELP_CATALOG: HelpCatalog = {
       ]
     }
   ]
+};
+
+export const HELP_CATALOG: HelpCatalog = {
+  ...BASE_CATALOG,
+  Colaborador: BASE_CATALOG.Empleado,
+  Gerente: BASE_CATALOG.Supervisor,
+  Socio: BASE_CATALOG.Supervisor,
 };
 

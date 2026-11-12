@@ -18,6 +18,7 @@ import {
   detectSingleFaceDescriptor,
   DEFAULT_BIOMETRIC_THRESHOLD 
 } from '../../services/facialBiometrics';
+import { normalizeRole, type UserRole } from '../../services/rbac';
 import type { Invitation } from '../../types/invitation';
 import { 
   AlertCircle, 
@@ -235,7 +236,7 @@ export function RegisterPage() {
 
     try {
       const supervisorCode = useRayonerStore.getState().getSupervisorCode(invitation.supervisorId);
-      const targetRole = invitation.targetRole || invitation.role || 'Empleado';
+      const targetRole: UserRole = normalizeRole(invitation.targetRole || invitation.role);
 
       const invitationPayload = {
         supervisorId: invitation.supervisorId,
@@ -280,7 +281,8 @@ export function RegisterPage() {
       );
 
       // 3. Actualizar perfil institucional base y persistir en BD
-      const isSupervisor = targetRole === 'Supervisor' || targetRole === 'TI';
+      const normRole = normalizeRole(targetRole);
+      const isExemptBiometrics = normRole === 'Supervisor' || normRole === 'Gerente' || normRole === 'Socio' || normRole === 'TI';
       await saveOrUpdateUserProfile(userUid, {
         uid: userUid,
         email: invitation.email,
@@ -291,7 +293,7 @@ export function RegisterPage() {
         team: invitation.team,
         supervisorId: invitation.supervisorId,
         supervisorName: invitation.supervisorName,
-        isProfileComplete: isSupervisor,
+        isProfileComplete: isExemptBiometrics,
       });
 
       updateProfile({
@@ -302,15 +304,15 @@ export function RegisterPage() {
         team: invitation.team,
         supervisorId: invitation.supervisorId,
         supervisorName: invitation.supervisorName,
-        isProfileComplete: isSupervisor,
+        isProfileComplete: isExemptBiometrics,
       });
 
       // 4. Determinar si se requiere paso biométrico o paso directo
-      if (isSupervisor) {
-        addToast('¡Cuenta activada con éxito! Bienvenido a tu consola.', 'success');
+      if (isExemptBiometrics) {
+        addToast('¡Cuenta activada con éxito! Bienvenido a tu plataforma.', 'success');
         navigate('/');
       } else {
-        // Empleados y colaboradores avanzan a Paso 2 (Biometría Facial Inicial)
+        // Colaboradores y RH avanzan a Paso 2 (Biometría Facial Inicial)
         setCurrentStep(2);
       }
     } catch (err: unknown) {
@@ -351,7 +353,7 @@ export function RegisterPage() {
       if (googleEmail !== targetEmail) {
         await logoutFirebase();
         setErrorMsg(
-          `La cuenta de Google seleccionada (${googleEmail}) no coincide con el correo autorizado en tu invitación (${targetEmail}).`
+          `Esta invitación fue emitida para ${targetEmail}, inicia sesión con esa cuenta.`
         );
         setIsGoogleLoading(false);
         return;
@@ -363,7 +365,7 @@ export function RegisterPage() {
       const gLast = nameParts.slice(1).join(' ') || '';
 
       const supervisorCode = useRayonerStore.getState().getSupervisorCode(invitation.supervisorId);
-      const targetRole = invitation.targetRole || invitation.role || 'Empleado';
+      const targetRole: UserRole = normalizeRole(invitation.targetRole || invitation.role);
 
       // Invalidación Inmediata del token
       await consumeInvitationToken(invitation.token, {
@@ -383,7 +385,8 @@ export function RegisterPage() {
         token: invitation.token,
       });
 
-      const isSupervisor = targetRole === 'Supervisor' || targetRole === 'TI';
+      const normRole = normalizeRole(targetRole);
+      const isExemptBiometrics = normRole === 'Supervisor' || normRole === 'Gerente' || normRole === 'Socio' || normRole === 'TI';
 
       // Persistir en Firestore / Base de datos capturando la foto de Google
       await saveOrUpdateUserProfile(res.user.uid, {
@@ -398,7 +401,7 @@ export function RegisterPage() {
         team: invitation.team,
         supervisorId: invitation.supervisorId,
         supervisorName: invitation.supervisorName,
-        isProfileComplete: isSupervisor,
+        isProfileComplete: isExemptBiometrics,
       });
 
       updateProfile({
@@ -411,10 +414,10 @@ export function RegisterPage() {
         team: invitation.team,
         supervisorId: invitation.supervisorId,
         supervisorName: invitation.supervisorName,
-        isProfileComplete: isSupervisor,
+        isProfileComplete: isExemptBiometrics,
       });
 
-      if (isSupervisor) {
+      if (isExemptBiometrics) {
         addToast('¡Cuenta verificada con Google! Bienvenido.', 'success');
         navigate('/');
       } else {
