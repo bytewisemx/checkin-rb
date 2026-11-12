@@ -5,13 +5,12 @@ import { useInvitationStore } from '../../store/useInvitationStore';
 import { sendInviteWebhook, buildActivationUrl } from '../../services/n8nWebhookService';
 import { saveInvitationToFirestore } from '../../services/invitations';
 import { useAuditStore } from '../../store/useAuditStore';
-import { RBAC_MATRIX } from '../../services/rbac';
+import { RBAC_MATRIX, getAllowedRolesToInvite } from '../../services/rbac';
 import { SupervisorDashboard } from '../manager/SupervisorDashboard';
 import { UserPermissionsTable } from './UserPermissionsTable';
 import { ExecutiveAuditLogView } from '../audit/ExecutiveAuditLogView';
 import type { Invitation } from '../../types/invitation';
 import { Copy, Check, Send, Loader2 } from 'lucide-react';
-import type { UserRole } from '../../services/rbac';
 
 const SUPERVISOR_TEAMS = [
   'Equipo Prueba',
@@ -20,14 +19,6 @@ const SUPERVISOR_TEAMS = [
   'Consultoría e Impuestos',
   'Contabilidad Corporativa',
   'Precios de Transferencia',
-];
-
-const SUPERVISOR_TITLES = [
-  'Socio / Supervisor Líder (Prueba)',
-  'Supervisor Líder de Equipo',
-  'Socio Director de Práctica',
-  'Gerente de Auditoría',
-  'Director de Consultoría Fiscal',
 ];
 
 export interface TIDashboardProps {
@@ -52,11 +43,14 @@ export function TIDashboard({ initialTab = 'users_permissions' }: TIDashboardPro
 
   const [activeTab, setActiveTab] = useState<'invitations' | 'users_permissions' | 'audit_accounts' | 'rbac_matrix' | 'supervisor_view' | 'audit_logs'>(initialTab);
 
-  // Formulario para invitar a nuevos usuarios (TI puede invitar a todos los niveles)
+  // Formulario para invitar a nuevos usuarios (filtrado dinámicamente según rol)
+  const allowedRoles = useMemo(() => {
+    return getAllowedRolesToInvite(user?.role);
+  }, [user?.role]);
+
   const [emailsInput, setEmailsInput] = useState('');
-  const [selectedTargetRole, setSelectedTargetRole] = useState<UserRole>('supervisor');
+  const [selectedRole, setSelectedRole] = useState<'colaborador' | 'supervisor' | 'gerente' | 'socio'>('supervisor');
   const [selectedTeam, setSelectedTeam] = useState(SUPERVISOR_TEAMS[0]);
-  const [selectedTitle, setSelectedTitle] = useState(SUPERVISOR_TITLES[0]);
   const [expiresInHours, setExpiresInHours] = useState(48);
   const [recentGenerated, setRecentGenerated] = useState<Invitation[] | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -106,7 +100,7 @@ export function TIDashboard({ initialTab = 'users_permissions' }: TIDashboardPro
     setIsSubmitting(true);
     try {
       const issuerName = `${user?.name || 'Administrador'} ${user?.lastName || 'TI'}`.trim();
-      const roleTitle = selectedTitle || selectedTargetRole;
+      const roleTitle = allowedRoles.find((r) => r.value === selectedRole)?.label || 'Supervisor';
 
       const created = createInvitations({
         emails: emailsList,
@@ -115,11 +109,11 @@ export function TIDashboard({ initialTab = 'users_permissions' }: TIDashboardPro
         supervisorEmail: user?.email || 'ti.root@russellbedford.mx',
         created_by_ti_id: user?.id || 'ti-root-01',
         issuerRole: 'TI',
-        targetRole: selectedTargetRole,
+        targetRole: selectedRole,
         team: selectedTeam,
         roleTitle,
         expiresInHours,
-        notes: `Alta de ${selectedTargetRole} autorizada por TI (Root)`,
+        notes: `Alta de ${roleTitle} autorizada por TI (Root)`,
       });
 
       if (created.length === 0) {
@@ -337,8 +331,8 @@ export function TIDashboard({ initialTab = 'users_permissions' }: TIDashboardPro
             </div>
 
             <form onSubmit={handleGenerateSupervisorInvite} className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                <div className="md:col-span-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="md:col-span-3">
                   <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-1">
                     Correo(s) Electrónico(s) a Invitar
                   </label>
@@ -354,18 +348,18 @@ export function TIDashboard({ initialTab = 'users_permissions' }: TIDashboardPro
 
                 <div>
                   <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-1">
-                    Rol a Asignar
+                    Perfil / Rol
                   </label>
                   <select
-                    value={selectedTargetRole}
-                    onChange={(e) => setSelectedTargetRole(e.target.value as UserRole)}
-                    className="w-full px-3 py-2 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white outline-none focus:border-blue-600 font-semibold"
+                    value={selectedRole}
+                    onChange={(e) => setSelectedRole(e.target.value as 'colaborador' | 'supervisor' | 'gerente' | 'socio')}
+                    className="w-full px-3 py-2 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white outline-none focus:border-blue-600 font-semibold cursor-pointer"
                   >
-                    <option value="socio">Socio / Jefatura</option>
-                    <option value="gerente">Gerente</option>
-                    <option value="rh">Recursos Humanos (RH)</option>
-                    <option value="supervisor">Supervisor</option>
-                    <option value="colaborador">Colaborador</option>
+                    {allowedRoles.map((role) => (
+                      <option key={role.value} value={role.value}>
+                        {role.label}
+                      </option>
+                    ))}
                   </select>
                 </div>
 
@@ -376,28 +370,11 @@ export function TIDashboard({ initialTab = 'users_permissions' }: TIDashboardPro
                   <select
                     value={selectedTeam}
                     onChange={(e) => setSelectedTeam(e.target.value)}
-                    className="w-full px-3 py-2 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white outline-none focus:border-blue-600"
+                    className="w-full px-3 py-2 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white outline-none focus:border-blue-600 cursor-pointer"
                   >
                     {SUPERVISOR_TEAMS.map((t) => (
                       <option key={t} value={t}>
                         {t}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-1">
-                    Título / Cargo
-                  </label>
-                  <select
-                    value={selectedTitle}
-                    onChange={(e) => setSelectedTitle(e.target.value)}
-                    className="w-full px-3 py-2 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white outline-none focus:border-blue-600"
-                  >
-                    {SUPERVISOR_TITLES.map((r) => (
-                      <option key={r} value={r}>
-                        {r}
                       </option>
                     ))}
                   </select>
@@ -410,7 +387,7 @@ export function TIDashboard({ initialTab = 'users_permissions' }: TIDashboardPro
                   <select
                     value={expiresInHours}
                     onChange={(e) => setExpiresInHours(Number(e.target.value))}
-                    className="w-full px-3 py-2 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white outline-none focus:border-blue-600"
+                    className="w-full px-3 py-2 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white outline-none focus:border-blue-600 cursor-pointer"
                   >
                     <option value={24}>24 Horas</option>
                     <option value={48}>48 Horas (Recomendado)</option>

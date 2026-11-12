@@ -299,31 +299,29 @@ export function canRoleInvite(role?: LegacyOrCurrentRole): boolean {
 
 /**
  * Lista de roles que un emisor está autorizado a invitar
+ * - Gerente: Colaborador y Supervisor
+ * - Socio o TI: Colaborador, Supervisor, Gerente y Socio
  */
 export function getAllowedRolesToInvite(issuerRole?: LegacyOrCurrentRole): Array<{
-  value: CanonicalRole;
-  label: string;
+  value: 'colaborador' | 'supervisor' | 'gerente' | 'socio';
+  label: 'Colaborador' | 'Supervisor' | 'Gerente' | 'Socio';
 }> {
   const norm = normalizeRole(issuerRole);
 
   if (norm === 'Gerente') {
     return [
-      { value: 'Supervisor', label: 'Supervisor' },
-      { value: 'Colaborador', label: 'Colaborador' },
+      { value: 'colaborador', label: 'Colaborador' },
+      { value: 'supervisor', label: 'Supervisor' },
     ];
   }
 
-  if (norm === 'Socio' || norm === 'TI') {
-    return [
-      { value: 'Socio', label: 'Socio / Jefatura' },
-      { value: 'Gerente', label: 'Gerente' },
-      { value: 'RH', label: 'Recursos Humanos (RH)' },
-      { value: 'Supervisor', label: 'Supervisor' },
-      { value: 'Colaborador', label: 'Colaborador' },
-    ];
-  }
-
-  return [];
+  // Socio o TI: las 4 opciones exactas
+  return [
+    { value: 'colaborador', label: 'Colaborador' },
+    { value: 'supervisor', label: 'Supervisor' },
+    { value: 'gerente', label: 'Gerente' },
+    { value: 'socio', label: 'Socio' },
+  ];
 }
 
 /**

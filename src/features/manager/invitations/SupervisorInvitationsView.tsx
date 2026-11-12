@@ -253,52 +253,64 @@ export function SupervisorInvitationsView() {
           </div>
         </div>
 
-        {/* 2. Formulario de Emitir Nuevas Invitaciones Integrado en una Sola Fila */}
+        {/* 2. Formulario de Emitir Nuevas Invitaciones Integrado */}
         <div className="pt-4 border-t border-slate-100 dark:border-slate-800">
-          <form onSubmit={handleQuickInvite} className="flex flex-col sm:flex-row items-center gap-3">
-            <div className="relative flex-1 w-full">
-              <Mail className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
-              <input
-                type="email"
-                required
-                value={emailInput}
-                onChange={(e) => setEmailInput(e.target.value)}
-                placeholder="correo.colaborador@russellbedford.mx"
-                className="w-full pl-10 pr-4 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 placeholder-slate-400 outline-none focus:border-blue-600 transition"
-              />
-            </div>
+          <form onSubmit={handleQuickInvite} className="space-y-3">
+            <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-end">
+              <div className="sm:col-span-6 relative">
+                <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-1">
+                  Correo Electrónico a Invitar
+                </label>
+                <div className="relative">
+                  <Mail className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type="email"
+                    required
+                    value={emailInput}
+                    onChange={(e) => setEmailInput(e.target.value)}
+                    placeholder="correo.colaborador@russellbedford.mx"
+                    className="w-full pl-10 pr-4 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 placeholder-slate-400 outline-none focus:border-blue-600 transition"
+                  />
+                </div>
+              </div>
 
-            <div className="w-full sm:w-56 shrink-0">
-              <select
-                value={selectedRole}
-                onChange={(e) => setSelectedRole(e.target.value as UserRole)}
-                className="w-full text-xs font-semibold py-2 px-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 outline-none cursor-pointer focus:border-blue-600"
-              >
-                {allowedRoles.map((role) => (
-                  <option key={role.value} value={role.value}>
-                    {role.label}
-                  </option>
-                ))}
-              </select>
-            </div>
+              <div className="sm:col-span-4">
+                <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-1">
+                  Perfil / Rol
+                </label>
+                <select
+                  value={selectedRole}
+                  onChange={(e) => setSelectedRole(e.target.value as 'colaborador' | 'supervisor' | 'gerente' | 'socio')}
+                  className="w-full text-xs font-semibold py-2 px-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 outline-none cursor-pointer focus:border-blue-600"
+                >
+                  {allowedRoles.map((role) => (
+                    <option key={role.value} value={role.value}>
+                      {role.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
 
-            <button
-              type="submit"
-              disabled={isSubmitting}
-              className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 px-5 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-xl shadow-xs transition cursor-pointer shrink-0 disabled:opacity-50"
-            >
-              {isSubmitting ? (
-                <>
-                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                  <span>Enviando invitación...</span>
-                </>
-              ) : (
-                <>
-                  <Send className="w-3.5 h-3.5" />
-                  <span>Emitir Invitación</span>
-                </>
-              )}
-            </button>
+              <div className="sm:col-span-2">
+                <button
+                  type="submit"
+                  disabled={isSubmitting}
+                  className="w-full inline-flex items-center justify-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-xl shadow-xs transition cursor-pointer shrink-0 disabled:opacity-50"
+                >
+                  {isSubmitting ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      <span>Enviando...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Send className="w-3.5 h-3.5" />
+                      <span>Emitir</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
           </form>
         </div>
       </div>
@@ -338,7 +350,7 @@ export function SupervisorInvitationsView() {
               <thead>
                 <tr className="border-b border-slate-100 dark:border-slate-800 bg-slate-50/75 dark:bg-slate-800/40 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
                   <th className="p-4">Correo Electrónico</th>
-                  <th className="p-4">Cargo Asignado</th>
+                  <th className="p-4">Perfil / Rol</th>
                   <th className="p-4">Estatus</th>
                   <th className="p-4">Fecha de Emisión</th>
                   <th className="p-4 text-right">Acciones</th>
