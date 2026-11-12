@@ -1,7 +1,8 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useCheckinStore } from '../../store/useCheckinStore';
 import { useRayonerStore } from '../../store/useRayonerStore';
 import { useInvitationStore } from '../../store/useInvitationStore';
+import { useTeamStore } from '../../store/useTeamStore';
 import { sendInviteWebhook, buildActivationUrl } from '../../services/n8nWebhookService';
 import { saveInvitationToFirestore } from '../../services/invitations';
 import { useAuditStore } from '../../store/useAuditStore';
@@ -9,16 +10,8 @@ import { RBAC_MATRIX, getAllowedRolesToInvite } from '../../services/rbac';
 import { SupervisorDashboard } from '../manager/SupervisorDashboard';
 import { UserPermissionsTable } from './UserPermissionsTable';
 import { ExecutiveAuditLogView } from '../audit/ExecutiveAuditLogView';
+import { AuditHierarchyView } from '../hierarchy/AuditHierarchyView';
 import { Send, Loader2 } from 'lucide-react';
-
-const SUPERVISOR_TEAMS = [
-  'Equipo Prueba',
-  'Dirección y Supervisión de Auditoría',
-  'Auditoría Fiscal',
-  'Consultoría e Impuestos',
-  'Contabilidad Corporativa',
-  'Precios de Transferencia',
-];
 
 export interface TIDashboardProps {
   initialTab?: 'invitations' | 'users_permissions' | 'audit_accounts' | 'rbac_matrix' | 'supervisor_view' | 'audit_logs';
@@ -27,8 +20,6 @@ export interface TIDashboardProps {
 export function TIDashboard({ initialTab = 'users_permissions' }: TIDashboardProps) {
   const {
     user,
-    userPermissionsDirectory,
-    updateRHAllowedTeams,
     addToast,
   } = useCheckinStore();
   const { teamMembers, tasks, clients, projects } = useRayonerStore();
@@ -39,6 +30,13 @@ export function TIDashboard({ initialTab = 'users_permissions' }: TIDashboardPro
     resendInvitation,
     deleteInvitation,
   } = useInvitationStore();
+  const { teams, fetchTeams } = useTeamStore();
+
+  useEffect(() => {
+    fetchTeams();
+  }, [fetchTeams]);
+
+  const activeTeams = useMemo(() => teams.filter((t) => t.status === 'active'), [teams]);
 
   const [activeTab, setActiveTab] = useState<'invitations' | 'users_permissions' | 'audit_accounts' | 'rbac_matrix' | 'supervisor_view' | 'audit_logs'>(initialTab);
 
@@ -49,8 +47,14 @@ export function TIDashboard({ initialTab = 'users_permissions' }: TIDashboardPro
 
   const [emailsInput, setEmailsInput] = useState('');
   const [selectedRole, setSelectedRole] = useState<'colaborador' | 'supervisor' | 'gerente' | 'socio'>('supervisor');
-  const [selectedTeam, setSelectedTeam] = useState(SUPERVISOR_TEAMS[0]);
+  const [selectedTeam, setSelectedTeam] = useState('');
   const [expiresInHours, setExpiresInHours] = useState(48);
+
+  useEffect(() => {
+    if (!selectedTeam && activeTeams.length > 0) {
+      setSelectedTeam(activeTeams[0].name);
+    }
+  }, [activeTeams, selectedTeam]);
 
   const tiSupervisorInvitations = useMemo(() => {
     return invitations.filter((inv) => inv.issuerRole === 'TI' && inv.targetRole === 'Supervisor');
@@ -370,19 +374,36 @@ export function TIDashboard({ initialTab = 'users_permissions' }: TIDashboardPro
                 </div>
 
                 <div>
-                  <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-1">
-                    Equipo o Práctica
-                  </label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                      Equipo o Práctica
+                    </label>
+                    {activeTeams.length === 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setActiveTab('audit_accounts')}
+                        className="text-[10px] text-blue-700 dark:text-blue-400 hover:underline cursor-pointer"
+                      >
+                        + Crear Equipo
+                      </button>
+                    )}
+                  </div>
                   <select
                     value={selectedTeam}
                     onChange={(e) => setSelectedTeam(e.target.value)}
                     className="w-full px-3 py-2 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white outline-none focus:border-blue-600 cursor-pointer"
                   >
-                    {SUPERVISOR_TEAMS.map((t) => (
-                      <option key={t} value={t}>
-                        {t}
+                    {activeTeams.length === 0 ? (
+                      <option value="" disabled>
+                        Sin equipos registrados
                       </option>
-                    ))}
+                    ) : (
+                      activeTeams.map((t) => (
+                        <option key={t.id} value={t.name}>
+                          {t.name} ({t.code})
+                        </option>
+                      ))
+                    )}
                   </select>
                 </div>
 
@@ -519,148 +540,8 @@ export function TIDashboard({ initialTab = 'users_permissions' }: TIDashboardPro
 
       {/* PESTAÑA 2: AUDITORÍA DE JERARQUÍA */}
       {activeTab === 'audit_accounts' && (
-        <div className="space-y-4 animate-fade-in">
-          {/* Nivel 1: TI Root */}
-          <div className="bg-white dark:bg-[#0B111E] rounded-2xl border border-slate-100 dark:border-slate-800 p-5 shadow-xs">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-700 font-bold text-sm flex items-center justify-center shrink-0">
-                  TI
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="font-bold text-slate-900 dark:text-white">
-                      {userPermissionsDirectory['ti-root-01']?.name || 'TI Prueba'}
-                    </span>
-                    <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-blue-50 text-blue-700 border border-blue-200/60">
-                      Nivel 1 • Root
-                    </span>
-                  </div>
-                  <p className="text-xs text-slate-400 mt-0.5">
-                    {userPermissionsDirectory['ti-root-01']?.email || 'ti.root@russellbedford.mx'} • Autoridad global sobre toda la estructura
-                  </p>
-                </div>
-              </div>
-              <span className="inline-flex items-center gap-1.5 text-xs text-emerald-700 font-medium">
-                <span className="w-2 h-2 rounded-full bg-emerald-500" /> Permanente Activo
-              </span>
-            </div>
-          </div>
-
-          {/* Nivel 2: Recursos Humanos */}
-          {hierarchyAudit.rhUsers.map((rh) => {
-            const rhDir = userPermissionsDirectory[rh.id];
-            const allowedSups = rhDir?.allowedSupervisorIds ?? hierarchyAudit.supervisors.map((s) => s.id);
-
-            const toggleTeamForRH = (supId: string) => {
-              const exists = allowedSups.includes(supId);
-              const next = exists ? allowedSups.filter((id) => id !== supId) : [...allowedSups, supId];
-              updateRHAllowedTeams(rh.id, next);
-              const supName = hierarchyAudit.supervisors.find((s) => s.id === supId)?.name || supId;
-              addToast(
-                exists
-                  ? `TI retiró a ${rh.name} el acceso al equipo de ${supName}.`
-                  : `TI autorizó a ${rh.name} ver el equipo de ${supName}.`,
-                exists ? 'info' : 'success'
-              );
-            };
-
-            return (
-              <div
-                key={rh.id}
-                className="bg-white dark:bg-[#0B111E] rounded-2xl border border-slate-100 dark:border-slate-800 p-5 shadow-xs space-y-3"
-              >
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-purple-50 text-purple-700 font-bold text-sm flex items-center justify-center shrink-0">
-                      RH
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="font-bold text-slate-900 dark:text-white">{rh.name}</span>
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-purple-50 text-purple-700 border border-purple-200/60">
-                          Nivel 2 • RH
-                        </span>
-                      </div>
-                      <p className="text-xs text-slate-400 mt-0.5">
-                        {rh.email} • Autorizado para auditar checadas de los siguientes equipos:
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
-                  {hierarchyAudit.supervisors.map((sup, idx) => {
-                    const checked = allowedSups.includes(sup.id);
-                    return (
-                      <button
-                        key={sup.id}
-                        type="button"
-                        onClick={() => toggleTeamForRH(sup.id)}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors cursor-pointer flex items-center gap-1.5 ${
-                          checked
-                            ? 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/40 dark:text-sky-300 dark:border-blue-800/60'
-                            : 'bg-slate-50 text-slate-500 border-slate-200 hover:border-slate-300'
-                        }`}
-                      >
-                        <span className={`w-1.5 h-1.5 rounded-full ${checked ? 'bg-blue-600' : 'bg-slate-300'}`} />
-                        Equipo #{idx + 1} ({sup.name})
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            );
-          })}
-
-          {/* Nivel 3: Equipos y Supervisores */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {hierarchyAudit.supervisors.map((sup, idx) => {
-              const teamMembersList = hierarchyAudit.employees.filter(
-                (emp) => (emp.supervisor_id || 'admin-99') === sup.id
-              );
-
-              return (
-                <div
-                  key={sup.id}
-                  className="bg-white dark:bg-[#0B111E] rounded-2xl border border-slate-100 dark:border-slate-800 p-5 shadow-xs space-y-3"
-                >
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
-                        Equipo #{idx + 1}
-                      </span>
-                      <h4 className="font-bold text-slate-900 dark:text-white text-sm">{sup.name}</h4>
-                      <p className="text-xs text-slate-500">{sup.team || 'Equipo Corporativo'}</p>
-                    </div>
-                    <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-100 text-slate-700">
-                      Nivel 3 • Supervisor
-                    </span>
-                  </div>
-
-                  <div className="border-t border-slate-100 dark:border-slate-800 pt-2">
-                    <span className="text-[11px] font-semibold text-slate-600 dark:text-slate-400 block mb-1.5">
-                      Colaboradores asignados ({teamMembersList.length}):
-                    </span>
-                    {teamMembersList.length === 0 ? (
-                      <span className="text-xs text-slate-400 italic">Sin colaboradores asignados</span>
-                    ) : (
-                      <div className="flex flex-wrap gap-1.5">
-                        {teamMembersList.map((emp) => (
-                          <span
-                            key={emp.id}
-                            className="px-2.5 py-1 rounded-md bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-medium"
-                          >
-                            {emp.name}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+        <div className="animate-fade-in">
+          <AuditHierarchyView onNavigateToInvitations={() => setActiveTab('invitations')} />
         </div>
       )}
 

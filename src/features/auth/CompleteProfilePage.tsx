@@ -2,6 +2,7 @@ import { useState, useMemo, useRef, useEffect } from 'react';
 import { useCheckinStore } from '../../store/useCheckinStore';
 import { useRayonerStore } from '../../store/useRayonerStore';
 import { useInvitationStore } from '../../store/useInvitationStore';
+import { useTeamStore } from '../../store/useTeamStore';
 import { Button } from '../../components/common/Button';
 import { 
   UserCircle, Calendar, Users, ChevronRight, 
@@ -50,12 +51,26 @@ export function CompleteProfilePage() {
     });
   }, [accountRole, user]);
 
+  const { teams, fetchTeams } = useTeamStore();
+
+  useEffect(() => {
+    fetchTeams();
+  }, [fetchTeams]);
+
+  const activeTeams = useMemo(() => teams.filter((t) => t.status === 'active'), [teams]);
+
   // Datos Personales
   const [name, setName] = useState(user?.name || '');
   const [lastName, setLastName] = useState(user?.lastName || '');
   const [birthDate, setBirthDate] = useState(user?.birthDate || '');
   const [profilePhoto, setProfilePhoto] = useState<string>(user?.profileImage || '');
-  const [team, setTeam] = useState(user?.team || 'Auditoría Fiscal');
+  const [team, setTeam] = useState(user?.team || '');
+
+  useEffect(() => {
+    if (!team && activeTeams.length > 0) {
+      setTeam(user?.team || activeTeams[0].name);
+    }
+  }, [activeTeams, team, user?.team]);
 
   // Campos específicos de Colaborador (código obtenido en automático si proviene de invitación previa)
   const autoSupervisorCode = useMemo(() => {
@@ -495,12 +510,15 @@ export function CompleteProfilePage() {
                 onChange={(e) => setTeam(e.target.value)}
                 className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-[#0D5C75]/20 focus:border-[#0D5C75] bg-slate-50/50 text-sm font-semibold text-slate-800 transition-all"
               >
-                <option value="Auditoría Fiscal">Auditoría Fiscal</option>
-                <option value="Contabilidad Corporativa">Contabilidad Corporativa</option>
-                <option value="Consultoría e Impuestos">Consultoría e Impuestos</option>
-                <option value="Precios de Transferencia">Precios de Transferencia</option>
-                <option value="Legal & Cumplimiento">Legal & Cumplimiento</option>
-                <option value="Dirección & Supervisión General">Dirección & Supervisión General</option>
+                {activeTeams.length === 0 ? (
+                  <option value="" disabled>Sin equipos registrados</option>
+                ) : (
+                  activeTeams.map((t) => (
+                    <option key={t.id} value={t.name}>
+                      {t.name} ({t.code})
+                    </option>
+                  ))
+                )}
               </select>
             </div>
           </div>

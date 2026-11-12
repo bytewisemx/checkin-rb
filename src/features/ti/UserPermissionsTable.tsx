@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import {
   Search,
   Plus,
@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { useCheckinStore, type ManagedUserPermissionEntry } from '../../store/useCheckinStore';
 import { useRayonerStore } from '../../store/useRayonerStore';
+import { useTeamStore } from '../../store/useTeamStore';
 import { UserAvatar } from '../../components/common/UserAvatar';
 import {
   normalizeRole,
@@ -22,15 +23,6 @@ import {
 export interface UserPermissionsTableProps {
   onNewUser?: () => void;
 }
-
-export const AVAILABLE_TEAMS = [
-  'Equipo Prueba',
-  'Auditoría Fiscal',
-  'Consultoría e Impuestos',
-  'Contabilidad Corporativa',
-  'Precios de Transferencia',
-  'Dirección y Supervisión de Auditoría',
-];
 
 export const GRANULAR_PERMISSION_DEFINITIONS: Array<{
   key: keyof UserGranularPermissions;
@@ -117,6 +109,14 @@ export function UserPermissionsTable({ onNewUser }: UserPermissionsTableProps) {
     addToast,
   } = useCheckinStore();
   const { teamMembers } = useRayonerStore();
+  const { teams, fetchTeams } = useTeamStore();
+
+  useEffect(() => {
+    fetchTeams();
+  }, [fetchTeams]);
+
+  const activeTeams = useMemo(() => teams.filter((t) => t.status === 'active'), [teams]);
+  const availableTeamNames = useMemo(() => activeTeams.map((t) => t.name), [activeTeams]);
 
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState<'ALL' | CanonicalRole>('ALL');
@@ -138,7 +138,7 @@ export function UserPermissionsTable({ onNewUser }: UserPermissionsTableProps) {
         ...entry,
         role,
         permissions: effectivePerms,
-        assignedTeams: entry.assignedTeams || (role === 'RH' ? ['Equipo Prueba', 'Auditoría Fiscal'] : undefined),
+        assignedTeams: entry.assignedTeams || (role === 'RH' ? availableTeamNames : undefined),
       });
     });
 
@@ -247,7 +247,7 @@ export function UserPermissionsTable({ onNewUser }: UserPermissionsTableProps) {
     setEditingUser(userEntry);
     setDraftRole(norm);
     setDraftPermissions(userEntry.permissions || getDefaultPermissionsForRole(norm));
-    setDraftAssignedTeams(userEntry.assignedTeams || ['Equipo Prueba', 'Auditoría Fiscal']);
+    setDraftAssignedTeams(userEntry.assignedTeams || availableTeamNames);
   };
 
   // Cambio de rol en el modal: preselecciona los permisos por defecto del nuevo rol
@@ -255,7 +255,7 @@ export function UserPermissionsTable({ onNewUser }: UserPermissionsTableProps) {
     setDraftRole(newRole);
     setDraftPermissions(getDefaultPermissionsForRole(newRole));
     if (newRole === 'RH' && draftAssignedTeams.length === 0) {
-      setDraftAssignedTeams(['Auditoría Fiscal', 'Equipo Prueba']);
+      setDraftAssignedTeams(availableTeamNames);
     }
   };
 
@@ -457,19 +457,23 @@ export function UserPermissionsTable({ onNewUser }: UserPermissionsTableProps) {
                               Equipos Autorizados ({u.assignedTeams?.length || 0}):
                             </span>
                             <div className="flex flex-wrap gap-1">
-                              {(u.assignedTeams || ['Equipo Prueba']).map((t) => (
-                                <span
-                                  key={t}
-                                  className="px-2 py-0.5 rounded text-[10px] font-medium bg-rose-50 text-rose-700 dark:bg-rose-950 dark:text-rose-300 border border-rose-100 dark:border-rose-900"
-                                >
-                                  {t}
-                                </span>
-                              ))}
+                              {(u.assignedTeams && u.assignedTeams.length > 0) ? (
+                                u.assignedTeams.map((t) => (
+                                  <span
+                                    key={t}
+                                    className="px-2 py-0.5 rounded text-[10px] font-medium bg-rose-50 text-rose-700 dark:bg-rose-950 dark:text-rose-300 border border-rose-100 dark:border-rose-900"
+                                  >
+                                    {t}
+                                  </span>
+                                ))
+                              ) : (
+                                <span className="text-[10px] text-slate-400 italic">Todos los equipos</span>
+                              )}
                             </div>
                           </div>
                         ) : (
                           <span className="text-slate-700 dark:text-slate-300 font-medium">
-                            {u.team || 'Equipo Prueba'}
+                            {u.team || 'Sin equipo asignado'}
                           </span>
                         )}
                       </td>
@@ -658,24 +662,30 @@ export function UserPermissionsTable({ onNewUser }: UserPermissionsTableProps) {
                     Este usuario de RH únicamente tendrá visibilidad y permiso de ajuste sobre las asistencias y colaboradores de los equipos seleccionados.
                   </p>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
-                    {AVAILABLE_TEAMS.map((team) => {
-                      const isSelected = draftAssignedTeams.includes(team);
-                      return (
-                        <button
-                          key={team}
-                          type="button"
-                          onClick={() => handleToggleAssignedTeam(team)}
-                          className={`flex items-center justify-between p-2 rounded-lg text-xs font-medium border transition cursor-pointer text-left ${
-                            isSelected
-                              ? 'bg-rose-100 text-rose-900 border-rose-300 dark:bg-rose-900/40 dark:text-rose-200 dark:border-rose-700'
-                              : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-800'
-                          }`}
-                        >
-                          <span>{team}</span>
-                          {isSelected && <Check className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400" />}
-                        </button>
-                      );
-                    })}
+                    {availableTeamNames.length === 0 ? (
+                      <p className="text-xs text-rose-800/80 italic col-span-2">
+                        Sin equipos registrados en la base de datos. Da de alta equipos en la pestaña Auditar Jerarquía.
+                      </p>
+                    ) : (
+                      availableTeamNames.map((team) => {
+                        const isSelected = draftAssignedTeams.includes(team);
+                        return (
+                          <button
+                            key={team}
+                            type="button"
+                            onClick={() => handleToggleAssignedTeam(team)}
+                            className={`flex items-center justify-between p-2 rounded-lg text-xs font-medium border transition cursor-pointer text-left ${
+                              isSelected
+                                ? 'bg-rose-100 text-rose-900 border-rose-300 dark:bg-rose-900/40 dark:text-rose-200 dark:border-rose-700'
+                                : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-800'
+                            }`}
+                          >
+                            <span>{team}</span>
+                            {isSelected && <Check className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400" />}
+                          </button>
+                        );
+                      })
+                    )}
                   </div>
                 </div>
               )}
