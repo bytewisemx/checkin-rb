@@ -1,13 +1,16 @@
 import { useState, useMemo } from 'react';
 import { useCheckinStore } from '../../store/useCheckinStore';
 import { useRayonerStore } from '../../store/useRayonerStore';
-import { useInvitationStore, buildInviteUrl } from '../../store/useInvitationStore';
+import { useInvitationStore } from '../../store/useInvitationStore';
+import { sendInviteWebhook, buildActivationUrl } from '../../services/n8nWebhookService';
+import { saveInvitationToFirestore } from '../../services/invitations';
+import { useAuditStore } from '../../store/useAuditStore';
 import { RBAC_MATRIX } from '../../services/rbac';
 import { SupervisorDashboard } from '../manager/SupervisorDashboard';
 import { UserPermissionsTable } from './UserPermissionsTable';
 import { ExecutiveAuditLogView } from '../audit/ExecutiveAuditLogView';
 import type { Invitation } from '../../types/invitation';
-import { Copy, Check, Send } from 'lucide-react';
+import { Copy, Check, Send, Loader2 } from 'lucide-react';
 import type { UserRole } from '../../services/rbac';
 
 const SUPERVISOR_TEAMS = [
@@ -81,10 +84,12 @@ export function TIDashboard({ initialTab = 'users_permissions' }: TIDashboardPro
     };
   }, [teamMembers, tasks, clients, projects]);
 
-  const handleGenerateSupervisorInvite = (e: React.FormEvent) => {
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const handleGenerateSupervisorInvite = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!emailsInput.trim()) {
-      addToast('Ingresa el correo electrónico del Supervisor a dar de alta.', 'error');
+      addToast('Ingresa el correo electrónico a invitar.', 'error');
       return;
     }
 
@@ -98,33 +103,90 @@ export function TIDashboard({ initialTab = 'users_permissions' }: TIDashboardPro
       return;
     }
 
-    const created = createInvitations({
-      emails: emailsList,
-      supervisorId: user?.id || 'ti-root-01',
-      supervisorName: `${user?.name || 'Administrador'} ${user?.lastName || 'TI'}`.trim(),
-      supervisorEmail: user?.email || 'ti.root@russellbedford.mx',
-      created_by_ti_id: user?.id || 'ti-root-01',
-      issuerRole: 'TI',
-      targetRole: selectedTargetRole,
-      team: selectedTeam,
-      roleTitle: selectedTitle || selectedTargetRole,
-      expiresInHours,
-      notes: `Alta de ${selectedTargetRole} autorizada por TI (Root)`,
-    });
+    setIsSubmitting(true);
+    try {
+      const issuerName = `${user?.name || 'Administrador'} ${user?.lastName || 'TI'}`.trim();
+      const roleTitle = selectedTitle || selectedTargetRole;
 
-    setRecentGenerated(created);
-    setEmailsInput('');
-    addToast(
-      `Se generaron y enviaron ${created.length} enlace(s) de invitación especial para alta de Supervisor.`,
-      'success'
-    );
+      const created = createInvitations({
+        emails: emailsList,
+        supervisorId: user?.id || 'ti-root-01',
+        supervisorName: issuerName,
+        supervisorEmail: user?.email || 'ti.root@russellbedford.mx',
+        created_by_ti_id: user?.id || 'ti-root-01',
+        issuerRole: 'TI',
+        targetRole: selectedTargetRole,
+        team: selectedTeam,
+        roleTitle,
+        expiresInHours,
+        notes: `Alta de ${selectedTargetRole} autorizada por TI (Root)`,
+      });
+
+      if (created.length === 0) {
+        addToast('No se pudieron generar las invitaciones.', 'error');
+        return;
+      }
+
+      setRecentGenerated(created);
+      setEmailsInput('');
+
+      // Despachar cada invitación a Firestore, Auditoría y Webhook n8n
+      for (const inv of created) {
+        // 1. Guardar en Firestore para validación pública inmediata
+        await saveInvitationToFirestore(inv);
+
+        // 2. Registrar en Bitácora de Auditoría
+        useAuditStore.getState().logAuditEvent({
+          eventType: 'INVITATION_CREATED',
+          actorId: user?.id || 'ti-root-01',
+          actorName: issuerName,
+          actorEmail: user?.email || 'ti.root@russellbedford.mx',
+          actorRole: 'TI',
+          targetResource: `Invitación: ${inv.email}`,
+          details: `Emisión de invitación con rol ${roleTitle} en equipo ${inv.team}`,
+        });
+
+        // 3. Generar activationUrl exacta (/activar-cuenta?token=XYZ&email=...)
+        const activationUrl = buildActivationUrl(inv.token, inv.email);
+
+        // 4. Despachar al servicio Webhook n8n
+        const webhookRes = await sendInviteWebhook({
+          event: 'invite_created',
+          recipientEmail: inv.email,
+          supervisorName: inv.supervisorName,
+          teamName: inv.team,
+          roleName: inv.roleTitle,
+          activationUrl,
+          expiresAt: new Date(inv.expiresAt).toISOString(),
+        });
+
+        if (webhookRes.success) {
+          addToast(`Invitación enviada por correo correctamente a ${inv.email}`, 'success');
+        } else if (webhookRes.simulated) {
+          addToast(
+            `Invitación para ${inv.email} generada. (Configura VITE_N8N_INVITE_WEBHOOK_URL en .env para envío real vía n8n)`,
+            'info'
+          );
+        } else {
+          addToast(
+            `Invitación registrada para ${inv.email}, pero falló el envío por n8n: ${webhookRes.error || 'Error de webhook'}. Puedes copiar el enlace manualmente.`,
+            'error'
+          );
+        }
+      }
+    } catch (err: unknown) {
+      console.error('[TIDashboard] Error al procesar invitaciones:', err);
+      addToast('Ocurrió un error al procesar la emisión de invitaciones.', 'error');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
-  const handleCopyInviteLink = (token: string, id: string) => {
-    const url = buildInviteUrl(token);
+  const handleCopyInviteLink = (token: string, id: string, email?: string) => {
+    const url = buildActivationUrl(token, email);
     navigator.clipboard.writeText(url);
     setCopiedId(id);
-    addToast('Enlace de invitación de Supervisor copiado al portapapeles.', 'success');
+    addToast('Enlace de invitación copiado al portapapeles.', 'success');
     setTimeout(() => setCopiedId(null), 2500);
   };
 
@@ -365,10 +427,20 @@ export function TIDashboard({ initialTab = 'users_permissions' }: TIDashboardPro
 
                 <button
                   type="submit"
-                  className="inline-flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg shadow-xs transition-colors cursor-pointer"
+                  disabled={isSubmitting}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white text-xs font-semibold rounded-lg shadow-xs transition-colors cursor-pointer disabled:cursor-not-allowed"
                 >
-                  <Send className="w-3.5 h-3.5" />
-                  Emitir Invitación
+                  {isSubmitting ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      Enviando vía n8n...
+                    </>
+                  ) : (
+                    <>
+                      <Send className="w-3.5 h-3.5" />
+                      Emitir Invitación
+                    </>
+                  )}
                 </button>
               </div>
             </form>
@@ -391,7 +463,7 @@ export function TIDashboard({ initialTab = 'users_permissions' }: TIDashboardPro
               </div>
               <div className="divide-y divide-blue-100/60 dark:divide-blue-900/30">
                 {recentGenerated.map((inv) => {
-                  const url = buildInviteUrl(inv.token);
+                  const url = buildActivationUrl(inv.token, inv.email);
                   return (
                     <div key={inv.id} className="py-2.5 flex items-center justify-between gap-4 text-xs">
                       <div className="min-w-0 flex-1">
@@ -404,7 +476,7 @@ export function TIDashboard({ initialTab = 'users_permissions' }: TIDashboardPro
                       </div>
                       <button
                         type="button"
-                        onClick={() => handleCopyInviteLink(inv.token, inv.id)}
+                        onClick={() => handleCopyInviteLink(inv.token, inv.id, inv.email)}
                         className="inline-flex items-center gap-1 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-medium cursor-pointer transition-colors shrink-0"
                       >
                         {copiedId === inv.id ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
@@ -421,14 +493,14 @@ export function TIDashboard({ initialTab = 'users_permissions' }: TIDashboardPro
           <div className="bg-white dark:bg-[#0B111E] rounded-2xl border border-slate-100 dark:border-slate-800 shadow-xs overflow-hidden">
             <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
               <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500">
-                Historial de Invitaciones de Supervisores ({tiSupervisorInvitations.length})
+                Historial de Invitaciones Emitidas por TI ({tiSupervisorInvitations.length})
               </h3>
             </div>
             <div className="w-full overflow-x-auto">
               <table className="w-full text-left border-collapse text-xs">
                 <thead>
                   <tr className="border-b border-slate-100 dark:border-slate-800 bg-slate-50/75 dark:bg-slate-900/50 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
-                    <th className="py-3 px-4">Correo del Supervisor</th>
+                    <th className="py-3 px-4">Correo del Invitado</th>
                     <th className="py-3 px-4">Área y Cargo</th>
                     <th className="py-3 px-4">Estado</th>
                     <th className="py-3 px-4 text-right">Acciones</th>
@@ -438,7 +510,7 @@ export function TIDashboard({ initialTab = 'users_permissions' }: TIDashboardPro
                   {tiSupervisorInvitations.length === 0 ? (
                     <tr>
                       <td colSpan={4} className="py-8 text-center text-slate-400">
-                        No hay invitaciones de supervisores emitidas aún.
+                        No hay invitaciones emitidas aún.
                       </td>
                     </tr>
                   ) : (
@@ -450,15 +522,15 @@ export function TIDashboard({ initialTab = 'users_permissions' }: TIDashboardPro
                         </td>
                         <td className="py-3 px-4">
                           <span className="font-medium text-slate-800 dark:text-slate-200 block">{inv.team}</span>
-                          <span className="text-[11px] text-slate-400">{inv.roleTitle}</span>
+                          <span className="text-[11px] text-slate-400">{inv.roleTitle} ({inv.role})</span>
                         </td>
                         <td className="py-3 px-4">
-                          {inv.status === 'accepted' ? (
-                            <span className="inline-flex items-center gap-1 text-emerald-700 font-medium">
-                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> Aceptada
+                          {inv.status === 'confirmed' || inv.status === 'accepted' ? (
+                            <span className="inline-flex items-center gap-1 text-emerald-700 dark:text-emerald-400 font-medium">
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> Aceptada / Confirmada
                             </span>
                           ) : inv.status === 'pending' ? (
-                            <span className="inline-flex items-center gap-1 text-amber-600 font-medium">
+                            <span className="inline-flex items-center gap-1 text-amber-600 dark:text-amber-400 font-medium">
                               <span className="w-1.5 h-1.5 rounded-full bg-amber-500" /> Pendiente
                             </span>
                           ) : (
@@ -469,10 +541,10 @@ export function TIDashboard({ initialTab = 'users_permissions' }: TIDashboardPro
                           <div className="flex items-center justify-end gap-2">
                             <button
                               type="button"
-                              onClick={() => handleCopyInviteLink(inv.token, inv.id)}
-                              className="text-xs font-semibold text-blue-600 hover:text-blue-700"
+                              onClick={() => handleCopyInviteLink(inv.token, inv.id, inv.email)}
+                              className="text-xs font-semibold text-blue-600 hover:text-blue-700 cursor-pointer"
                             >
-                              {copiedId === inv.id ? 'Copiado' : 'Copiar'}
+                              {copiedId === inv.id ? 'Copiado' : 'Copiar Enlace'}
                             </button>
                             <button
                               type="button"

@@ -34,14 +34,19 @@ export function getN8nInviteWebhookUrl(): string {
 /**
  * Construye la URL de activación para el correo y registro (/activar-cuenta)
  */
-export function buildActivationUrl(inviteToken: string, email: string): string {
+export function buildActivationUrl(inviteToken: string, email?: string): string {
+  const queryParams = new URLSearchParams({ token: inviteToken });
+  if (email) {
+    queryParams.set('email', email);
+  }
+
   if (typeof window === 'undefined') {
-    return `/activar-cuenta?token=${encodeURIComponent(inviteToken)}&email=${encodeURIComponent(email)}`;
+    return `/activar-cuenta?${queryParams.toString()}`;
   }
   const origin = window.location.origin;
   const baseUrl = import.meta.env.BASE_URL || '/';
   const cleanBase = baseUrl.endsWith('/') ? baseUrl : baseUrl + '/';
-  return `${origin}${cleanBase}activar-cuenta?token=${encodeURIComponent(inviteToken)}&email=${encodeURIComponent(email)}`;
+  return `${origin}${cleanBase}activar-cuenta?${queryParams.toString()}`;
 }
 
 /**
@@ -107,3 +112,8 @@ export async function dispatchInviteWebhook(
     };
   }
 }
+
+/**
+ * Alias estándar para despacho de webhooks de invitación
+ */
+export const sendInviteWebhook = dispatchInviteWebhook;

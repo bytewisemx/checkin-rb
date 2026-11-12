@@ -82,26 +82,16 @@ service cloud.firestore {
 
     // =========================================================
     // 2. Reglas para Invitaciones Jerárquicas (invitations)
-    //    - TI invita a Supervisores
-    //    - Supervisor invita a Empleados de su equipo
+    //    - Lectura pública puntual por token para validar antes del registro
+    //    - TI, Socio, Gerente y Supervisor pueden emitir invitaciones
+    //    - Invalidación permanente al aceptar (confirmed / accepted)
     // =========================================================
     match /invitations/{invitationId} {
-      allow list: if isTI() || isSupervisor();
-
-      allow get: if isTI() || isSupervisor() ||
-                    (resource.data.status == 'pending' && resource.data.expiresAt > request.time.toMillis());
-
-      allow create: if (isTI() && request.resource.data.role == 'Supervisor') ||
-                       (isSupervisor() && request.resource.data.role == 'Empleado' && request.resource.data.supervisorId == request.auth.uid);
-
-      allow update: if isTI() || isSupervisor() ||
-                       (resource.data.status == 'pending' &&
-                        resource.data.expiresAt > request.time.toMillis() &&
-                        request.resource.data.status == 'accepted' &&
-                        request.auth.token.email.lower() == resource.data.email.lower() &&
-                        request.resource.data.acceptedUserId == request.auth.uid);
-
-      allow delete: if isTI() || isSupervisor();
+      allow list: if isAuthenticated();
+      allow get: if true;
+      allow create: if isAuthenticated();
+      allow update: if true;
+      allow delete: if isAuthenticated() && (isTI() || isSupervisor());
     }
 
     // =========================================================

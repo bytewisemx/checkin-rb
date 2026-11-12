@@ -39,13 +39,13 @@ export function RegisterPage() {
   const { loginWithFirebaseUser, updateProfile, enrollBiometrics, addToast, isAuthenticated, user } = useCheckinStore();
   const navigate = useNavigate();
 
-  // Si ya tiene sesión activa con perfil completo, redirigir automáticamente al dashboard
+  // Si ya tiene sesión activa con perfil completo y NO viene de un enlace de invitación, redirigir al dashboard
   const isProfileComplete = Boolean(user?.isProfileComplete || (user?.name && user?.role));
   useEffect(() => {
-    if (isAuthenticated && isProfileComplete) {
+    if (isAuthenticated && isProfileComplete && !inviteToken) {
       navigate('/', { replace: true });
     }
-  }, [isAuthenticated, isProfileComplete, navigate]);
+  }, [isAuthenticated, isProfileComplete, inviteToken, navigate]);
 
   // Estados de Validación de Invitación
   const [isValidatingToken, setIsValidatingToken] = useState(true);
@@ -81,9 +81,9 @@ export function RegisterPage() {
   // 1. Validación Inmediata del Token al cargar la pantalla
   useEffect(() => {
     async function checkToken() {
+      // Si no hay parámetro ?token= en la URL, redirige inmediatamente a /login
       if (!inviteToken) {
-        setIsValidatingToken(false);
-        setTokenError('NO_TOKEN');
+        navigate('/login', { replace: true });
         return;
       }
 
@@ -110,7 +110,7 @@ export function RegisterPage() {
     }
 
     checkToken();
-  }, [inviteToken, emailParam]);
+  }, [inviteToken, emailParam, navigate]);
 
   // Inicialización de la Cámara al entrar al Paso 2
   useEffect(() => {

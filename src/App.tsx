@@ -169,7 +169,10 @@ function PublicOnlyRoute({ children }: { children: React.ReactNode }) {
   const user = useCheckinStore((state) => state.user);
   const isProfileComplete = Boolean(user?.isProfileComplete || (user?.name && user?.role));
 
-  if (isAuthenticated && isProfileComplete) {
+  // Si la URL contiene un token de activación (?token=), permitimos el acceso público para procesar la invitación
+  const hasToken = typeof window !== 'undefined' && window.location.search.includes('token=');
+
+  if (isAuthenticated && isProfileComplete && !hasToken) {
     return <Navigate to="/" replace />;
   }
 

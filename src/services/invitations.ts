@@ -1,11 +1,12 @@
+import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
+import { db, isFirebaseConfigured } from './firebase';
 import { useInvitationStore, buildInviteUrl } from '../store/useInvitationStore';
 import type { Invitation, ValidateTokenResult } from '../types/invitation';
 import type { UserRole } from './rbac';
 
 /**
- * Servicio Backend para Gestión y Validación de Invitaciones Jerárquicas:
- * - TI -> Supervisores
- * - Supervisor -> Empleados (Subordinados)
+ * Servicio Backend para Gestión y Validación de Invitaciones Jerárquicas en Base de Datos
+ * Russell Bedford Time & Checkin Suite
  */
 
 export interface SendEmailResult {
@@ -16,22 +17,164 @@ export interface SendEmailResult {
 }
 
 /**
- * Valida un token de invitación en el backend/servicio antes de permitir el registro
+ * Guarda una invitación en Firestore usando el token como ID único de acceso puntual
  */
-export async function validateInvitationToken(token: string): Promise<ValidateTokenResult> {
-  const store = useInvitationStore.getState();
-  return store.validateToken(token);
+export async function saveInvitationToFirestore(invitation: Invitation): Promise<boolean> {
+  if (!isFirebaseConfigured() || !db) return false;
+
+  try {
+    const invRef = doc(db, 'invitations', invitation.token);
+    await setDoc(
+      invRef,
+      {
+        id: invitation.id,
+        token: invitation.token,
+        email: invitation.email.toLowerCase().trim(),
+        supervisorId: invitation.supervisorId,
+        supervisorName: invitation.supervisorName,
+        supervisorEmail: invitation.supervisorEmail || '',
+        created_by_ti_id: invitation.created_by_ti_id || null,
+        issuerRole: invitation.issuerRole || 'Supervisor',
+        team: invitation.team,
+        roleTitle: invitation.roleTitle,
+        role: invitation.role,
+        targetRole: invitation.targetRole || invitation.role,
+        status: invitation.status || 'pending',
+        createdAt: invitation.createdAt,
+        expiresAt: invitation.expiresAt,
+        sentCount: invitation.sentCount || 1,
+        lastSentAt: invitation.lastSentAt || Date.now(),
+        notes: invitation.notes || '',
+      },
+      { merge: true }
+    );
+    return true;
+  } catch (err) {
+    console.warn('[Firestore] No se pudo guardar la invitación en Firestore:', err);
+    return false;
+  }
 }
 
 /**
- * Registra y consume un token tras la creación exitosa del usuario
+ * Valida un token de invitación en Firestore y en el store local antes de permitir el registro
+ */
+export async function validateInvitationToken(token: string): Promise<ValidateTokenResult> {
+  const cleanToken = (token || '').trim();
+  if (!cleanToken) {
+    return {
+      valid: false,
+      error: 'No se proporcionó ningún token de invitación.',
+    };
+  }
+
+  const store = useInvitationStore.getState();
+
+  // 1. Si Firebase está configurado, consultar lectura puntual en Firestore
+  if (isFirebaseConfigured() && db) {
+    try {
+      const invRef = doc(db, 'invitations', cleanToken);
+      const snap = await getDoc(invRef);
+
+      if (snap.exists()) {
+        const data = snap.data() as Partial<Invitation>;
+        const now = Date.now();
+
+        if (data.status === 'confirmed' || data.status === 'accepted') {
+          return {
+            valid: false,
+            error: 'Este enlace de invitación ya fue utilizado o ha expirado. Inicia sesión con tus credenciales.',
+            invitation: data as Invitation,
+          };
+        }
+
+        if (data.status === 'revoked') {
+          return {
+            valid: false,
+            error: 'Esta invitación fue revocada o cancelada por el emisor.',
+            invitation: data as Invitation,
+          };
+        }
+
+        const expiresAtNum = typeof data.expiresAt === 'number' ? data.expiresAt : new Date(data.expiresAt || 0).getTime();
+        if (now > expiresAtNum) {
+          return {
+            valid: false,
+            error: 'Este enlace de invitación ya fue utilizado o ha expirado. Inicia sesión con tus credenciales.',
+            invitation: data as Invitation,
+          };
+        }
+
+        const fullInvitation: Invitation = {
+          id: data.id || 'inv-' + cleanToken.slice(0, 8),
+          token: cleanToken,
+          email: (data.email || '').toLowerCase().trim(),
+          supervisorId: data.supervisorId || 'admin-99',
+          supervisorName: data.supervisorName || 'Supervisor',
+          supervisorEmail: data.supervisorEmail,
+          created_by_ti_id: data.created_by_ti_id,
+          issuerRole: data.issuerRole || 'Supervisor',
+          team: data.team || 'Auditoría Fiscal',
+          roleTitle: data.roleTitle || 'Colaborador',
+          role: data.role || data.targetRole || 'Colaborador',
+          targetRole: data.targetRole || data.role || 'Colaborador',
+          status: 'pending',
+          createdAt: typeof data.createdAt === 'number' ? data.createdAt : Date.now(),
+          expiresAt: expiresAtNum,
+          sentCount: data.sentCount || 1,
+          lastSentAt: typeof data.lastSentAt === 'number' ? data.lastSentAt : Date.now(),
+          notes: data.notes,
+        };
+
+        // Sincronizar en store local si no existía
+        const existingLocal = store.invitations.find((i) => i.token === cleanToken);
+        if (!existingLocal) {
+          useInvitationStore.setState((s) => ({
+            invitations: [fullInvitation, ...s.invitations],
+          }));
+        }
+
+        return {
+          valid: true,
+          invitation: fullInvitation,
+        };
+      }
+    } catch (err) {
+      console.warn('[Firestore] Error al consultar token en Firestore, evaluando store local:', err);
+    }
+  }
+
+  // 2. Fallback al store local
+  return store.validateToken(cleanToken);
+}
+
+/**
+ * Registra y consume un token tras la creación exitosa del usuario (Invalidación Permanente One-Time)
  */
 export async function consumeInvitationToken(
   token: string,
   user: { uid: string; email: string; name?: string }
 ): Promise<{ success: boolean; error?: string; invitation?: Invitation }> {
+  const cleanToken = (token || '').trim();
   const store = useInvitationStore.getState();
-  return store.consumeToken(token, user);
+
+  // 1. Invalidación en Firestore
+  if (isFirebaseConfigured() && db) {
+    try {
+      const invRef = doc(db, 'invitations', cleanToken);
+      await updateDoc(invRef, {
+        status: 'confirmed',
+        usedAt: new Date().toISOString(),
+        registeredUserId: user.uid,
+        acceptedAt: Date.now(),
+        acceptedUserId: user.uid,
+      });
+    } catch (err) {
+      console.warn('[Firestore] Error al marcar invitación como confirmed en Firestore:', err);
+    }
+  }
+
+  // 2. Invalidación en Store Local
+  return store.consumeToken(cleanToken, user);
 }
 
 /**
