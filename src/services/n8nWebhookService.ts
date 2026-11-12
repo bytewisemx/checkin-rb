@@ -20,15 +20,20 @@ export interface N8nWebhookResponse {
   simulated?: boolean;
 }
 
+export const DEFAULT_N8N_INVITE_WEBHOOK_URL =
+  'https://n8n-n8n.bg5sbc.easypanel.host/webhook/checkin-invite';
+
 /**
  * Obtiene la URL del Webhook configurada en las variables de entorno de Vite o del entorno.
+ * Por defecto apunta al endpoint de n8n en Easypanel: https://n8n-n8n.bg5sbc.easypanel.host/webhook/checkin-invite
  */
 export function getN8nInviteWebhookUrl(): string {
-  return (
+  const envUrl = (
     import.meta.env.VITE_N8N_INVITE_WEBHOOK_URL ||
     import.meta.env.VITE_N8N_WEBHOOK_URL ||
     ''
   ).trim();
+  return envUrl || DEFAULT_N8N_INVITE_WEBHOOK_URL;
 }
 
 /**
@@ -71,13 +76,13 @@ export async function dispatchInviteWebhook(
 
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 segundos timeout
+    const timeoutId = setTimeout(() => controller.abort(), 7000); // 7 segundos timeout
 
     const response = await fetch(webhookUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Accept: 'application/json',
+        Accept: 'application/json, text/plain, */*',
       },
       body: JSON.stringify(payload),
       signal: controller.signal,

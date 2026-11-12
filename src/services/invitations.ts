@@ -16,15 +16,44 @@ export interface SendEmailResult {
   error?: string;
 }
 
+function withTimeout<T>(promise: Promise<T>, ms = 1200, fallback: T): Promise<T> {
+  return new Promise((resolve) => {
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (!settled) {
+        settled = true;
+        resolve(fallback);
+      }
+    }, ms);
+
+    promise
+      .then((val) => {
+        if (!settled) {
+          settled = true;
+          clearTimeout(timer);
+          resolve(val);
+        }
+      })
+      .catch(() => {
+        if (!settled) {
+          settled = true;
+          clearTimeout(timer);
+          resolve(fallback);
+        }
+      });
+  });
+}
+
 /**
  * Guarda una invitación en Firestore usando el token como ID único de acceso puntual
+ * Protegido con timeout estricto para no bloquear jamás el despacho del webhook ni la UI.
  */
 export async function saveInvitationToFirestore(invitation: Invitation): Promise<boolean> {
   if (!isFirebaseConfigured() || !db) return false;
 
   try {
     const invRef = doc(db, 'invitations', invitation.token);
-    await setDoc(
+    const writePromise = setDoc(
       invRef,
       {
         id: invitation.id,
@@ -47,8 +76,9 @@ export async function saveInvitationToFirestore(invitation: Invitation): Promise
         notes: invitation.notes || '',
       },
       { merge: true }
-    );
-    return true;
+    ).then(() => true);
+
+    return await withTimeout(writePromise, 1500, false);
   } catch (err) {
     console.warn('[Firestore] No se pudo guardar la invitación en Firestore:', err);
     return false;

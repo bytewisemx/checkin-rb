@@ -9,8 +9,7 @@ import { RBAC_MATRIX, getAllowedRolesToInvite } from '../../services/rbac';
 import { SupervisorDashboard } from '../manager/SupervisorDashboard';
 import { UserPermissionsTable } from './UserPermissionsTable';
 import { ExecutiveAuditLogView } from '../audit/ExecutiveAuditLogView';
-import type { Invitation } from '../../types/invitation';
-import { Copy, Check, Send, Loader2 } from 'lucide-react';
+import { Send, Loader2 } from 'lucide-react';
 
 const SUPERVISOR_TEAMS = [
   'Equipo Prueba',
@@ -52,8 +51,6 @@ export function TIDashboard({ initialTab = 'users_permissions' }: TIDashboardPro
   const [selectedRole, setSelectedRole] = useState<'colaborador' | 'supervisor' | 'gerente' | 'socio'>('supervisor');
   const [selectedTeam, setSelectedTeam] = useState(SUPERVISOR_TEAMS[0]);
   const [expiresInHours, setExpiresInHours] = useState(48);
-  const [recentGenerated, setRecentGenerated] = useState<Invitation[] | null>(null);
-  const [copiedId, setCopiedId] = useState<string | null>(null);
 
   const tiSupervisorInvitations = useMemo(() => {
     return invitations.filter((inv) => inv.issuerRole === 'TI' && inv.targetRole === 'Supervisor');
@@ -121,13 +118,12 @@ export function TIDashboard({ initialTab = 'users_permissions' }: TIDashboardPro
         return;
       }
 
-      setRecentGenerated(created);
       setEmailsInput('');
 
       // Despachar cada invitación a Firestore, Auditoría y Webhook n8n
       for (const inv of created) {
-        // 1. Guardar en Firestore para validación pública inmediata
-        await saveInvitationToFirestore(inv);
+        // 1. Guardar en Firestore en segundo plano con timeout protegido
+        saveInvitationToFirestore(inv).catch(console.warn);
 
         // 2. Registrar en Bitácora de Auditoría
         useAuditStore.getState().logAuditEvent({
@@ -143,7 +139,7 @@ export function TIDashboard({ initialTab = 'users_permissions' }: TIDashboardPro
         // 3. Generar activationUrl exacta (/activar-cuenta?token=XYZ&email=...)
         const activationUrl = buildActivationUrl(inv.token, inv.email);
 
-        // 4. Despachar al servicio Webhook n8n
+        // 4. Despachar al servicio Webhook n8n (el único medio de invitación)
         const webhookRes = await sendInviteWebhook({
           event: 'invite_created',
           recipientEmail: inv.email,
@@ -155,15 +151,10 @@ export function TIDashboard({ initialTab = 'users_permissions' }: TIDashboardPro
         });
 
         if (webhookRes.success) {
-          addToast(`Invitación enviada por correo correctamente a ${inv.email}`, 'success');
-        } else if (webhookRes.simulated) {
-          addToast(
-            `Invitación para ${inv.email} generada. (Configura VITE_N8N_INVITE_WEBHOOK_URL en .env para envío real vía n8n)`,
-            'info'
-          );
+          addToast(`Invitación enviada por correo correctamente vía n8n a ${inv.email}`, 'success');
         } else {
           addToast(
-            `Invitación registrada para ${inv.email}, pero falló el envío por n8n: ${webhookRes.error || 'Error de webhook'}. Puedes copiar el enlace manualmente.`,
+            `Fallo en el envío por n8n a ${inv.email}: ${webhookRes.error || 'Error de conexión'}.`,
             'error'
           );
         }
@@ -176,12 +167,27 @@ export function TIDashboard({ initialTab = 'users_permissions' }: TIDashboardPro
     }
   };
 
-  const handleCopyInviteLink = (token: string, id: string, email?: string) => {
-    const url = buildActivationUrl(token, email);
-    navigator.clipboard.writeText(url);
-    setCopiedId(id);
-    addToast('Enlace de invitación copiado al portapapeles.', 'success');
-    setTimeout(() => setCopiedId(null), 2500);
+  const handleResendInvite = async (invId: string) => {
+    const res = resendInvitation(invId);
+    if (res.success && res.invitation) {
+      const inv = res.invitation;
+      const activationUrl = buildActivationUrl(inv.token, inv.email);
+      addToast(`Reenviando invitación por correo a ${inv.email}...`, 'info');
+      const webhookRes = await sendInviteWebhook({
+        event: 'invite_created',
+        recipientEmail: inv.email,
+        supervisorName: inv.supervisorName,
+        teamName: inv.team,
+        roleName: inv.roleTitle,
+        activationUrl,
+        expiresAt: new Date(inv.expiresAt).toISOString(),
+      });
+      if (webhookRes.success) {
+        addToast(`Invitación reenviada correctamente vía n8n a ${inv.email}`, 'success');
+      } else {
+        addToast(`Fallo al reenviar por n8n a ${inv.email}: ${webhookRes.error || 'Error'}`, 'error');
+      }
+    }
   };
 
   return (
@@ -423,49 +429,6 @@ export function TIDashboard({ initialTab = 'users_permissions' }: TIDashboardPro
             </form>
           </div>
 
-          {/* Enlaces Generados Recientemente */}
-          {recentGenerated && (
-            <div className="bg-blue-50/60 dark:bg-blue-950/30 border border-blue-100 dark:border-blue-900/40 rounded-xl p-4 space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-blue-900 dark:text-blue-300">
-                  Invitaciones Emitidas ({recentGenerated.length})
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setRecentGenerated(null)}
-                  className="text-xs text-blue-700 hover:text-blue-900 dark:text-blue-400 dark:hover:text-blue-200"
-                >
-                  Cerrar
-                </button>
-              </div>
-              <div className="divide-y divide-blue-100/60 dark:divide-blue-900/30">
-                {recentGenerated.map((inv) => {
-                  const url = buildActivationUrl(inv.token, inv.email);
-                  return (
-                    <div key={inv.id} className="py-2.5 flex items-center justify-between gap-4 text-xs">
-                      <div className="min-w-0 flex-1">
-                        <span className="font-semibold text-slate-900 dark:text-white block">
-                          {inv.email} — {inv.roleTitle}
-                        </span>
-                        <span className="text-[11px] font-mono text-blue-700 dark:text-sky-400 block truncate mt-0.5">
-                          {url}
-                        </span>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => handleCopyInviteLink(inv.token, inv.id, inv.email)}
-                        className="inline-flex items-center gap-1 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-medium cursor-pointer transition-colors shrink-0"
-                      >
-                        {copiedId === inv.id ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                        {copiedId === inv.id ? 'Copiado' : 'Copiar'}
-                      </button>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
           {/* Tabla Ejecutiva de Invitaciones Emitidas */}
           <div className="bg-white dark:bg-[#0B111E] rounded-2xl border border-slate-100 dark:border-slate-800 shadow-xs overflow-hidden">
             <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
@@ -495,7 +458,7 @@ export function TIDashboard({ initialTab = 'users_permissions' }: TIDashboardPro
                       <tr key={inv.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-colors">
                         <td className="py-3 px-4">
                           <span className="font-semibold text-slate-900 dark:text-white block">{inv.email}</span>
-                          <span className="text-[10px] font-mono text-slate-400 block">Token: {inv.token.slice(0, 16)}...</span>
+                          <span className="text-[10px] font-mono text-slate-400 block">Canal: Correo n8n</span>
                         </td>
                         <td className="py-3 px-4">
                           <span className="font-medium text-slate-800 dark:text-slate-200 block">{inv.team}</span>
@@ -518,23 +481,16 @@ export function TIDashboard({ initialTab = 'users_permissions' }: TIDashboardPro
                           <div className="flex items-center justify-end gap-2">
                             <button
                               type="button"
-                              onClick={() => handleCopyInviteLink(inv.token, inv.id, inv.email)}
+                              onClick={() => handleResendInvite(inv.id)}
                               className="text-xs font-semibold text-blue-600 hover:text-blue-700 cursor-pointer"
                             >
-                              {copiedId === inv.id ? 'Copiado' : 'Copiar Enlace'}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => resendInvitation(inv.id)}
-                              className="text-xs text-slate-500 hover:text-slate-800"
-                            >
-                              Reenviar
+                              Reenviar Correo
                             </button>
                             {inv.status === 'pending' && (
                               <button
                                 type="button"
                                 onClick={() => revokeInvitation(inv.id)}
-                                className="text-xs text-slate-500 hover:text-slate-800"
+                                className="text-xs text-slate-500 hover:text-slate-800 cursor-pointer"
                               >
                                 Revocar
                               </button>
@@ -542,7 +498,7 @@ export function TIDashboard({ initialTab = 'users_permissions' }: TIDashboardPro
                             <button
                               type="button"
                               onClick={() => deleteInvitation(inv.id)}
-                              className="text-xs text-rose-500 hover:text-rose-700"
+                              className="text-xs text-rose-500 hover:text-rose-700 cursor-pointer"
                             >
                               Eliminar
                             </button>

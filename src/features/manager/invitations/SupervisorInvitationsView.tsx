@@ -12,6 +12,7 @@ import {
   dispatchInviteWebhook, 
   buildActivationUrl 
 } from '../../../services/n8nWebhookService';
+import { saveInvitationToFirestore } from '../../../services/invitations';
 import { getAllowedRolesToInvite, normalizeRole, type UserRole } from '../../../services/rbac';
 
 export function SupervisorInvitationsView() {
@@ -46,7 +47,6 @@ export function SupervisorInvitationsView() {
   // Estados de Filtros y Búsqueda
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | InvitationStatus>('all');
-  const [copiedTokenId, setCopiedTokenId] = useState<string | null>(null);
 
   // Métricas
   const metrics = useMemo(() => {
@@ -102,6 +102,9 @@ export function SupervisorInvitationsView() {
       if (created.length > 0) {
         const inv = created[0];
 
+        // Guardar en Firestore en segundo plano con timeout protegido
+        saveInvitationToFirestore(inv).catch(console.warn);
+
         // Registrar en Bitácora de Auditoría
         useAuditStore.getState().logAuditEvent({
           eventType: 'INVITATION_CREATED',
@@ -116,7 +119,7 @@ export function SupervisorInvitationsView() {
         // 2. Construir la URL de activación: /activar-cuenta?token=...&email=...
         const activationUrl = buildActivationUrl(inv.token, inv.email);
 
-        // 3. Despachar payload al Webhook de n8n
+        // 3. Despachar payload al Webhook de n8n (el único medio de invitación)
         const webhookRes = await dispatchInviteWebhook({
           event: 'invite_created',
           recipientEmail: inv.email,
@@ -129,12 +132,10 @@ export function SupervisorInvitationsView() {
 
         // 4. Feedback al usuario
         if (webhookRes.success) {
-          addToast('Invitación generada y enviada al correo del colaborador', 'success');
-        } else if (webhookRes.simulated) {
-          addToast('Invitación generada localmente. (Configura VITE_N8N_INVITE_WEBHOOK_URL en .env para envío real vía n8n)', 'info');
+          addToast(`Invitación enviada por correo correctamente vía n8n a ${inv.email}`, 'success');
         } else {
           addToast(
-            `Invitación registrada, pero falló el envío por n8n: ${webhookRes.error || 'Error de webhook'}. Puedes copiar el enlace manualmente.`,
+            `Fallo en el envío por n8n a ${inv.email}: ${webhookRes.error || 'Error de conexión'}.`,
             'error'
           );
         }
@@ -148,12 +149,27 @@ export function SupervisorInvitationsView() {
     }
   };
 
-  const handleCopyLink = (token: string, email: string, id: string) => {
-    const url = buildActivationUrl(token, email);
-    navigator.clipboard.writeText(url);
-    setCopiedTokenId(id);
-    addToast('Enlace de registro copiado al portapapeles.', 'success');
-    setTimeout(() => setCopiedTokenId(null), 2500);
+  const handleResendInvite = async (invId: string) => {
+    const inv = invitations.find((i) => i.id === invId);
+    if (!inv) return;
+
+    addToast(`Reenviando invitación por correo a ${inv.email}...`, 'info');
+    const activationUrl = buildActivationUrl(inv.token, inv.email);
+    const webhookRes = await dispatchInviteWebhook({
+      event: 'invite_created',
+      recipientEmail: inv.email,
+      supervisorName: inv.supervisorName,
+      teamName: inv.team,
+      roleName: inv.roleTitle,
+      activationUrl,
+      expiresAt: new Date(inv.expiresAt).toISOString(),
+    });
+
+    if (webhookRes.success) {
+      addToast(`Invitación reenviada correctamente vía n8n a ${inv.email}`, 'success');
+    } else {
+      addToast(`Fallo al reenviar por n8n a ${inv.email}: ${webhookRes.error || 'Error'}`, 'error');
+    }
   };
 
   const handleRevoke = (id: string, email: string) => {
@@ -365,7 +381,6 @@ export function SupervisorInvitationsView() {
                   </tr>
                 ) : (
                   filteredInvitations.map((inv) => {
-                    const isCopied = copiedTokenId === inv.id;
                     const isPending = inv.status === 'pending';
                     const isAccepted = inv.status === 'accepted';
 
@@ -421,21 +436,11 @@ export function SupervisorInvitationsView() {
                             {isPending && (
                               <button
                                 type="button"
-                                onClick={() => handleCopyLink(inv.token, inv.email, inv.id)}
-                                className="px-2.5 py-1 text-xs font-medium text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg transition-colors cursor-pointer inline-flex items-center gap-1"
-                                title="Copiar enlace directo de invitación"
+                                onClick={() => handleResendInvite(inv.id)}
+                                className="px-2.5 py-1 text-xs font-medium text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/40 hover:bg-blue-100 rounded-lg transition-colors cursor-pointer inline-flex items-center gap-1"
+                                title="Reenviar invitación formal por correo vía n8n"
                               >
-                                {isCopied ? (
-                                  <>
-                                    <Check className="w-3 h-3 text-emerald-600" />
-                                    <span>Copiado</span>
-                                  </>
-                                ) : (
-                                  <>
-                                    <Copy className="w-3 h-3" />
-                                    <span>Enlace</span>
-                                  </>
-                                )}
+                                Reenviar Correo
                               </button>
                             )}
 
