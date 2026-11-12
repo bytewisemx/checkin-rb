@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { useRayonerStore } from '../../../store/useRayonerStore';
 import { useCheckinStore } from '../../../store/useCheckinStore';
+import { UserAvatar } from '../../../components/common/UserAvatar';
 
 interface TeamMembersViewProps {
   onNavigateToTree?: () => void;
@@ -213,18 +214,10 @@ export function TeamMembersView({ onNavigateToTree }: TeamMembersViewProps) {
                   const userAssignments = assignments.filter((a) => a.userId === member.id);
                   const isExemptFacial = member.role === 'Supervisor' || member.role === 'TI';
 
-                  const initials = member.name
-                    .split(' ')
-                    .map((n) => n[0])
-                    .slice(0, 2)
-                    .join('')
-                    .toUpperCase();
-
                   return (
                     <FragmentRow
                       key={member.id}
                       member={member}
-                      initials={initials}
                       isExpanded={isExpanded}
                       onToggleExpand={() =>
                         setExpandedUserId((prev) => (prev === member.id ? null : member.id))
@@ -255,7 +248,6 @@ export function TeamMembersView({ onNavigateToTree }: TeamMembersViewProps) {
 
 interface FragmentRowProps {
   member: ReturnType<typeof useRayonerStore.getState>['teamMembers'][number];
-  initials: string;
   isExpanded: boolean;
   onToggleExpand: () => void;
   isWorking: boolean;
@@ -274,7 +266,6 @@ interface FragmentRowProps {
 
 function FragmentRow({
   member,
-  initials,
   isExpanded,
   onToggleExpand,
   isWorking,
@@ -296,9 +287,11 @@ function FragmentRow({
         {/* 1. Colaborador / Correo */}
         <td className="p-4">
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 font-bold text-xs flex items-center justify-center shrink-0 border border-slate-200 dark:border-slate-700">
-              {initials}
-            </div>
+            <UserAvatar
+              photoURL={member.photoURL}
+              name={member.name}
+              size="sm"
+            />
 
             <div>
               <div className="flex items-center gap-2">

@@ -9,6 +9,7 @@ import {
   logoutFirebase,
   isFirebaseConfigured 
 } from '../../services/firebase';
+import { handleUserSession } from '../../services/userService';
 import { ArrowDown, ChevronUp } from 'lucide-react';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
@@ -22,8 +23,16 @@ const BOX_COUNT = 100;
 const BOX_ARRAY = Array.from({ length: BOX_COUNT }, (_, i) => i);
 
 export function AuthPage() {
-  const { login, loginWithFirebaseUser, addToast } = useCheckinStore();
+  const { login, loginWithFirebaseUser, addToast, isAuthenticated, user } = useCheckinStore();
   const navigate = useNavigate();
+
+  // Si ya tiene sesión activa con perfil completo, redirigir automáticamente a su dashboard
+  const isProfileComplete = Boolean(user?.isProfileComplete || (user?.name && user?.role));
+  useEffect(() => {
+    if (isAuthenticated && isProfileComplete) {
+      navigate('/', { replace: true });
+    }
+  }, [isAuthenticated, isProfileComplete, navigate]);
 
   
   const [email, setEmail] = useState('');
@@ -220,6 +229,14 @@ export function AuthPage() {
       if (firebaseReady) {
         const res = await loginWithEmail(email, password);
         if (res.success && res.user) {
+          // Consultar perfil existente por UID y por Email (evita bucle de re-registro)
+          const session = await handleUserSession(res.user);
+          if (session.isProfileComplete) {
+            addToast(`¡Bienvenido! Sesión iniciada con éxito.`, 'success');
+            navigate('/');
+            return;
+          }
+
           const access = verifyAccessAndGetInvitation(res.user.email || email);
           if (!access.allowed) {
             await logoutFirebase();
@@ -229,7 +246,7 @@ export function AuthPage() {
 
           loginWithFirebaseUser(res.user, access.invitationData);
           if (access.invitationData) {
-            addToast(`¡Invitación validada para ${access.invitationData.supervisorName}! Redirigiendo a completar tu perfil...`, 'success');
+            addToast(`¡Invitación validada para ${access.invitationData.supervisorName}!`, 'success');
           } else {
             addToast('Inicio de sesión exitoso con Firebase', 'success');
           }
@@ -270,6 +287,14 @@ export function AuthPage() {
       if (firebaseReady) {
         const res = await loginWithGoogle();
         if (res.success && res.user) {
+          // 1. Manejo y verificación de perfil existente en BD/Firestore (evita bucle infinito y captura photoURL)
+          const session = await handleUserSession(res.user);
+          if (session.isProfileComplete) {
+            addToast(`¡Bienvenido! Conectado con ${res.user.email}`, 'success');
+            navigate('/');
+            return;
+          }
+
           const userEmail = res.user.email || '';
           const access = verifyAccessAndGetInvitation(userEmail);
 

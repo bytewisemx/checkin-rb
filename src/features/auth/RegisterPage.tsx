@@ -12,6 +12,7 @@ import {
   validateInvitationToken, 
   consumeInvitationToken 
 } from '../../services/invitations';
+import { saveOrUpdateUserProfile } from '../../services/userService';
 import { 
   loadFaceApiModels, 
   detectSingleFaceDescriptor,
@@ -34,8 +35,16 @@ export function RegisterPage() {
   const inviteToken = searchParams.get('token') || '';
   const emailParam = searchParams.get('email') || '';
 
-  const { loginWithFirebaseUser, updateProfile, enrollBiometrics, addToast } = useCheckinStore();
+  const { loginWithFirebaseUser, updateProfile, enrollBiometrics, addToast, isAuthenticated, user } = useCheckinStore();
   const navigate = useNavigate();
+
+  // Si ya tiene sesión activa con perfil completo, redirigir automáticamente al dashboard
+  const isProfileComplete = Boolean(user?.isProfileComplete || (user?.name && user?.role));
+  useEffect(() => {
+    if (isAuthenticated && isProfileComplete) {
+      navigate('/', { replace: true });
+    }
+  }, [isAuthenticated, isProfileComplete, navigate]);
 
   // Estados de Validación de Invitación
   const [isValidatingToken, setIsValidatingToken] = useState(true);
@@ -270,7 +279,21 @@ export function RegisterPage() {
         invitationPayload
       );
 
-      // 3. Actualizar perfil institucional base
+      // 3. Actualizar perfil institucional base y persistir en BD
+      const isSupervisor = targetRole === 'Supervisor' || targetRole === 'TI';
+      await saveOrUpdateUserProfile(userUid, {
+        uid: userUid,
+        email: invitation.email,
+        name: `${cleanFirst} ${cleanLast}`,
+        firstName: cleanFirst,
+        lastName: cleanLast,
+        role: targetRole,
+        team: invitation.team,
+        supervisorId: invitation.supervisorId,
+        supervisorName: invitation.supervisorName,
+        isProfileComplete: isSupervisor,
+      });
+
       updateProfile({
         name: cleanFirst,
         lastName: cleanLast,
@@ -279,14 +302,11 @@ export function RegisterPage() {
         team: invitation.team,
         supervisorId: invitation.supervisorId,
         supervisorName: invitation.supervisorName,
-        isProfileComplete: false, // Espera a biometría en paso 2
+        isProfileComplete: isSupervisor,
       });
 
       // 4. Determinar si se requiere paso biométrico o paso directo
-      const isSupervisor = targetRole === 'Supervisor' || targetRole === 'TI';
       if (isSupervisor) {
-        // Los supervisores quedan listos directamente
-        updateProfile({ isProfileComplete: true });
         addToast('¡Cuenta activada con éxito! Bienvenido a tu consola.', 'success');
         navigate('/');
       } else {
@@ -363,20 +383,38 @@ export function RegisterPage() {
         token: invitation.token,
       });
 
-      updateProfile({
-        name: gFirst,
-        lastName: gLast,
+      const isSupervisor = targetRole === 'Supervisor' || targetRole === 'TI';
+
+      // Persistir en Firestore / Base de datos capturando la foto de Google
+      await saveOrUpdateUserProfile(res.user.uid, {
+        uid: res.user.uid,
         email: targetEmail,
+        name: rawDisplayName,
+        firstName: gFirst,
+        lastName: gLast,
+        photoURL: res.user.photoURL || null,
+        profileImage: res.user.photoURL || undefined,
         role: targetRole,
         team: invitation.team,
         supervisorId: invitation.supervisorId,
         supervisorName: invitation.supervisorName,
-        isProfileComplete: false,
+        isProfileComplete: isSupervisor,
       });
 
-      const isSupervisor = targetRole === 'Supervisor' || targetRole === 'TI';
+      updateProfile({
+        name: gFirst,
+        lastName: gLast,
+        email: targetEmail,
+        photoURL: res.user.photoURL || null,
+        profileImage: res.user.photoURL || undefined,
+        role: targetRole,
+        team: invitation.team,
+        supervisorId: invitation.supervisorId,
+        supervisorName: invitation.supervisorName,
+        isProfileComplete: isSupervisor,
+      });
+
       if (isSupervisor) {
-        updateProfile({ isProfileComplete: true });
         addToast('¡Cuenta verificada con Google! Bienvenido.', 'success');
         navigate('/');
       } else {
@@ -410,8 +448,11 @@ export function RegisterPage() {
       // Guardar descriptor en user.biometrics
       await enrollBiometrics(descriptorArray, 'me', DEFAULT_BIOMETRIC_THRESHOLD);
 
-      // Marcar perfil 100% completo
+      // Marcar perfil 100% completo en store y en BD
       updateProfile({ isProfileComplete: true });
+      if (user?.id) {
+        await saveOrUpdateUserProfile(user.id, { isProfileComplete: true });
+      }
 
       // Detener cámara
       if (streamRef.current) {
@@ -433,12 +474,15 @@ export function RegisterPage() {
   };
 
   // Omitir biometría si la cámara no está disponible o el usuario no puede usarla
-  const handleSkipBiometrics = () => {
+  const handleSkipBiometrics = async () => {
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((track) => track.stop());
       streamRef.current = null;
     }
     updateProfile({ isProfileComplete: true });
+    if (user?.id) {
+      await saveOrUpdateUserProfile(user.id, { isProfileComplete: true });
+    }
     addToast('Cuenta activada. Podrás registrar tu biometría facial más adelante.', 'info');
     navigate('/');
   };

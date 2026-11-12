@@ -2,7 +2,6 @@ import { useState, useMemo, useEffect } from 'react';
 import {
   RefreshCw,
   HelpCircle,
-  User,
   Settings,
   LogOut,
   Sliders,
@@ -17,6 +16,7 @@ import { calculateGamification } from '../../services/gamification';
 import { logoutFirebase } from '../../services/firebase';
 import { normalizeRole, getEffectiveModules } from '../../services/rbac';
 import { UserProfileModal } from './UserProfileModal';
+import { UserAvatar } from './UserAvatar';
 import { NotificationBell } from './NotificationBell';
 import { GlobalSearchBar } from './GlobalSearchBar';
 import { HelpDrawer } from '../help/HelpDrawer';
@@ -189,13 +189,12 @@ export function GlobalHeader() {
             <span className="text-xs font-medium text-[#0F172A] dark:text-[#F8FAFC] group-hover:text-[#1E40AF] dark:group-hover:text-[#38BDF8] hidden lg:inline-block max-w-[125px] truncate transition-colors">
               {user?.name} {user?.lastName || ''}
             </span>
-            <div className="w-6 h-6 rounded-full overflow-hidden border border-slate-300 dark:border-slate-700 flex items-center justify-center shrink-0">
-              {user?.profileImage ? (
-                <img src={user.profileImage} alt="Profile" className="w-full h-full object-cover" />
-              ) : (
-                <User className="w-3.5 h-3.5 text-slate-400 dark:text-[#94A3B8]" />
-              )}
-            </div>
+            <UserAvatar
+              photoURL={user?.photoURL || user?.profileImage}
+              name={user?.name}
+              lastName={user?.lastName}
+              size="sm"
+            />
           </button>
 
           {/* Salir */}

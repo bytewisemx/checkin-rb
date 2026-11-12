@@ -110,6 +110,7 @@ export interface TeamMember {
   id: string;
   name: string;
   email: string;
+  photoURL?: string | null;
   role?: UserRole;
   roleTitle: string;
   team: string;

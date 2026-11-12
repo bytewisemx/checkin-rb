@@ -143,12 +143,17 @@ export function UserProfileModal({ isOpen, onClose, initialTab = 'rank' }: UserP
           <div className="flex items-center space-x-4">
             {/* Foto con Botón de Cambio */}
             <div className="relative group shrink-0">
-              <div className="w-16 h-16 sm:w-18 sm:h-18 rounded-xl overflow-hidden bg-slate-100 dark:bg-[#1A2742] border border-slate-200 dark:border-[#233354] shadow-xs">
-                {user?.profileImage ? (
-                  <img src={user.profileImage} alt="Perfil" className="w-full h-full object-cover" />
+              <div className="w-16 h-16 sm:w-18 sm:h-18 rounded-xl overflow-hidden bg-slate-100 dark:bg-[#1A2742] border border-slate-200 dark:border-[#233354] shadow-xs flex items-center justify-center">
+                {user?.photoURL || user?.profileImage ? (
+                  <img
+                    src={user.photoURL || user.profileImage}
+                    referrerPolicy="no-referrer"
+                    alt="Perfil"
+                    className="w-full h-full object-cover"
+                  />
                 ) : (
-                  <div className="w-full h-full flex items-center justify-center bg-slate-100 dark:bg-[#1A2742] text-slate-400 dark:text-[#94A3B8]">
-                    <User className="w-7 h-7" />
+                  <div className="w-full h-full flex items-center justify-center bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-sky-300 font-bold text-lg">
+                    {((user?.name?.[0] || 'U') + (user?.lastName?.[0] || '')).toUpperCase()}
                   </div>
                 )}
               </div>

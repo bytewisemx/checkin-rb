@@ -6,8 +6,11 @@ import {
   signInWithPopup, 
   GoogleAuthProvider, 
   signOut, 
-  updateProfile as updateFirebaseProfile
+  updateProfile as updateFirebaseProfile,
+  onAuthStateChanged,
+  type User as FirebaseUser
 } from 'firebase/auth';
+import { getFirestore } from 'firebase/firestore';
 
 // Verificación de credenciales de entorno
 const firebaseConfig = {
@@ -33,7 +36,19 @@ const app = isFirebaseConfigured()
   : null;
 
 export const auth = app ? getAuth(app) : null;
+export const db = app ? getFirestore(app) : null;
 const googleProvider = new GoogleAuthProvider();
+
+/**
+ * Listener en tiempo real de cambios en el estado de autenticación de Firebase
+ */
+export function subscribeToAuthState(callback: (user: FirebaseUser | null) => void): () => void {
+  if (!auth) {
+    callback(null);
+    return () => {};
+  }
+  return onAuthStateChanged(auth, callback);
+}
 
 export interface AuthResult {
   success: boolean;

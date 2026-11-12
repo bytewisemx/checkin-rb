@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { useCheckinStore, type ManagedUserPermissionEntry } from '../../store/useCheckinStore';
 import { useRayonerStore } from '../../store/useRayonerStore';
+import { UserAvatar } from '../../components/common/UserAvatar';
 import {
   normalizeRole,
   getDefaultModulesForRole,
@@ -56,15 +57,6 @@ const MODULE_LIST: Array<{
     hint: 'Verificación facial express obligatoria al iniciar jornada',
   },
 ];
-
-function getInitials(name: string): string {
-  if (!name) return 'US';
-  const parts = name.trim().split(/\s+/);
-  if (parts.length >= 2) {
-    return (parts[0][0] + parts[1][0]).toUpperCase();
-  }
-  return parts[0].substring(0, 2).toUpperCase();
-}
 
 export function UserPermissionsTable({ onNewUser }: UserPermissionsTableProps) {
   const {
@@ -377,19 +369,12 @@ export function UserPermissionsTable({ onNewUser }: UserPermissionsTableProps) {
                       {/* Columna 1: Usuario / Credenciales */}
                       <td className="py-3.5 px-4">
                         <div className="flex items-center gap-3">
-                          <div
-                            className={`w-9 h-9 rounded-lg font-bold text-xs flex items-center justify-center shrink-0 ${
-                              isTI
-                                ? 'bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-sky-300'
-                                : isRH
-                                ? 'bg-purple-50 text-purple-700 dark:bg-purple-950/60 dark:text-purple-300'
-                                : isSupervisor
-                                ? 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200'
-                                : 'bg-slate-100 text-slate-600 dark:bg-slate-800/80 dark:text-slate-300'
-                            }`}
-                          >
-                            {getInitials(u.name)}
-                          </div>
+                          <UserAvatar
+                            photoURL={u.photoURL}
+                            name={u.name}
+                            size="md"
+                            shape="rounded"
+                          />
                           <div className="flex flex-col min-w-0">
                             <span
                               className={`font-semibold text-slate-900 dark:text-slate-100 text-sm truncate ${

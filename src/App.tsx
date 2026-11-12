@@ -1,8 +1,10 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { useCheckinStore } from './store/useCheckinStore';
 import { useNotificationStore } from './store/useNotificationStore';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { normalizeRole, getEffectiveModules, type UserModules } from './services/rbac';
+import { subscribeToAuthState, isFirebaseConfigured } from './services/firebase';
+import { handleUserSession } from './services/userService';
 
 // Vistas
 import { AuthPage } from './features/auth/AuthPage';
@@ -162,19 +164,33 @@ function MainLayout({
   );
 }
 
+function PublicOnlyRoute({ children }: { children: React.ReactNode }) {
+  const isAuthenticated = useCheckinStore((state) => state.isAuthenticated);
+  const user = useCheckinStore((state) => state.user);
+  const isProfileComplete = Boolean(user?.isProfileComplete || (user?.name && user?.role));
+
+  if (isAuthenticated && isProfileComplete) {
+    return <Navigate to="/" replace />;
+  }
+
+  return <>{children}</>;
+}
+
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const isAuthenticated = useCheckinStore((state) => state.isAuthenticated);
-  const isProfileComplete = useCheckinStore((state) => state.user?.isProfileComplete);
+  const user = useCheckinStore((state) => state.user);
+  const isProfileComplete = Boolean(user?.isProfileComplete || (user?.name && user?.role));
 
   if (!isAuthenticated) return <Navigate to="/login" replace />;
-  if (!isProfileComplete) return <Navigate to="/complete-profile" replace />;
+  if (!isProfileComplete) return <Navigate to="/register" replace />;
 
   return <>{children}</>;
 }
 
 function ProfileRoute({ children }: { children: React.ReactNode }) {
   const isAuthenticated = useCheckinStore((state) => state.isAuthenticated);
-  const isProfileComplete = useCheckinStore((state) => state.user?.isProfileComplete);
+  const user = useCheckinStore((state) => state.user);
+  const isProfileComplete = Boolean(user?.isProfileComplete || (user?.name && user?.role));
 
   if (!isAuthenticated) return <Navigate to="/login" replace />;
   if (isProfileComplete) return <Navigate to="/" replace />;
@@ -184,9 +200,10 @@ function ProfileRoute({ children }: { children: React.ReactNode }) {
 
 function TIAdminRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, user } = useCheckinStore();
+  const isProfileComplete = Boolean(user?.isProfileComplete || (user?.name && user?.role));
 
   if (!isAuthenticated) return <Navigate to="/login" replace />;
-  if (!user?.isProfileComplete) return <Navigate to="/complete-profile" replace />;
+  if (!isProfileComplete) return <Navigate to="/register" replace />;
   if (normalizeRole(user?.role) !== 'TI') return <Navigate to="/" replace />;
 
   return <>{children}</>;
@@ -202,9 +219,10 @@ function ModuleProtectedRoute({
   children: React.ReactNode;
 }) {
   const { isAuthenticated, user, getEffectiveUserModules } = useCheckinStore();
+  const isProfileComplete = Boolean(user?.isProfileComplete || (user?.name && user?.role));
 
   if (!isAuthenticated) return <Navigate to="/login" replace />;
-  if (!user?.isProfileComplete) return <Navigate to="/complete-profile" replace />;
+  if (!isProfileComplete) return <Navigate to="/register" replace />;
 
   const role = normalizeRole(user?.role);
   if (blockRH && role === 'RH') {
@@ -221,6 +239,37 @@ function ModuleProtectedRoute({
 
 export default function App() {
   const { globalLoading } = useCheckinStore();
+  const [isAuthLoading, setIsAuthLoading] = useState(isFirebaseConfigured());
+
+  // Listener de Sesión en Vivo con Firebase Auth y verificación de Base de Datos
+  useEffect(() => {
+    if (!isFirebaseConfigured()) {
+      setIsAuthLoading(false);
+      return;
+    }
+
+    const unsubscribe = subscribeToAuthState(async (fbUser) => {
+      if (fbUser) {
+        try {
+          await handleUserSession({
+            uid: fbUser.uid,
+            email: fbUser.email,
+            displayName: fbUser.displayName,
+            photoURL: fbUser.photoURL,
+          });
+        } catch (err) {
+          console.error('[App] Error al verificar perfil en Firebase:', err);
+        }
+      }
+      setIsAuthLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  if (isAuthLoading) {
+    return <CheckinLoader text="Verificando perfil y credenciales..." />;
+  }
 
   return (
     <>
@@ -228,8 +277,22 @@ export default function App() {
       {globalLoading?.active && <CheckinLoader text={globalLoading.message} />}
       <Router basename={import.meta.env.BASE_URL}>
         <Routes>
-          <Route path="/login" element={<AuthPage />} />
-          <Route path="/register" element={<RegisterPage />} />
+          <Route
+            path="/login"
+            element={
+              <PublicOnlyRoute>
+                <AuthPage />
+              </PublicOnlyRoute>
+            }
+          />
+          <Route
+            path="/register"
+            element={
+              <PublicOnlyRoute>
+                <RegisterPage />
+              </PublicOnlyRoute>
+            }
+          />
 
           <Route
             path="/complete-profile"

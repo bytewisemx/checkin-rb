@@ -47,6 +47,7 @@ export interface User {
   status?: 'active' | 'inactive';
   isProfileComplete: boolean;
   expectedEntryTime: string;
+  photoURL?: string | null;
   profileImage?: string; // Avatar SVG o ilustración de perfil (NO imagen de biometría)
   // Biometría vectorial estrictamente SIN imágenes (solo floats, fecha ISO y versión de modelo)
   faceDescriptor?: number[];
@@ -74,6 +75,7 @@ export interface ManagedUserPermissionEntry {
   team?: string;
   modules: UserModules;
   biometrics?: BiometricVectorRecord | null;
+  photoURL?: string | null;
   accessRevoked?: boolean;
   allowedSupervisorIds?: string[];
   supervisor_id?: string | null;
@@ -146,6 +148,8 @@ export interface MockEmployee {
   created_by_ti_id?: string | null;
   modules?: UserModules;
   biometrics?: BiometricVectorRecord | null;
+  photoURL?: string | null;
+  profileImage?: string;
 }
 
 export interface GlobalToast {
@@ -185,14 +189,15 @@ interface CheckinState {
   loginWithFirebaseUser: (
     fbUser: { uid: string; email: string | null; displayName?: string | null; photoURL?: string | null },
     invitationData?: {
-      supervisorId: string;
-      supervisorName: string;
+      supervisorId?: string;
+      supervisorName?: string;
       supervisorCode?: string;
-      team: string;
+      team?: string;
       roleTitle?: string;
       role?: UserRole | 'employee' | 'supervisor';
       created_by_ti_id?: string | null;
       token?: string;
+      isProfileComplete?: boolean;
     }
   ) => void;
 
@@ -940,53 +945,100 @@ export const useCheckinStore = create<CheckinState>()(
 
       loginWithFirebaseUser: (fbUser, invitationData) => {
         const { mockEmployeesData, userPermissionsDirectory } = get();
-        const userEmail = (fbUser.email || '').toLowerCase();
+        const userEmail = (fbUser.email || '').toLowerCase().trim();
 
-        let assignedRole: UserRole = 'Empleado';
+        // 1. Buscar si el usuario ya existe por UID o por Email (soporte vinculación Google <-> Contraseña)
+        const existingEmp = mockEmployeesData.find(
+          (e) => e.id === fbUser.uid || (e.email && e.email.toLowerCase().trim() === userEmail)
+        );
+        const existingDir =
+          userPermissionsDirectory[fbUser.uid] ||
+          Object.values(userPermissionsDirectory).find(
+            (u) => u.email.toLowerCase().trim() === userEmail
+          );
+
+        // 2. Determinar si el perfil ya está completo:
+        // PRESERVAR SIEMPRE si el perfil ya estaba completo para evitar el bucle de re-registro
+        const isProfileComplete =
+          invitationData?.isProfileComplete !== undefined
+            ? Boolean(invitationData.isProfileComplete)
+            : Boolean(existingEmp?.isProfileComplete || (existingEmp?.name && existingEmp?.role));
+
+        // 3. Determinar rol asignado (priorizando perfil existente, luego invitación, luego heurística)
+        let assignedRole: UserRole = existingEmp?.role || existingDir?.role || 'Empleado';
         if (invitationData?.role) {
           assignedRole = normalizeRole(invitationData.role);
-        } else if (userEmail.includes('ti.') || userEmail.includes('root')) {
-          assignedRole = 'TI';
-        } else if (userEmail.includes('rh.') || userEmail.startsWith('rh@')) {
-          assignedRole = 'RH';
-        } else if (userEmail.includes('supervisor')) {
-          assignedRole = 'Supervisor';
+        } else if (!existingEmp?.role && !existingDir?.role) {
+          if (userEmail.includes('ti.') || userEmail.includes('root')) {
+            assignedRole = 'TI';
+          } else if (userEmail.includes('rh.') || userEmail.startsWith('rh@')) {
+            assignedRole = 'RH';
+          } else if (userEmail.includes('supervisor')) {
+            assignedRole = 'Supervisor';
+          }
         }
 
         const defaultMods = getDefaultModulesForRole(assignedRole);
-        const existingDir = userPermissionsDirectory[fbUser.uid];
-        const effectiveMods = existingDir?.modules || defaultMods;
+        const effectiveMods = existingDir?.modules || existingEmp?.modules || defaultMods;
 
-        const rawName = fbUser.displayName || (userEmail ? userEmail.split('@')[0] : 'Colaborador');
+        // 4. Nombre y Apellido
+        const rawName =
+          existingEmp?.name ||
+          existingDir?.name ||
+          fbUser.displayName ||
+          (userEmail ? userEmail.split('@')[0] : 'Colaborador');
         const [firstName, ...restName] = rawName.split(' ');
 
-        const newEmp: MockEmployee = {
+        // 5. Captura y persistencia de foto de Google (photoURL)
+        const resolvedPhotoURL =
+          fbUser.photoURL || existingEmp?.photoURL || existingDir?.photoURL || null;
+        const resolvedProfileImage =
+          resolvedPhotoURL || existingEmp?.profileImage || undefined;
+
+        const resolvedTeam =
+          invitationData?.team ||
+          existingEmp?.team ||
+          existingDir?.team ||
+          (assignedRole === 'Supervisor' ? 'Supervisión General' : 'Auditoría Fiscal');
+
+        const resolvedSupervisorId =
+          assignedRole === 'Empleado'
+            ? invitationData?.supervisorId || existingEmp?.supervisor_id || existingDir?.supervisor_id || 'admin-99'
+            : null;
+
+        const resolvedCreatedByTiId =
+          assignedRole === 'Supervisor'
+            ? invitationData?.created_by_ti_id || existingEmp?.created_by_ti_id || existingDir?.created_by_ti_id || 'ti-root-01'
+            : null;
+
+        const updatedEmp: MockEmployee = {
           id: fbUser.uid,
           email: userEmail,
-          name: firstName || 'Usuario',
+          name: rawName,
           role: assignedRole,
-          team: invitationData?.team || (assignedRole === 'Supervisor' ? 'Supervisión General' : 'Auditoría Fiscal'),
+          team: resolvedTeam,
           status: 'active',
-          isProfileComplete: false,
-          workedMinutesToday: 0,
-          history: [],
-          expectedEntryTime: '09:00',
-          supervisor_id: assignedRole === 'Empleado' ? invitationData?.supervisorId || 'admin-99' : null,
-          created_by_ti_id:
-            assignedRole === 'Supervisor'
-              ? invitationData?.created_by_ti_id || invitationData?.supervisorId || 'ti-root-01'
-              : null,
+          isProfileComplete,
+          workedMinutesToday: existingEmp?.workedMinutesToday || 0,
+          history: existingEmp?.history || [],
+          expectedEntryTime: existingEmp?.expectedEntryTime || '09:00',
+          supervisor_id: resolvedSupervisorId,
+          created_by_ti_id: resolvedCreatedByTiId,
           modules: effectiveMods,
-          biometrics: existingDir?.biometrics || null,
+          biometrics: existingDir?.biometrics || existingEmp?.biometrics || null,
+          photoURL: resolvedPhotoURL,
+          profileImage: resolvedProfileImage,
         };
 
         const fbActive = get().userActiveCheckins?.[fbUser.uid] || null;
-        const fbHist = get().userHistories?.[fbUser.uid] || [];
+        const fbHist = existingEmp?.history || get().userHistories?.[fbUser.uid] || [];
 
         set({
           mockEmployeesData: [
-            ...mockEmployeesData.filter((e) => e.id !== fbUser.uid && e.email !== userEmail),
-            newEmp,
+            ...mockEmployeesData.filter(
+              (e) => e.id !== fbUser.uid && e.email.toLowerCase().trim() !== userEmail
+            ),
+            updatedEmp,
           ],
           userPermissionsDirectory: {
             ...userPermissionsDirectory,
@@ -995,33 +1047,38 @@ export const useCheckinStore = create<CheckinState>()(
               name: rawName,
               email: userEmail,
               role: assignedRole,
-              team: newEmp.team,
+              team: updatedEmp.team,
               modules: effectiveMods,
-              biometrics: existingDir?.biometrics || null,
+              biometrics: updatedEmp.biometrics || null,
+              photoURL: resolvedPhotoURL,
+              supervisor_id: resolvedSupervisorId,
+              created_by_ti_id: resolvedCreatedByTiId,
             },
           },
           user: {
-            id: newEmp.id,
-            name: newEmp.name,
+            id: updatedEmp.id,
+            name: firstName || rawName,
             lastName: restName.join(' '),
-            email: newEmp.email,
+            email: updatedEmp.email,
+            photoURL: resolvedPhotoURL,
+            profileImage: resolvedProfileImage,
             role: assignedRole,
             verified: true,
-            isProfileComplete: false,
-            team: newEmp.team,
+            isProfileComplete,
+            team: updatedEmp.team,
             expectedEntryTime: '09:00',
-            supervisor_id: newEmp.supervisor_id,
-            supervisorId: newEmp.supervisor_id || undefined,
+            supervisor_id: updatedEmp.supervisor_id,
+            supervisorId: updatedEmp.supervisor_id || undefined,
             supervisorName: invitationData?.supervisorName,
             supervisorCode: invitationData?.supervisorCode,
             invitationToken: invitationData?.token,
-            created_by_ti_id: newEmp.created_by_ti_id,
-            createdByTiId: newEmp.created_by_ti_id || undefined,
+            created_by_ti_id: updatedEmp.created_by_ti_id,
+            createdByTiId: updatedEmp.created_by_ti_id || undefined,
             assigned_team_members: assignedRole === 'Supervisor' ? [] : undefined,
             modules: effectiveMods,
-            biometrics: existingDir?.biometrics || null,
-            faceDescriptor: existingDir?.biometrics?.faceDescriptor,
-            isBiometricsEnrolled: Boolean(existingDir?.biometrics?.faceDescriptor?.length),
+            biometrics: updatedEmp.biometrics || null,
+            faceDescriptor: updatedEmp.biometrics?.faceDescriptor,
+            isBiometricsEnrolled: Boolean(updatedEmp.biometrics?.faceDescriptor?.length),
             biometricThreshold: DEFAULT_BIOMETRIC_THRESHOLD,
           },
           isAuthenticated: true,
@@ -1048,12 +1105,14 @@ export const useCheckinStore = create<CheckinState>()(
         const updatedUser: User = {
           ...user,
           ...data,
+          photoURL: data.photoURL !== undefined ? data.photoURL : user.photoURL,
+          profileImage: data.photoURL || data.profileImage || user.profileImage,
           role: normalizedRole,
           modules: nextModules,
           supervisor_id: data.supervisor_id ?? data.supervisorId ?? user.supervisor_id,
           supervisorId: data.supervisorId ?? data.supervisor_id ?? user.supervisorId,
           created_by_ti_id: data.created_by_ti_id ?? data.createdByTiId ?? user.created_by_ti_id,
-          isProfileComplete: data.isProfileComplete ?? true,
+          isProfileComplete: data.isProfileComplete ?? user.isProfileComplete ?? true,
         };
 
         const updatedMockData = mockEmployeesData.map((emp) =>
@@ -1067,6 +1126,8 @@ export const useCheckinStore = create<CheckinState>()(
                 created_by_ti_id: updatedUser.created_by_ti_id,
                 modules: nextModules,
                 isProfileComplete: updatedUser.isProfileComplete,
+                photoURL: updatedUser.photoURL,
+                profileImage: updatedUser.profileImage,
               }
             : emp
         );
@@ -1084,6 +1145,7 @@ export const useCheckinStore = create<CheckinState>()(
               team: updatedUser.team,
               modules: nextModules,
               biometrics: updatedUser.biometrics || dirEntry?.biometrics || null,
+              photoURL: updatedUser.photoURL,
             },
           },
         });
