@@ -239,37 +239,32 @@ function ModuleProtectedRoute({
 
 export default function App() {
   const { globalLoading } = useCheckinStore();
-  const [isAuthLoading, setIsAuthLoading] = useState(isFirebaseConfigured());
 
-  // Listener de Sesión en Vivo con Firebase Auth y verificación de Base de Datos
+  // Sincronización transparente de sesión con Firebase Auth en segundo plano
   useEffect(() => {
-    if (!isFirebaseConfigured()) {
-      setIsAuthLoading(false);
-      return;
-    }
+    if (!isFirebaseConfigured()) return;
 
     const unsubscribe = subscribeToAuthState(async (fbUser) => {
       if (fbUser) {
         try {
-          await handleUserSession({
-            uid: fbUser.uid,
-            email: fbUser.email,
-            displayName: fbUser.displayName,
-            photoURL: fbUser.photoURL,
-          });
+          const state = useCheckinStore.getState();
+          // Si el usuario ya está autenticado con perfil completo para este UID, no hay nada que bloquear
+          if (!state.isAuthenticated || state.user?.id !== fbUser.uid || !state.user?.isProfileComplete) {
+            await handleUserSession({
+              uid: fbUser.uid,
+              email: fbUser.email,
+              displayName: fbUser.displayName,
+              photoURL: fbUser.photoURL,
+            });
+          }
         } catch (err) {
-          console.error('[App] Error al verificar perfil en Firebase:', err);
+          console.error('[App] Error al verificar sesión en Firebase:', err);
         }
       }
-      setIsAuthLoading(false);
     });
 
     return () => unsubscribe();
   }, []);
-
-  if (isAuthLoading) {
-    return <CheckinLoader text="Verificando perfil y credenciales..." />;
-  }
 
   return (
     <>
