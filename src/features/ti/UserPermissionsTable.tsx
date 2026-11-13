@@ -115,7 +115,7 @@ export function UserPermissionsTable({ onNewUser }: UserPermissionsTableProps) {
     fetchTeams();
   }, [fetchTeams]);
 
-  const activeTeams = useMemo(() => teams.filter((t) => t.status === 'active'), [teams]);
+  const activeTeams = useMemo(() => teams.filter((t) => t.status !== 'inactive'), [teams]);
   const availableTeamNames = useMemo(() => activeTeams.map((t) => t.name), [activeTeams]);
 
   const [search, setSearch] = useState('');

@@ -135,33 +135,22 @@ export const useTeamStore = create<TeamState>()(
       fetchTeams: async () => {
         set({ isLoading: true });
         try {
-          const remoteTeams = await fetchTeamsFromFirestore();
-          if (remoteTeams && remoteTeams.length > 0) {
-            const currentTeams = get().teams.length > 0 ? get().teams : INITIAL_CORPORATE_TEAMS;
-            const teamsMap = new Map<string, Team>();
-            currentTeams.forEach((t) => teamsMap.set(t.name.toLowerCase().trim(), t));
-            remoteTeams.forEach((t) => teamsMap.set(t.name.toLowerCase().trim(), t));
-
+          const unifiedTeams = await fetchTeamsFromFirestore();
+          if (unifiedTeams && unifiedTeams.length > 0) {
             set({
-              teams: Array.from(teamsMap.values()),
+              teams: unifiedTeams,
               isLoading: false,
               hasLoadedFromRemote: true,
             });
+            console.log('[useTeamStore] Equipos cargados y persistidos en el store:', unifiedTeams);
           } else {
-            if (get().teams.length === 0) {
-              set({ teams: INITIAL_CORPORATE_TEAMS, isLoading: false, hasLoadedFromRemote: true });
-              INITIAL_CORPORATE_TEAMS.forEach((t) => saveTeamToFirestore(t).catch(console.warn));
-            } else {
-              set({ isLoading: false, hasLoadedFromRemote: true });
-            }
+            const fallback = get().teams.length > 0 ? get().teams : INITIAL_CORPORATE_TEAMS;
+            set({ teams: fallback, isLoading: false, hasLoadedFromRemote: true });
           }
         } catch (error) {
           console.warn('[useTeamStore] Error al cargar equipos remotos:', error);
-          if (get().teams.length === 0) {
-            set({ teams: INITIAL_CORPORATE_TEAMS, isLoading: false });
-          } else {
-            set({ isLoading: false });
-          }
+          const fallback = get().teams.length > 0 ? get().teams : INITIAL_CORPORATE_TEAMS;
+          set({ teams: fallback, isLoading: false });
         }
       },
 
@@ -235,7 +224,7 @@ export const useTeamStore = create<TeamState>()(
       },
 
       getActiveTeams: () => {
-        return get().teams.filter((t) => t.status === 'active');
+        return get().teams.filter((t) => t.status !== 'inactive');
       },
     }),
     {

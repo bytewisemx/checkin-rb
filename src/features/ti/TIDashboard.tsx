@@ -2,16 +2,16 @@ import { useState, useMemo, useEffect } from 'react';
 import { useCheckinStore } from '../../store/useCheckinStore';
 import { useRayonerStore } from '../../store/useRayonerStore';
 import { useInvitationStore } from '../../store/useInvitationStore';
-import { useTeamStore } from '../../store/useTeamStore';
+import { useTeamStore, generateTeamCode } from '../../store/useTeamStore';
 import { sendInviteWebhook, buildActivationUrl } from '../../services/n8nWebhookService';
 import { saveInvitationToFirestore } from '../../services/invitations';
 import { useAuditStore } from '../../store/useAuditStore';
-import { RBAC_MATRIX, getAllowedRolesToInvite } from '../../services/rbac';
+import { RBAC_MATRIX, getAllowedRolesToInvite, normalizeRole } from '../../services/rbac';
 import { SupervisorDashboard } from '../manager/SupervisorDashboard';
 import { UserPermissionsTable } from './UserPermissionsTable';
 import { ExecutiveAuditLogView } from '../audit/ExecutiveAuditLogView';
 import { AuditHierarchyView } from '../hierarchy/AuditHierarchyView';
-import { Send, Loader2 } from 'lucide-react';
+import { Send, Loader2, X } from 'lucide-react';
 
 export interface TIDashboardProps {
   initialTab?: 'invitations' | 'users_permissions' | 'audit_accounts' | 'rbac_matrix' | 'supervisor_view' | 'audit_logs';
@@ -30,14 +30,14 @@ export function TIDashboard({ initialTab = 'users_permissions' }: TIDashboardPro
     resendInvitation,
     deleteInvitation,
   } = useInvitationStore();
-  const { teams, fetchTeams } = useTeamStore();
+  const { teams, fetchTeams, createTeam } = useTeamStore();
 
   useEffect(() => {
     fetchTeams();
   }, [fetchTeams]);
 
   // Carga global de todos los equipos activos (TI no pertenece a un equipo operativo)
-  const activeTeams = useMemo(() => teams.filter((t) => t.status === 'active'), [teams]);
+  const activeTeams = useMemo(() => teams.filter((t) => t.status !== 'inactive'), [teams]);
 
   const [activeTab, setActiveTab] = useState<'invitations' | 'users_permissions' | 'audit_accounts' | 'rbac_matrix' | 'supervisor_view' | 'audit_logs'>(initialTab);
 
@@ -50,6 +50,60 @@ export function TIDashboard({ initialTab = 'users_permissions' }: TIDashboardPro
   const [selectedRole, setSelectedRole] = useState<'colaborador' | 'supervisor' | 'gerente' | 'socio'>('supervisor');
   const [selectedTeamId, setSelectedTeamId] = useState('');
   const [expiresInHours, setExpiresInHours] = useState(48);
+
+  // Estados para el Modal Rápido de "+ Crear Equipo"
+  const [isQuickCreateOpen, setIsQuickCreateOpen] = useState(false);
+  const [quickTeamName, setQuickTeamName] = useState('');
+  const [quickLeaderId, setQuickLeaderId] = useState('');
+  const [isQuickSubmitting, setIsQuickSubmitting] = useState(false);
+
+  // Líderes disponibles para el modal rápido
+  const eligibleLeaders = useMemo(() => {
+    const map = new Map<string, { id: string; name: string; role: string }>();
+    teamMembers.forEach((m) => {
+      const r = normalizeRole(m.role);
+      if (r === 'Supervisor' || r === 'Gerente' || r === 'Socio') {
+        map.set(m.id, { id: m.id, name: m.name, role: r });
+      }
+    });
+    return Array.from(map.values());
+  }, [teamMembers]);
+
+  // Manejador del Modal Rápido de "+ Crear Equipo"
+  const handleQuickCreateTeam = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!quickTeamName.trim()) {
+      addToast('Ingresa un nombre para el nuevo equipo.', 'error');
+      return;
+    }
+
+    setIsQuickSubmitting(true);
+    try {
+      const leaderObj = eligibleLeaders.find((l) => l.id === quickLeaderId);
+      const newTeam = await createTeam({
+        name: quickTeamName.trim(),
+        code: generateTeamCode(quickTeamName.trim(), teams.length + 1),
+        leaderId: quickLeaderId || 'admin-99',
+        leaderName: leaderObj ? leaderObj.name : 'Supervisor Asignado',
+        leaderRole: leaderObj ? leaderObj.role : 'Supervisor',
+        memberIds: [],
+        status: 'active',
+        description: `Equipo creado desde el acceso rápido de invitaciones TI`,
+      });
+
+      // Seleccionar automáticamente el equipo recién creado
+      setSelectedTeamId(newTeam.id);
+      setIsQuickCreateOpen(false);
+      setQuickTeamName('');
+      setQuickLeaderId('');
+      addToast(`Equipo "${newTeam.name}" creado y seleccionado correctamente.`, 'success');
+    } catch (err) {
+      console.error('Error al crear equipo rápido:', err);
+      addToast('Ocurrió un error al crear el equipo.', 'error');
+    } finally {
+      setIsQuickSubmitting(false);
+    }
+  };
 
   // Preselección por defecto según la regla de TI
   useEffect(() => {
@@ -390,15 +444,13 @@ export function TIDashboard({ initialTab = 'users_permissions' }: TIDashboardPro
                     <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
                       Equipo o Práctica
                     </label>
-                    {activeTeams.length === 0 && (
-                      <button
-                        type="button"
-                        onClick={() => setActiveTab('audit_accounts')}
-                        className="text-[10px] text-blue-700 dark:text-blue-400 hover:underline cursor-pointer"
-                      >
-                        + Crear Equipo
-                      </button>
-                    )}
+                    <button
+                      type="button"
+                      onClick={() => setIsQuickCreateOpen(true)}
+                      className="text-[11px] font-semibold text-blue-700 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 hover:underline cursor-pointer flex items-center gap-1"
+                    >
+                      + Crear Equipo
+                    </button>
                   </div>
 
                   {activeTeams.length === 1 ? (
@@ -416,7 +468,7 @@ export function TIDashboard({ initialTab = 'users_permissions' }: TIDashboardPro
                     >
                       {activeTeams.length === 0 ? (
                         <option value="" disabled>
-                          Sin equipos registrados
+                          Sin equipos disponibles
                         </option>
                       ) : (
                         activeTeams.map((t) => (
@@ -625,6 +677,78 @@ export function TIDashboard({ initialTab = 'users_permissions' }: TIDashboardPro
 
       {/* PESTAÑA 4: PROYECTOS Y TAREAS (SUPERVISOR DASHBOARD AUDITABLE) */}
       {activeTab === 'supervisor_view' && <SupervisorDashboard />}
+
+      {/* MODAL RÁPIDO: CREAR NUEVO EQUIPO */}
+      {isQuickCreateOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-fade-in">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xl max-w-sm w-full p-5 space-y-4 animate-scale-in">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800">
+              <h4 className="text-sm font-bold text-slate-900 dark:text-white">
+                + Nuevo Equipo de Práctica
+              </h4>
+              <button
+                type="button"
+                onClick={() => setIsQuickCreateOpen(false)}
+                className="p-1 text-slate-400 hover:text-slate-700 dark:hover:text-white rounded-lg cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleQuickCreateTeam} className="space-y-3">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
+                  Nombre del Equipo *
+                </label>
+                <input
+                  type="text"
+                  required
+                  autoFocus
+                  value={quickTeamName}
+                  onChange={(e) => setQuickTeamName(e.target.value)}
+                  placeholder="Ej. Auditoría Fiscal Norte"
+                  className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 text-slate-900 dark:text-white outline-none focus:border-blue-700"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
+                  Líder / Responsable (Opcional)
+                </label>
+                <select
+                  value={quickLeaderId}
+                  onChange={(e) => setQuickLeaderId(e.target.value)}
+                  className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 text-slate-900 dark:text-white outline-none focus:border-blue-700 cursor-pointer"
+                >
+                  <option value="">-- Sin líder asignado (Asignar después) --</option>
+                  {eligibleLeaders.map((leader) => (
+                    <option key={leader.id} value={leader.id}>
+                      {leader.name} ({leader.role})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setIsQuickCreateOpen(false)}
+                  className="px-3 py-1.5 text-xs font-semibold text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={isQuickSubmitting}
+                  className="px-4 py-1.5 text-xs font-semibold text-white bg-blue-700 hover:bg-blue-800 rounded-lg shadow-sm cursor-pointer disabled:opacity-50"
+                >
+                  {isQuickSubmitting ? 'Guardando...' : 'Crear y Seleccionar'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
