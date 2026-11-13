@@ -4,9 +4,14 @@ import type { PauseBlock } from '../store/useCheckinStore';
 /**
  * Hook de cronómetro inmutable que no se rompe si se cierra la pestaña.
  * Usa los timestamps originales en milisegundos y resta las pausas.
+ * Soporta congelamiento en maxEndMs (ej. corte automático a las 23:59:00).
  * Retorna la cadena de duración, si sobrepasa la jornada de 10 horas y los segundos netos transcurridos.
  */
-export function useImmutableTimer(startTimeMs: number | null, pauses: PauseBlock[] = []) {
+export function useImmutableTimer(
+  startTimeMs: number | null,
+  pauses: PauseBlock[] = [],
+  maxEndMs?: number | null
+) {
   const [durationStr, setDurationStr] = useState('00:00:00');
   const [isOverTime, setIsOverTime] = useState(false);
   const [secondsElapsed, setSecondsElapsed] = useState(0);
@@ -20,14 +25,14 @@ export function useImmutableTimer(startTimeMs: number | null, pauses: PauseBlock
     }
 
     const updateTick = () => {
-      const nowMs = Date.now();
+      const nowMs = maxEndMs ? Math.min(Date.now(), maxEndMs) : Date.now();
       let totalPauseMs = 0;
 
       pauses.forEach((p) => {
         if (p.endMs) {
-          totalPauseMs += p.endMs - p.startMs;
+          totalPauseMs += Math.max(0, p.endMs - p.startMs);
         } else {
-          totalPauseMs += nowMs - p.startMs;
+          totalPauseMs += Math.max(0, nowMs - p.startMs);
         }
       });
 
@@ -51,7 +56,7 @@ export function useImmutableTimer(startTimeMs: number | null, pauses: PauseBlock
     const interval = setInterval(updateTick, 1000);
 
     return () => clearInterval(interval);
-  }, [startTimeMs, pauses]);
+  }, [startTimeMs, pauses, maxEndMs]);
 
   return { durationStr, isOverTime, secondsElapsed };
 }

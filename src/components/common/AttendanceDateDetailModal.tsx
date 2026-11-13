@@ -108,17 +108,25 @@ export function AttendanceDateDetailModal({
                   </span>
                 </div>
 
-                {record?.isLate ? (
-                  <span className="inline-flex items-center space-x-1 text-xs font-semibold px-2 py-0.5 rounded-sm bg-rose-50 dark:bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-500/30">
-                    <AlertTriangle className="w-3.5 h-3.5" />
-                    <span>Retardo ({record.minutesLate} min)</span>
-                  </span>
-                ) : (
-                  <span className="inline-flex items-center space-x-1 text-xs font-semibold px-2 py-0.5 rounded-sm bg-emerald-50 dark:bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/30">
-                    <CheckCircle2 className="w-3.5 h-3.5" />
-                    <span>Puntual</span>
-                  </span>
-                )}
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  {record?.regularized && (
+                    <span className="inline-flex items-center space-x-1 text-xs font-semibold px-2 py-0.5 rounded-sm bg-blue-50 dark:bg-blue-500/15 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-500/30">
+                      <span>Cierre Regularizado</span>
+                    </span>
+                  )}
+
+                  {record?.isLate ? (
+                    <span className="inline-flex items-center space-x-1 text-xs font-semibold px-2 py-0.5 rounded-sm bg-rose-50 dark:bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-500/30">
+                      <AlertTriangle className="w-3.5 h-3.5" />
+                      <span>Retardo ({record.minutesLate} min)</span>
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center space-x-1 text-xs font-semibold px-2 py-0.5 rounded-sm bg-emerald-50 dark:bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/30">
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      <span>Puntual</span>
+                    </span>
+                  )}
+                </div>
               </div>
 
               {/* Grid con Horarios y Métricas */}
@@ -181,6 +189,27 @@ export function AttendanceDateDetailModal({
                     <span className="text-slate-700 dark:text-slate-300">
                       Pausas / descansos: {record.pauses.length} intervalo(s)
                     </span>
+                  </div>
+                )}
+
+                {record?.regularized && (
+                  <div className="p-3 rounded-lg bg-blue-50/70 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-900/60 space-y-1">
+                    <div className="flex items-center justify-between text-xs font-bold text-blue-900 dark:text-blue-200">
+                      <span>Auditoría de Regularización de Salida:</span>
+                      <span className="font-mono text-[11px] font-semibold">
+                        Corte a las {record.autoStoppedAt || '23:59:00'}
+                      </span>
+                    </div>
+                    {record.regularizationNote && (
+                      <p className="text-[11px] text-blue-800/90 dark:text-blue-300/90 italic">
+                        "{record.regularizationNote}"
+                      </p>
+                    )}
+                    {record.regularizedAt && (
+                      <p className="text-[10px] text-slate-400 dark:text-slate-500">
+                        Regularizado el {new Date(record.regularizedAt).toLocaleString('es-MX')}
+                      </p>
+                    )}
                   </div>
                 )}
               </div>

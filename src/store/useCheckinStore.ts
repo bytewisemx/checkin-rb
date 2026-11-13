@@ -145,9 +145,17 @@ export interface CheckinRecord {
   biometricMatchScore?: number | null;
   biometricDistance?: number | null;
   // Modelo de persistencia de jornada y subtramos por tarea
-  status?: 'active' | 'paused' | 'completed';
+  status?: 'active' | 'paused' | 'completed' | 'pending_checkout_regularization';
   workdayTotalSeconds?: number;
   taskIntervals?: TaskInterval[];
+  // Límite de corte diario (23:59 hrs) y regularización de salida real
+  autoStoppedAt?: string;
+  requiresRealCheckout?: boolean;
+  regularized?: boolean;
+  regularizationNote?: string;
+  regularizedCheckoutTime?: string;
+  totalHours?: number;
+  regularizedAt?: string;
 }
 
 export interface MockEmployee {
@@ -273,6 +281,15 @@ interface CheckinState {
   pauseCheckin: () => Promise<void>;
   resumeCheckin: () => Promise<void>;
   endCheckin: () => Promise<void>;
+
+  // Límite de corte diario (23:59 hrs) y regularización de jornada huérfana
+  triggerDailyCutoff: (checkinId?: string) => Promise<void>;
+  checkOrphanSession: () => void;
+  regularizeCheckout: (params: {
+    checkinId: string;
+    realCheckoutTimeStr: string;
+    note?: string;
+  }) => Promise<void>;
 
   pendingEmail?: string;
   verificationType?: 'registration' | 'recovery';
@@ -1763,8 +1780,21 @@ export const useCheckinStore = create<CheckinState>()(
       },
 
       startCheckin: async (lat, lng, address, matchScore, biometricDistance, initialTaskData) => {
-        const { user, history, mockEmployeesData, addToast } = get();
+        const { activeCheckin, user, history, mockEmployeesData, addToast } = get();
         if (!user) return;
+
+        // Bloqueo estricto si hay una jornada pendiente de regularización
+        if (
+          activeCheckin &&
+          (activeCheckin.requiresRealCheckout ||
+            activeCheckin.status === 'pending_checkout_regularization')
+        ) {
+          addToast(
+            'Debes regularizar tu hora de salida de la jornada anterior antes de iniciar una nueva.',
+            'error'
+          );
+          return;
+        }
 
         const [secureTimeMs, clientIp] = await Promise.all([
           getSecureServerTime(),
@@ -2059,6 +2089,427 @@ export const useCheckinStore = create<CheckinState>()(
           history: updatedHistory,
           mockEmployeesData: updatedMockData,
         });
+      },
+
+      // Límite de corte diario automático a las 23:59:00 hrs
+      triggerDailyCutoff: async (checkinId?: string) => {
+        const { activeCheckin, user, history, mockEmployeesData, addToast } = get();
+        const targetCheckin =
+          (checkinId
+            ? activeCheckin?.id === checkinId
+              ? activeCheckin
+              : history.find((h) => h.id === checkinId)
+            : activeCheckin) || (user ? get().userActiveCheckins?.[user.id] : null);
+
+        if (!targetCheckin || !targetCheckin.checkInTimeMs) return;
+
+        // Si ya está congelado y pendiente de regularización, no volver a cortar
+        if (
+          targetCheckin.requiresRealCheckout &&
+          targetCheckin.status === 'pending_checkout_regularization'
+        ) {
+          return;
+        }
+
+        const startDate = new Date(targetCheckin.checkInTimeMs);
+        const cutoffDate = new Date(
+          startDate.getFullYear(),
+          startDate.getMonth(),
+          startDate.getDate(),
+          23,
+          59,
+          0,
+          0
+        );
+        const cutoffMs = cutoffDate.getTime();
+
+        // 1. Cerrar pausas pendientes al corte
+        const updatedPauses = [...targetCheckin.pauses];
+        if (updatedPauses.length > 0 && !updatedPauses[updatedPauses.length - 1].endMs) {
+          updatedPauses[updatedPauses.length - 1].endMs = cutoffMs;
+        }
+
+        let totalPauseMs = 0;
+        updatedPauses.forEach((p) => {
+          if (p.endMs) {
+            totalPauseMs += Math.max(0, p.endMs - p.startMs);
+          }
+        });
+
+        // 2. Tiempo congelado exactamente a las 23:59:00
+        const effectiveMs = Math.max(0, cutoffMs - targetCheckin.checkInTimeMs - totalPauseMs);
+        const workdayTotalSeconds = Math.floor(effectiveMs / 1000);
+        const totalDurationMinutes = Math.floor(workdayTotalSeconds / 60);
+
+        // 3. Cerrar tareas abiertas a las 23:59:00
+        const closedIntervals = (targetCheckin.taskIntervals || []).map((interval) => {
+          if (!interval.endMs || interval.endMs > cutoffMs) {
+            const durationSecs = Math.max(0, Math.floor((cutoffMs - interval.startMs) / 1000));
+            return {
+              ...interval,
+              endMs: cutoffMs,
+              endTime: '23:59:00',
+              durationSeconds: durationSecs,
+            };
+          }
+          return interval;
+        });
+
+        // 4. Detener timers de tareas activas en Rayoner Store
+        if (user) {
+          try {
+            useRayonerStore.getState().stopWorkerTimer(user.id);
+            localStorage.removeItem(`rb_active_task_id_${user.id}`);
+          } catch (e) {
+            console.warn('[triggerDailyCutoff] Error deteniendo worker timer:', e);
+          }
+        }
+
+        const cutoffRecord: CheckinRecord = {
+          ...targetCheckin,
+          pauses: updatedPauses,
+          checkOutTimeMs: cutoffMs,
+          totalDurationMinutes,
+          workdayTotalSeconds,
+          status: 'pending_checkout_regularization',
+          autoStoppedAt: '23:59:00',
+          requiresRealCheckout: true,
+          taskIntervals: closedIntervals,
+        };
+
+        const updatedHistory = history.map((r) =>
+          r.id === cutoffRecord.id ? cutoffRecord : r
+        );
+        if (!updatedHistory.some((r) => r.id === cutoffRecord.id)) {
+          updatedHistory.unshift(cutoffRecord);
+        }
+
+        const nextUserActiveCheckins = { ...get().userActiveCheckins };
+        const nextUserHistories = { ...get().userHistories };
+
+        if (user) {
+          nextUserActiveCheckins[user.id] = cutoffRecord;
+          nextUserHistories[user.id] = updatedHistory;
+        }
+
+        const updatedMockData = mockEmployeesData.map((emp) =>
+          user && emp.id === user.id
+            ? {
+                ...emp,
+                status: 'inactive' as const,
+                history: emp.history.map((h) =>
+                  h.id === cutoffRecord.id ? cutoffRecord : h
+                ),
+              }
+            : emp
+        );
+
+        set({
+          activeCheckin: cutoffRecord,
+          userActiveCheckins: nextUserActiveCheckins,
+          history: updatedHistory,
+          userHistories: nextUserHistories,
+          mockEmployeesData: updatedMockData,
+        });
+
+        // 5. Persistir estado de corte en Firestore
+        if (isFirebaseConfigured() && db) {
+          const checkinRef = doc(db, 'checkins', cutoffRecord.id);
+          setDoc(
+            checkinRef,
+            {
+              id: cutoffRecord.id,
+              userId: user?.id,
+              userEmail: user?.email,
+              userName: user?.name,
+              team: user?.team,
+              date: cutoffRecord.date,
+              checkInTimeMs: cutoffRecord.checkInTimeMs,
+              checkOutTimeMs: cutoffMs,
+              autoStoppedAt: '23:59:00',
+              status: 'pending_checkout_regularization',
+              requiresRealCheckout: true,
+              regularized: false,
+              workdayTotalSeconds,
+              totalDurationMinutes,
+              taskIntervals: closedIntervals,
+              updatedAt: new Date().toISOString(),
+            },
+            { merge: true }
+          ).catch(console.warn);
+        }
+
+        addToast(
+          'Límite de jornada alcanzado: El cronómetro se detuvo automáticamente a las 23:59 hrs. Define tu hora de salida real.',
+          'info'
+        );
+      },
+
+      // Detección al reabrir el sistema al día siguiente (Validación de Sesión Huérfana)
+      checkOrphanSession: () => {
+        const { activeCheckin, user, triggerDailyCutoff } = get();
+        const currentTarget =
+          activeCheckin || (user ? get().userActiveCheckins?.[user.id] : null);
+
+        if (!currentTarget || !currentTarget.checkInTimeMs) return;
+
+        // Si ya está marcado para regularización
+        if (
+          currentTarget.requiresRealCheckout ||
+          currentTarget.status === 'pending_checkout_regularization'
+        ) {
+          if (activeCheckin !== currentTarget) {
+            set({ activeCheckin: currentTarget });
+          }
+          return;
+        }
+
+        // Evaluar fecha del check-in respecto a la fecha actual local
+        const startDate = new Date(currentTarget.checkInTimeMs);
+        const y = startDate.getFullYear();
+        const m = String(startDate.getMonth() + 1).padStart(2, '0');
+        const d = String(startDate.getDate()).padStart(2, '0');
+        const startedDateStr = `${y}-${m}-${d}`;
+
+        const now = new Date();
+        const nowY = now.getFullYear();
+        const nowM = String(now.getMonth() + 1).padStart(2, '0');
+        const nowD = String(now.getDate()).padStart(2, '0');
+        const todayDateStr = `${nowY}-${nowM}-${nowD}`;
+
+        const cutoffDate = new Date(
+          startDate.getFullYear(),
+          startDate.getMonth(),
+          startDate.getDate(),
+          23,
+          59,
+          0,
+          0
+        );
+        const cutoffMs = cutoffDate.getTime();
+
+        // Si la jornada inició antes de hoy o ya superó las 23:59:00
+        if (startedDateStr < todayDateStr || now.getTime() >= cutoffMs) {
+          void triggerDailyCutoff(currentTarget.id);
+        }
+      },
+
+      // Guardado, Auditoría y Liberación de Nueva Jornada
+      regularizeCheckout: async ({ checkinId, realCheckoutTimeStr, note }) => {
+        const { activeCheckin, user, history, mockEmployeesData, addToast } = get();
+        const target =
+          (activeCheckin?.id === checkinId
+            ? activeCheckin
+            : history.find((h) => h.id === checkinId)) ||
+          (user ? get().userActiveCheckins?.[user.id] : null);
+
+        if (!target || !target.checkInTimeMs) {
+          addToast('No se encontró el registro de jornada a regularizar.', 'error');
+          return;
+        }
+
+        // 1. Construir fecha y timestamp real de salida
+        const startDate = new Date(target.checkInTimeMs);
+        const [hhStr, mmStr] = realCheckoutTimeStr.split(':');
+        const hh = parseInt(hhStr, 10);
+        const mm = parseInt(mmStr, 10);
+
+        const realCheckoutDate = new Date(
+          startDate.getFullYear(),
+          startDate.getMonth(),
+          startDate.getDate(),
+          hh,
+          mm,
+          0,
+          0
+        );
+        const realCheckoutMs = realCheckoutDate.getTime();
+
+        // Validaciones estrictas
+        if (realCheckoutMs <= target.checkInTimeMs) {
+          addToast(
+            'La hora de salida real debe ser posterior a la hora de entrada.',
+            'error'
+          );
+          return;
+        }
+
+        const cutoffDate = new Date(
+          startDate.getFullYear(),
+          startDate.getMonth(),
+          startDate.getDate(),
+          23,
+          59,
+          0,
+          0
+        );
+        if (realCheckoutMs > cutoffDate.getTime()) {
+          addToast('La hora de salida real no puede exceder las 23:59 hrs.', 'error');
+          return;
+        }
+
+        // 2. Recalcular pausas válidas en el rango [checkInTimeMs, realCheckoutMs]
+        const adjustedPauses: PauseBlock[] = [];
+        let totalPauseMs = 0;
+
+        (target.pauses || []).forEach((p) => {
+          if (p.startMs < realCheckoutMs) {
+            const end = p.endMs ? Math.min(p.endMs, realCheckoutMs) : realCheckoutMs;
+            const pauseDuration = Math.max(0, end - p.startMs);
+            totalPauseMs += pauseDuration;
+            adjustedPauses.push({
+              startMs: p.startMs,
+              endMs: end,
+            });
+          }
+        });
+
+        // 3. Recalcular tiempo neto de la jornada
+        const effectiveMs = Math.max(
+          0,
+          realCheckoutMs - target.checkInTimeMs - totalPauseMs
+        );
+        const recalculatedWorkdaySeconds = Math.floor(effectiveMs / 1000);
+        const recalculatedDurationMinutes = Math.floor(recalculatedWorkdaySeconds / 60);
+        const totalHours = Number((recalculatedWorkdaySeconds / 3600).toFixed(2));
+
+        // 4. Ajustar intervalos de tareas: la última tarea termina en realCheckoutMs
+        const adjustedIntervals = (target.taskIntervals || [])
+          .filter((interval) => interval.startMs < realCheckoutMs)
+          .map((interval) => {
+            const end = interval.endMs
+              ? Math.min(interval.endMs, realCheckoutMs)
+              : realCheckoutMs;
+            const dur = Math.max(0, Math.floor((end - interval.startMs) / 1000));
+            const endStr = new Date(end).toLocaleTimeString('es-MX', {
+              hour12: false,
+              hour: '2-digit',
+              minute: '2-digit',
+            });
+            return {
+              ...interval,
+              endMs: end,
+              endTime: endStr,
+              durationSeconds: dur,
+            };
+          });
+
+        // 5. Imputar horas a useRayonerStore si corresponde
+        if (user && adjustedIntervals.length > 0) {
+          try {
+            const allocations = adjustedIntervals.map((int) => ({
+              taskId: int.taskId,
+              hours: Number((int.durationSeconds / 3600).toFixed(2)),
+            }));
+            useRayonerStore.getState().recordDayAllocations(user.id, allocations);
+            useRayonerStore.getState().stopWorkerTimer(user.id);
+            localStorage.removeItem(`rb_active_task_id_${user.id}`);
+          } catch (e) {
+            console.warn('[regularizeCheckout] Error imputando tareas en rayoner:', e);
+          }
+        }
+
+        const regularizedRecord: CheckinRecord = {
+          ...target,
+          pauses: adjustedPauses,
+          checkOutTimeMs: realCheckoutMs,
+          totalDurationMinutes: recalculatedDurationMinutes,
+          workdayTotalSeconds: recalculatedWorkdaySeconds,
+          totalHours,
+          status: 'completed',
+          regularized: true,
+          requiresRealCheckout: false,
+          autoStoppedAt: target.autoStoppedAt || '23:59:00',
+          regularizationNote:
+            note?.trim() || 'Salida regularizada por el colaborador',
+          regularizedCheckoutTime: realCheckoutTimeStr,
+          regularizedAt: new Date().toISOString(),
+          taskIntervals: adjustedIntervals,
+        };
+
+        // 6. Actualizar historial y limpiar activeCheckin para liberar nueva jornada
+        const nextHistory = history.map((r) =>
+          r.id === regularizedRecord.id ? regularizedRecord : r
+        );
+        if (!nextHistory.some((r) => r.id === regularizedRecord.id)) {
+          nextHistory.unshift(regularizedRecord);
+        }
+
+        const nextUserActiveCheckins = { ...get().userActiveCheckins };
+        if (user) {
+          delete nextUserActiveCheckins[user.id];
+        }
+
+        const nextUserHistories = {
+          ...get().userHistories,
+          ...(user ? { [user.id]: nextHistory } : {}),
+        };
+
+        const updatedMockData = mockEmployeesData.map((emp) => {
+          if (user && emp.id === user.id) {
+            return {
+              ...emp,
+              status: 'inactive' as const,
+              workedMinutesToday: emp.workedMinutesToday + recalculatedDurationMinutes,
+              history: emp.history.map((h) =>
+                h.id === regularizedRecord.id ? regularizedRecord : h
+              ),
+            };
+          }
+          return emp;
+        });
+
+        set({
+          activeCheckin: null,
+          userActiveCheckins: nextUserActiveCheckins,
+          userHistories: nextUserHistories,
+          history: nextHistory,
+          mockEmployeesData: updatedMockData,
+        });
+
+        // 7. Persistir en Firestore en checkins/{id}
+        if (isFirebaseConfigured() && db) {
+          try {
+            const checkinRef = doc(db, 'checkins', regularizedRecord.id);
+            await setDoc(
+              checkinRef,
+              {
+                id: regularizedRecord.id,
+                userId: user?.id,
+                userEmail: user?.email,
+                userName: user?.name,
+                team: user?.team,
+                date: regularizedRecord.date,
+                checkInTimeMs: regularizedRecord.checkInTimeMs,
+                checkOutTimeMs: realCheckoutMs,
+                checkoutTime: realCheckoutTimeStr,
+                totalHours,
+                totalDurationMinutes: recalculatedDurationMinutes,
+                workdayTotalSeconds: recalculatedWorkdaySeconds,
+                status: 'completed',
+                regularized: true,
+                requiresRealCheckout: false,
+                regularizationNote: regularizedRecord.regularizationNote,
+                regularizedCheckoutTime: realCheckoutTimeStr,
+                regularizedAt: regularizedRecord.regularizedAt,
+                autoStoppedAt: regularizedRecord.autoStoppedAt,
+                taskIntervals: adjustedIntervals,
+                updatedAt: new Date().toISOString(),
+              },
+              { merge: true }
+            );
+          } catch (err) {
+            console.warn(
+              '[useCheckinStore] Error guardando checkin regularizado en Firestore:',
+              err
+            );
+          }
+        }
+
+        addToast(
+          `Jornada regularizada correctamente (${totalHours} hrs). Ya puedes iniciar tu nueva jornada.`,
+          'success'
+        );
       },
 
       requestPasswordReset: (email: string) => {

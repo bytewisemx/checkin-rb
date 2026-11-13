@@ -9,6 +9,7 @@ import {
   ScanFace,
   ShieldCheck,
   Lock,
+  Clock,
 } from 'lucide-react';
 import { getAddressFromCoordinates } from '../../services/geocoding';
 import { useImmutableTimer } from '../../hooks/useTimer';
@@ -17,6 +18,7 @@ import { StartTaskModal } from './StartTaskModal';
 import { EndDayAllocationModal } from './EndDayAllocationModal';
 import { FacialEnrollmentModal } from './FacialEnrollmentModal';
 import { FacialCheckinModal } from './FacialCheckinModal';
+import { RealCheckoutModal } from './RealCheckoutModal';
 import { loadFaceApiModels } from '../../services/facialBiometrics';
 import { DailyQuoteCard } from '../../components/common/DailyQuoteCard';
 
@@ -31,6 +33,9 @@ export function CheckinPanel() {
     user,
     getEffectiveUserModules,
     addToast,
+    triggerDailyCutoff,
+    checkOrphanSession,
+    regularizeCheckout,
   } = useCheckinStore();
 
   const {
@@ -61,6 +66,7 @@ export function CheckinPanel() {
 
   const [isStartTaskModalOpen, setIsStartTaskModalOpen] = useState(false);
   const [isEndDayModalOpen, setIsEndDayModalOpen] = useState(false);
+  const [isRegularizationModalOpen, setIsRegularizationModalOpen] = useState(false);
 
   const [isEnrollmentModalOpen, setIsEnrollmentModalOpen] = useState(false);
   const [isFacialModalOpen, setIsFacialModalOpen] = useState(false);
@@ -70,6 +76,55 @@ export function CheckinPanel() {
   } | null>(null);
 
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
+
+  // Detección de jornada pendiente de regularización
+  const hasPendingRegularization = Boolean(
+    activeCheckin?.requiresRealCheckout ||
+      activeCheckin?.status === 'pending_checkout_regularization'
+  );
+
+  // Fecha legible de la jornada huérfana / pendiente para la alerta
+  const formattedPendingDate = useMemo(() => {
+    if (!activeCheckin?.checkInTimeMs) return 'día anterior';
+    const d = new Date(activeCheckin.checkInTimeMs);
+    return d.toLocaleDateString('es-MX', {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric',
+    });
+  }, [activeCheckin]);
+
+  // Vigía en Tiempo Real (Frontend) y Detección de Sesión Huérfana al Reabrir (Regla 1)
+  useEffect(() => {
+    // 1. Verificación inmediata de sesión huérfana al montar
+    checkOrphanSession();
+
+    // 2. Vigía en tiempo real mientras el cronómetro esté corriendo en el navegador
+    const interval = setInterval(() => {
+      if (
+        activeCheckin &&
+        activeCheckin.checkInTimeMs &&
+        !hasPendingRegularization &&
+        activeCheckin.status !== 'completed'
+      ) {
+        const startDate = new Date(activeCheckin.checkInTimeMs);
+        const cutoffDate = new Date(
+          startDate.getFullYear(),
+          startDate.getMonth(),
+          startDate.getDate(),
+          23,
+          59,
+          0,
+          0
+        );
+        if (Date.now() >= cutoffDate.getTime()) {
+          void triggerDailyCutoff(activeCheckin.id);
+        }
+      }
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [activeCheckin, hasPendingRegularization, checkOrphanSession, triggerDailyCutoff]);
 
   // Sincronizar y restaurar la tarea activa interna de este usuario
   useEffect(() => {
@@ -102,9 +157,29 @@ export function CheckinPanel() {
     }
   }, [requiresFacialBiometrics]);
 
+  // Calcular límite de corte congelado en las 23:59:00 hrs
+  const maxEndMs = useMemo(() => {
+    if (!activeCheckin?.checkInTimeMs) return null;
+    const startDate = new Date(activeCheckin.checkInTimeMs);
+    const cutoffDate = new Date(
+      startDate.getFullYear(),
+      startDate.getMonth(),
+      startDate.getDate(),
+      23,
+      59,
+      0,
+      0
+    );
+    if (hasPendingRegularization || Date.now() >= cutoffDate.getTime()) {
+      return cutoffDate.getTime();
+    }
+    return null;
+  }, [activeCheckin, hasPendingRegularization]);
+
   const { durationStr, isOverTime, secondsElapsed } = useImmutableTimer(
     activeCheckin?.checkInTimeMs || null,
-    activeCheckin?.pauses || []
+    activeCheckin?.pauses || [],
+    maxEndMs
   );
 
   // Escala de jornada laboral: 10 horas (36,000 segundos) • Círculo ampliado de 420px (r = 185, circunferencia = 1162.39)
@@ -441,9 +516,40 @@ export function CheckinPanel() {
           <div className="absolute top-0 text-red-500 text-sm font-medium">{errorMsg}</div>
         )}
 
+        {/* 1. Alerta Destacada en Tonos Azules Corporativos: Jornada Anterior sin Cierre Detectada (Regla 2.1) */}
+        {hasPendingRegularization && (
+          <div className="w-full max-w-xl mx-auto mb-6 p-5 sm:p-6 rounded-2xl bg-blue-50/90 dark:bg-blue-950/40 border-2 border-blue-600/40 dark:border-blue-500/40 shadow-xs space-y-3.5 animate-fade-in">
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-2">
+                <span className="w-2.5 h-2.5 rounded-full bg-blue-600 dark:bg-blue-400 animate-pulse shrink-0" />
+                <h3 className="text-sm sm:text-base font-bold text-blue-950 dark:text-blue-100">
+                  Jornada anterior sin cierre detectada ({formattedPendingDate})
+                </h3>
+              </div>
+              <p className="text-xs text-blue-900/85 dark:text-blue-200/85 leading-relaxed pl-4.5">
+                Tu cronómetro se detuvo automáticamente a las 23:59 hrs.{' '}
+                <strong className="text-blue-950 dark:text-white font-semibold">
+                  Define tu hora de salida real
+                </strong>{' '}
+                para contabilizar correctamente tu jornada y el tiempo de tus tareas antes de iniciar hoy.
+              </p>
+            </div>
+
+            <div className="flex items-center justify-end pt-1">
+              <button
+                type="button"
+                onClick={() => setIsRegularizationModalOpen(true)}
+                className="px-5 py-2.5 bg-blue-700 hover:bg-blue-800 active:scale-95 text-white font-semibold text-xs rounded-xl shadow-xs transition-all cursor-pointer flex items-center gap-2"
+              >
+                <span>Regularizar Hora de Salida</span>
+              </button>
+            </div>
+          </div>
+        )}
+
         {!activeCheckin ? (
           <div className="flex flex-col items-center justify-center space-y-8 animate-fade-in">
-            {/* Botón de Inicio Play Minimalista Estilizado (Outline con esquinas redondeadas idéntico a la referencia visual) */}
+            {/* Botón de Inicio Play Minimalista Estilizado */}
             <button
               id="btn-play-checkin"
               data-tour="checkin-biometric-btn"
@@ -456,7 +562,7 @@ export function CheckinPanel() {
               {/* Resplandor y halo sutil de fondo al hover */}
               <div className="absolute inset-0 rounded-full bg-slate-200/50 dark:bg-slate-800/40 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
 
-              {/* Triángulo equilátero estilizado idéntico a la referencia visual (outline con esquinas curvas filleted y sombra flotante) */}
+              {/* Triángulo equilátero estilizado idéntico a la referencia visual */}
               <svg 
                 className="w-32 h-32 sm:w-40 sm:h-40 text-[#0B253A] dark:text-white drop-shadow-[2px_14px_22px_rgba(11,37,58,0.32)] dark:drop-shadow-[2px_14px_22px_rgba(0,0,0,0.7)] transition-all duration-300 select-none" 
                 viewBox="0 0 100 100" 
@@ -585,38 +691,54 @@ export function CheckinPanel() {
               </div>
             </div>
 
-            {/* Controles Inferiores Minimalistas (Botones Circulares Refinados) */}
-            <div className="flex items-center gap-5 mt-8 mb-4">
-              {/* Pausa / Reanudar */}
-              <button
-                onClick={handlePauseToggle}
-                className={`w-12 h-12 rounded-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 shadow-xs transition-all flex items-center justify-center active:scale-95 cursor-pointer ${
-                  isCurrentlyPaused ? 'text-amber-500 border-amber-300 dark:border-amber-600/60' : ''
-                }`}
-                title={isCurrentlyPaused ? 'Reanudar jornada' : 'Pausar jornada'}
-                aria-label={isCurrentlyPaused ? 'Reanudar' : 'Pausar'}
-              >
-                {isCurrentlyPaused ? (
-                  <Play className="w-5 h-5 fill-current ml-0.5" />
-                ) : (
-                  <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z" />
-                  </svg>
-                )}
-              </button>
+            {/* Controles Inferiores Minimalistas */}
+            {hasPendingRegularization ? (
+              <div className="flex flex-col items-center gap-2 mt-8 mb-4">
+                <button
+                  type="button"
+                  onClick={() => setIsRegularizationModalOpen(true)}
+                  className="px-6 py-3 bg-blue-700 hover:bg-blue-800 text-white font-semibold text-xs sm:text-sm rounded-xl shadow-md transition-all active:scale-95 cursor-pointer flex items-center gap-2"
+                >
+                  <Clock className="w-4 h-4" />
+                  <span>Regularizar Hora de Salida Real</span>
+                </button>
+                <p className="text-[11px] text-blue-800/80 dark:text-blue-300/80 font-medium">
+                  • Jornada congelada a las 23:59 hrs. Define tu hora de salida para habilitar nueva jornada.
+                </p>
+              </div>
+            ) : (
+              <div className="flex items-center gap-5 mt-8 mb-4">
+                {/* Pausa / Reanudar */}
+                <button
+                  onClick={handlePauseToggle}
+                  className={`w-12 h-12 rounded-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 shadow-xs transition-all flex items-center justify-center active:scale-95 cursor-pointer ${
+                    isCurrentlyPaused ? 'text-amber-500 border-amber-300 dark:border-amber-600/60' : ''
+                  }`}
+                  title={isCurrentlyPaused ? 'Reanudar jornada' : 'Pausar jornada'}
+                  aria-label={isCurrentlyPaused ? 'Reanudar' : 'Pausar'}
+                >
+                  {isCurrentlyPaused ? (
+                    <Play className="w-5 h-5 fill-current ml-0.5" />
+                  ) : (
+                    <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                      <path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z" />
+                    </svg>
+                  )}
+                </button>
 
-              {/* Detener / Finalizar */}
-              <button
-                onClick={handleEndButtonClick}
-                className="w-12 h-12 rounded-full border border-red-100 dark:border-rose-900/40 bg-red-50/60 dark:bg-rose-950/30 hover:bg-red-100 dark:hover:bg-rose-900/50 text-red-600 dark:text-rose-400 transition-all flex items-center justify-center active:scale-95 cursor-pointer shadow-xs"
-                title="Finalizar jornada"
-                aria-label="Finalizar jornada"
-              >
-                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-                  <rect x="5" y="5" width="14" height="14" rx="2.5" />
-                </svg>
-              </button>
-            </div>
+                {/* Detener / Finalizar */}
+                <button
+                  onClick={handleEndButtonClick}
+                  className="w-12 h-12 rounded-full border border-red-100 dark:border-rose-900/40 bg-red-50/60 dark:bg-rose-950/30 hover:bg-red-100 dark:hover:bg-rose-900/50 text-red-600 dark:text-rose-400 transition-all flex items-center justify-center active:scale-95 cursor-pointer shadow-xs"
+                  title="Finalizar jornada"
+                  aria-label="Finalizar jornada"
+                >
+                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                    <rect x="5" y="5" width="14" height="14" rx="2.5" />
+                  </svg>
+                </button>
+              </div>
+            )}
 
             {/* Ubicación y Validación Vectorial en diseño abierto */}
             <div className="flex flex-col sm:flex-row items-center gap-4 text-xs font-medium text-slate-500 dark:text-[#94A3B8] tracking-wide mt-2">
@@ -689,6 +811,21 @@ export function CheckinPanel() {
           setIsEnrollmentModalOpen(true);
         }}
         onBypassContingency={handleFacialBypassContingency}
+      />
+
+      <RealCheckoutModal
+        isOpen={isRegularizationModalOpen}
+        onClose={() => setIsRegularizationModalOpen(false)}
+        pendingCheckin={activeCheckin}
+        onConfirm={async (realCheckoutTimeStr, note) => {
+          if (activeCheckin) {
+            await regularizeCheckout({
+              checkinId: activeCheckin.id,
+              realCheckoutTimeStr,
+              note,
+            });
+          }
+        }}
       />
     </div>
   );
