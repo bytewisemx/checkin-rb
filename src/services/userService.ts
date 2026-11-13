@@ -12,8 +12,12 @@ export interface UserProfileDocument {
   photoURL?: string | null;
   profileImage?: string;
   role: UserRole | 'employee' | 'supervisor';
-  teamId?: string;
+  teamId?: string | null;
   team?: string;
+  teamName?: string;
+  assignedTeams?: string[];
+  status?: 'active' | 'inactive';
+  isActive?: boolean;
   supervisorId?: string | null;
   supervisorName?: string;
   supervisorCode?: string;
@@ -223,8 +227,12 @@ export async function saveOrUpdateUserProfile(
     photoURL: profileData.photoURL !== undefined ? profileData.photoURL : existing?.photoURL || null,
     profileImage: profileData.photoURL || profileData.profileImage || existing?.profileImage,
     role: resolvedRole,
-    team: profileData.team || existing?.team || 'Auditoría Fiscal',
-    teamId: profileData.teamId || existing?.teamId,
+    team: profileData.team !== undefined ? profileData.team : (existing?.team || 'Sin equipo asignado'),
+    teamName: profileData.teamName !== undefined ? profileData.teamName : (existing?.teamName || profileData.team || existing?.team || 'Sin equipo asignado'),
+    teamId: profileData.teamId !== undefined ? profileData.teamId : (existing?.teamId || null),
+    assignedTeams: profileData.assignedTeams || existing?.assignedTeams || [],
+    status: profileData.status || existing?.status || 'active',
+    isActive: profileData.isActive !== undefined ? profileData.isActive : (existing?.isActive !== undefined ? existing.isActive : true),
     supervisorId: profileData.supervisorId ?? existing?.supervisorId ?? null,
     supervisorName: profileData.supervisorName || existing?.supervisorName,
     supervisorCode: profileData.supervisorCode || existing?.supervisorCode,
@@ -332,7 +340,11 @@ export async function handleUserSession(
           },
           {
             role: userDoc.role,
-            team: userDoc.team || 'Auditoría Fiscal',
+            team: userDoc.team || userDoc.teamName || 'Sin equipo asignado',
+            teamId: userDoc.teamId || undefined,
+            assignedTeams: userDoc.assignedTeams,
+            status: userDoc.status,
+            isActive: userDoc.isActive,
             supervisorId: userDoc.supervisorId || '',
             supervisorName: userDoc.supervisorName || '',
             isProfileComplete: true,

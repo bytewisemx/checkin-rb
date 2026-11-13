@@ -104,6 +104,7 @@ export function UserPermissionsTable({ onNewUser }: UserPermissionsTableProps) {
     mockEmployeesData,
     updateUserPermissions,
     updateUserAssignedTeams,
+    assignUserTeam,
     changeUserRole,
     toggleUserAccessRevoked,
     addToast,
@@ -126,6 +127,7 @@ export function UserPermissionsTable({ onNewUser }: UserPermissionsTableProps) {
     getDefaultPermissionsForRole('Colaborador')
   );
   const [draftAssignedTeams, setDraftAssignedTeams] = useState<string[]>([]);
+  const [draftTeam, setDraftTeam] = useState<string>('');
 
   // Unificación de usuarios
   const mergedUsers = useMemo<ManagedUserPermissionEntry[]>(() => {
@@ -248,6 +250,9 @@ export function UserPermissionsTable({ onNewUser }: UserPermissionsTableProps) {
     setDraftRole(norm);
     setDraftPermissions(userEntry.permissions || getDefaultPermissionsForRole(norm));
     setDraftAssignedTeams(userEntry.assignedTeams || availableTeamNames);
+    setDraftTeam(
+      userEntry.team && userEntry.team !== 'Sin equipo asignado' ? userEntry.team : ''
+    );
   };
 
   // Cambio de rol en el modal: preselecciona los permisos por defecto del nuevo rol
@@ -274,6 +279,12 @@ export function UserPermissionsTable({ onNewUser }: UserPermissionsTableProps) {
     // 3. Si es RH o Gerente, guardar los equipos autorizados
     if (draftRole === 'RH' || draftRole === 'Gerente') {
       updateUserAssignedTeams(editingUser.id, draftAssignedTeams);
+    }
+
+    // 4. Si no es RH ni TI, actualizar o asignar equipo
+    if (draftRole !== 'RH' && draftRole !== 'TI') {
+      const selectedTeamObj = activeTeams.find((t) => t.name === draftTeam);
+      assignUserTeam(editingUser.id, draftTeam, selectedTeamObj?.id);
     }
 
     addToast(`Perfil y permisos actualizados para ${editingUser.name}.`, 'success');
@@ -457,7 +468,7 @@ export function UserPermissionsTable({ onNewUser }: UserPermissionsTableProps) {
                               Equipos Autorizados ({u.assignedTeams?.length || 0}):
                             </span>
                             <div className="flex flex-wrap gap-1">
-                              {(u.assignedTeams && u.assignedTeams.length > 0) ? (
+                              {u.assignedTeams && u.assignedTeams.length > 0 ? (
                                 u.assignedTeams.map((t) => (
                                   <span
                                     key={t}
@@ -467,13 +478,27 @@ export function UserPermissionsTable({ onNewUser }: UserPermissionsTableProps) {
                                   </span>
                                 ))
                               ) : (
-                                <span className="text-[10px] text-slate-400 italic">Todos los equipos</span>
+                                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400">
+                                  Sin equipo
+                                </span>
                               )}
                             </div>
                           </div>
+                        ) : normRole === 'TI' ? (
+                          <span className="text-slate-700 dark:text-slate-300 font-medium">
+                            {u.team || 'TI Root'}
+                          </span>
+                        ) : !u.team ||
+                          u.team.trim() === '' ||
+                          u.team === 'Sin equipo asignado' ||
+                          u.team === 'Sin equipo' ||
+                          u.team === 'Sin equipo disponible' ? (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400">
+                            Sin equipo
+                          </span>
                         ) : (
                           <span className="text-slate-700 dark:text-slate-300 font-medium">
-                            {u.team || 'Sin equipo asignado'}
+                            {u.team}
                           </span>
                         )}
                       </td>
@@ -555,22 +580,55 @@ export function UserPermissionsTable({ onNewUser }: UserPermissionsTableProps) {
 
                       {/* Estado */}
                       <td className="py-3.5 px-4 whitespace-nowrap">
-                        <button
-                          type="button"
-                          onClick={() => handleToggleRevoke(u)}
-                          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold transition cursor-pointer ${
-                            isRevoked
-                              ? 'bg-red-50 text-red-700 dark:bg-red-950/50 dark:text-red-300 border border-red-200 dark:border-red-800'
-                              : 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800'
-                          }`}
-                        >
-                          <span
-                            className={`w-1.5 h-1.5 rounded-full ${
-                              isRevoked ? 'bg-red-500' : 'bg-emerald-500'
-                            }`}
-                          />
-                          {isRevoked ? 'Suspendido' : 'Activo'}
-                        </button>
+                        {(() => {
+                          const isTiRoot = normRole === 'TI';
+                          const hasNoTeam =
+                            normRole === 'RH'
+                              ? (!u.assignedTeams || u.assignedTeams.length === 0) &&
+                                (!u.team || u.team === 'Sin equipo asignado' || u.team === 'Sin equipo')
+                              : !u.team ||
+                                u.team.trim() === '' ||
+                                u.team === 'Sin equipo asignado' ||
+                                u.team === 'Sin equipo' ||
+                                u.team === 'Sin equipo disponible';
+
+                          const isInactiveByPolicy =
+                            !isTiRoot &&
+                            ((u as any).status === 'inactive' ||
+                              (u as any).isActive === false ||
+                              hasNoTeam);
+
+                          if (isInactiveByPolicy) {
+                            return (
+                              <span
+                                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-blue-50 text-blue-900 border border-blue-200 dark:bg-blue-950/60 dark:text-blue-300 dark:border-blue-800 shadow-xs"
+                                title="Inhabilitado: Requiere asignación de equipo para operar"
+                              >
+                                <span className="w-1.5 h-1.5 rounded-full bg-blue-600 dark:bg-blue-400" />
+                                • Inhabilitado
+                              </span>
+                            );
+                          }
+
+                          return (
+                            <button
+                              type="button"
+                              onClick={() => handleToggleRevoke(u)}
+                              className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold transition cursor-pointer ${
+                                isRevoked
+                                  ? 'bg-red-50 text-red-700 dark:bg-red-950/50 dark:text-red-300 border border-red-200 dark:border-red-800'
+                                  : 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800'
+                              }`}
+                            >
+                              <span
+                                className={`w-1.5 h-1.5 rounded-full ${
+                                  isRevoked ? 'bg-red-500' : 'bg-emerald-500'
+                                }`}
+                              />
+                              {isRevoked ? 'Suspendido' : 'Activo'}
+                            </button>
+                          );
+                        })()}
                       </td>
 
                       {/* Acciones */}
@@ -650,6 +708,32 @@ export function UserPermissionsTable({ onNewUser }: UserPermissionsTableProps) {
                   <option value="TI">6. Administrador TI Root (Máxima Autoridad Técnica)</option>
                 </select>
               </div>
+
+              {/* Selector de Equipo Operativo para Roles No-RH / No-TI */}
+              {draftRole !== 'RH' && draftRole !== 'TI' && (
+                <div className="space-y-2">
+                  <label className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                    Equipo Operativo Asignado
+                  </label>
+                  <select
+                    value={draftTeam}
+                    onChange={(e) => setDraftTeam(e.target.value)}
+                    className="w-full p-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-semibold text-slate-800 dark:text-slate-200 focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 cursor-pointer"
+                  >
+                    <option value="">-- Sin equipo asignado (Inhabilitado) --</option>
+                    {activeTeams.map((team) => (
+                      <option key={team.id} value={team.name}>
+                        {team.name} ({team.code})
+                      </option>
+                    ))}
+                  </select>
+                  {!draftTeam && (
+                    <p className="text-[11px] text-blue-700 dark:text-blue-300 font-medium bg-blue-50 dark:bg-blue-950/40 p-2 rounded-lg border border-blue-200 dark:border-blue-900">
+                      • Nota: Un usuario sin equipo asignado permanece en estado inhabilitado hasta ser vinculado a un equipo activo.
+                    </p>
+                  )}
+                </div>
+              )}
 
               {/* Selector de Equipos para RH */}
               {draftRole === 'RH' && (

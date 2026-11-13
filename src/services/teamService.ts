@@ -4,6 +4,7 @@ import {
   getDocs,
   setDoc,
   deleteDoc,
+  writeBatch,
 } from 'firebase/firestore';
 import { db, isFirebaseConfigured } from './firebase';
 import type { Team } from '../types/team';
@@ -60,223 +61,54 @@ export function generateTeamCode(name: string, count = 1): string {
 }
 
 /**
- * Consulta unificada y resiliente de todos los equipos del sistema:
- * 1. Lee la colección 'teams' en Firestore sin filtros restrictivos.
- * 2. Examina la colección 'users' para descubrir equipos asignados a usuarios (ej. teamName, team, assignedTeams).
- * 3. Incorpora el directorio y almacén local (userPermissionsDirectory, mockEmployeesData, teamMembers).
- * 4. Migra y guarda en Firestore cualquier equipo detectado que falte (como "Equipo Prueba").
+ * Consulta de equipos del sistema:
+ * ÚNICA FUENTE DE VERDAD: Colección 'teams' de Firestore.
+ * NO recrea equipos automáticamente a partir de campos en 'users' ni tiendas locales.
  */
 export async function fetchTeamsFromFirestore(): Promise<Team[]> {
-  const teamsMap = new Map<string, Team>();
-
-  // 1. Equipos directos desde la colección 'teams' de Firestore
-  if (isFirebaseConfigured() && db) {
-    try {
-      const teamsCollection = collection(db, 'teams');
-      const fetchTeamsPromise = getDocs(teamsCollection).then((snapshot) => {
-        const teams: Team[] = [];
-        snapshot.forEach((docSnap) => {
-          const data = docSnap.data();
-          if (!data) return;
-          const name = (data.name || '').trim();
-          if (!name) return;
-
-          teams.push({
-            id: docSnap.id,
-            name,
-            code: data.code || generateTeamCode(name),
-            leaderId: data.leaderId || '',
-            leaderName: data.leaderName || '',
-            leaderRole: data.leaderRole || 'Supervisor',
-            memberIds: Array.isArray(data.memberIds) ? data.memberIds : [],
-            status: data.status === 'inactive' ? 'inactive' : 'active',
-            description: data.description || '',
-            parentLeaderId: data.parentLeaderId || '',
-            createdAt: data.createdAt || new Date().toISOString(),
-            updatedAt: data.updatedAt || new Date().toISOString(),
-          });
-        });
-        return teams;
-      });
-
-      const teamsFromFirestore = await withTimeout(fetchTeamsPromise, 2500, []);
-      console.log(`[teamService] Colección 'teams' de Firestore devolvió ${teamsFromFirestore.length} equipos:`, teamsFromFirestore);
-
-      teamsFromFirestore.forEach((t) => {
-        teamsMap.set(t.name.toLowerCase().trim(), t);
-      });
-    } catch (err) {
-      console.warn('[teamService] Error al consultar colección "teams":', err);
-    }
-
-    // 2. Fallback / Descubrimiento automático desde la colección 'users' en Firestore
-    try {
-      const usersCollection = collection(db, 'users');
-      const fetchUsersPromise = getDocs(usersCollection).then((snapshot) => {
-        const userDocs: Array<Record<string, any>> = [];
-        snapshot.forEach((docSnap) => {
-          userDocs.push({ id: docSnap.id, ...docSnap.data() });
-        });
-        return userDocs;
-      });
-
-      const usersFromFirestore = await withTimeout(fetchUsersPromise, 2500, []);
-      console.log(`[teamService] Colección 'users' de Firestore devolvió ${usersFromFirestore.length} documentos para escaneo de equipos.`);
-
-      usersFromFirestore.forEach((u) => {
-        const rawTeams: string[] = [];
-        if (u.team) rawTeams.push(u.team);
-        if (u.teamName) rawTeams.push(u.teamName);
-        if (u.equipo) rawTeams.push(u.equipo);
-        if (Array.isArray(u.assignedTeams)) {
-          u.assignedTeams.forEach((t: string) => {
-            if (typeof t === 'string' && t.trim()) rawTeams.push(t.trim());
-          });
-        }
-
-        rawTeams.forEach((tName) => {
-          const cleanName = tName.trim();
-          if (!cleanName || cleanName.toLowerCase().includes('ti root')) return;
-          const key = cleanName.toLowerCase();
-
-          if (!teamsMap.has(key)) {
-            const isLeader = ['supervisor', 'gerente', 'socio'].includes(String(u.role || '').toLowerCase());
-            const newTeam: Team = {
-              id: u.teamId || `team_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-              name: cleanName,
-              code: generateTeamCode(cleanName, teamsMap.size + 1),
-              leaderId: isLeader ? u.id : (u.supervisorId || u.supervisor_id || ''),
-              leaderName: isLeader ? (u.name || 'Supervisor Asignado') : (u.supervisorName || 'Supervisor Asignado'),
-              leaderRole: isLeader ? (u.role || 'Supervisor') : 'Supervisor',
-              memberIds: isLeader ? [] : [u.id],
-              status: 'active',
-              description: `Equipo extraído automáticamente de perfil de usuario (${cleanName})`,
-              createdAt: new Date().toISOString(),
-              updatedAt: new Date().toISOString(),
-            };
-
-            teamsMap.set(key, newTeam);
-            console.log(`[teamService] Equipo descubierto desde 'users' Firestore y migrado: "${cleanName}" (${newTeam.code})`);
-            saveTeamToFirestore(newTeam).catch(console.warn);
-          } else {
-            const existing = teamsMap.get(key)!;
-            const isLeader = ['supervisor', 'gerente', 'socio'].includes(String(u.role || '').toLowerCase());
-            if (isLeader && !existing.leaderId) {
-              existing.leaderId = u.id;
-              existing.leaderName = u.name || existing.leaderName;
-              existing.leaderRole = u.role || existing.leaderRole;
-            }
-          }
-        });
-      });
-    } catch (err) {
-      console.warn('[teamService] Error al escanear usuarios en Firestore para descubrir equipos:', err);
-    }
+  if (!isFirebaseConfigured() || !db) {
+    return [];
   }
 
-  // 3. Respaldo de Almacén Local / Memoria (userPermissionsDirectory, mockEmployeesData, teamMembers)
   try {
-    const checkinState = useCheckinStore.getState();
-    const rayonerState = useRayonerStore.getState();
+    const teamsCollection = collection(db, 'teams');
+    const fetchTeamsPromise = getDocs(teamsCollection).then((snapshot) => {
+      const teams: Team[] = [];
+      snapshot.forEach((docSnap) => {
+        const data = docSnap.data();
+        if (!data) return;
+        const name = (data.name || '').trim();
+        if (!name) return;
 
-    const localUsers: Array<{
-      id: string;
-      name: string;
-      role: string;
-      team?: string;
-      teamName?: string;
-      assignedTeams?: string[];
-      supervisorId?: string | null;
-    }> = [];
-
-    // Directorio de usuarios de TI
-    if (checkinState.userPermissionsDirectory) {
-      Object.values(checkinState.userPermissionsDirectory).forEach((u) => {
-        localUsers.push({
-          id: u.id,
-          name: u.name,
-          role: String(u.role || ''),
-          team: u.team,
-          assignedTeams: u.assignedTeams,
+        teams.push({
+          id: docSnap.id,
+          name,
+          code: data.code || generateTeamCode(name),
+          leaderId: data.leaderId || '',
+          leaderName: data.leaderName || '',
+          leaderRole: data.leaderRole || 'Supervisor',
+          memberIds: Array.isArray(data.memberIds) ? data.memberIds : [],
+          status: data.status === 'inactive' ? 'inactive' : 'active',
+          description: data.description || '',
+          parentLeaderId: data.parentLeaderId || '',
+          createdAt: data.createdAt || new Date().toISOString(),
+          updatedAt: data.updatedAt || new Date().toISOString(),
         });
       });
-    }
-
-    // Miembros de Rayoner
-    if (rayonerState.teamMembers) {
-      rayonerState.teamMembers.forEach((m) => {
-        localUsers.push({
-          id: m.id,
-          name: m.name,
-          role: String(m.role || ''),
-          team: m.team,
-          supervisorId: m.supervisor_id || m.supervisorId || null,
-        });
-      });
-    }
-
-    localUsers.forEach((u) => {
-      const rawTeams: string[] = [];
-      if (u.team) rawTeams.push(u.team);
-      if (u.teamName) rawTeams.push(u.teamName);
-      if (Array.isArray(u.assignedTeams)) {
-        u.assignedTeams.forEach((t) => rawTeams.push(t));
-      }
-
-      rawTeams.forEach((tName) => {
-        const cleanName = tName.trim();
-        if (!cleanName || cleanName.toLowerCase().includes('ti root')) return;
-        const key = cleanName.toLowerCase();
-
-        if (!teamsMap.has(key)) {
-          const isLeader = ['supervisor', 'gerente', 'socio'].includes(u.role.toLowerCase());
-          const newTeam: Team = {
-            id: cleanName === 'Equipo Prueba' ? 'team-prueba-01' : `team_local_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-            name: cleanName,
-            code: cleanName === 'Equipo Prueba' ? 'EQ-PRU-01' : generateTeamCode(cleanName, teamsMap.size + 1),
-            leaderId: isLeader ? u.id : 'admin-99',
-            leaderName: isLeader ? u.name : 'Supervisor Prueba',
-            leaderRole: isLeader ? u.role : 'Supervisor',
-            memberIds: isLeader ? [] : [u.id],
-            status: 'active',
-            description: `Equipo sincronizado desde almacén operativo (${cleanName})`,
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-          };
-
-          teamsMap.set(key, newTeam);
-          console.log(`[teamService] Equipo detectado en almacén local y consolidado: "${cleanName}" (${newTeam.code})`);
-          saveTeamToFirestore(newTeam).catch(console.warn);
-        }
-      });
+      return teams;
     });
+
+    const teamsFromFirestore = await withTimeout(fetchTeamsPromise, 2500, []);
+    console.log(
+      `[teamService] Colección 'teams' de Firestore devolvió ${teamsFromFirestore.length} equipos como única fuente de verdad:`,
+      teamsFromFirestore.map((t) => `${t.name} (${t.code})`)
+    );
+
+    return teamsFromFirestore;
   } catch (err) {
-    console.warn('[teamService] Error al incorporar almacén local de equipos:', err);
+    console.warn('[teamService] Error al consultar colección "teams":', err);
+    return [];
   }
-
-  // 4. Garantía Absoluta de "Equipo Prueba"
-  if (!teamsMap.has('equipo prueba')) {
-    const equipoPrueba: Team = {
-      id: 'team-prueba-01',
-      name: 'Equipo Prueba',
-      code: 'EQ-PRU-01',
-      leaderId: 'admin-99',
-      leaderName: 'Supervisor Prueba',
-      leaderRole: 'Supervisor',
-      memberIds: ['usr-ana'],
-      status: 'active',
-      description: 'Equipo de operaciones y entorno de pruebas',
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-    teamsMap.set('equipo prueba', equipoPrueba);
-    saveTeamToFirestore(equipoPrueba).catch(console.warn);
-    console.log('[teamService] "Equipo Prueba" inyectado y persistido garantizado.');
-  }
-
-  const result = Array.from(teamsMap.values());
-  console.log(`[teamService] Total de equipos consolidados: ${result.length}`, result.map((t) => `${t.name} (${t.code})`));
-  return result;
 }
 
 /**
@@ -314,17 +146,167 @@ export async function saveTeamToFirestore(team: Team): Promise<boolean> {
 }
 
 /**
- * Elimina un equipo en Firestore
+ * Eliminación en cascada definitiva de un equipo:
+ * 1. Borra el documento en la colección 'teams' de Firestore con deleteDoc / writeBatch.
+ * 2. Limpia e inhabilita a los usuarios vinculados en 'users' (teamId: null, teamName: 'Sin equipo asignado', status: 'inactive').
+ * 3. Si un usuario de RH tiene asignación múltiple, retira únicamente el equipo eliminado; si queda con 0 equipos, se inhabilita.
+ * 4. Actualiza inmediatamente el estado en memoria de los stores locales.
  */
-export async function deleteTeamFromFirestore(teamId: string): Promise<boolean> {
-  if (!isFirebaseConfigured() || !db) return false;
+export async function cascadeDeleteTeam(
+  teamId: string,
+  teamName?: string
+): Promise<{ success: boolean; affectedUsersCount: number }> {
+  let affectedUsersCount = 0;
+  const targetName = (teamName || '').trim().toLowerCase();
+
+  // 1. Sincronización en almacén local de Zustand (inmediato)
+  try {
+    const checkinState = useCheckinStore.getState();
+    if (typeof checkinState.disassociateTeamFromUsers === 'function') {
+      checkinState.disassociateTeamFromUsers(teamId, teamName);
+    }
+
+    const rayonerState = useRayonerStore.getState();
+    if (rayonerState.teamMembers) {
+      const updatedMembers = rayonerState.teamMembers.map((m) => {
+        const mTeam = (m.team || '').trim().toLowerCase();
+        if (mTeam === targetName || (m as any).teamId === teamId) {
+          return {
+            ...m,
+            team: 'Sin equipo asignado',
+            teamId: undefined,
+            status: 'inactive' as const,
+          };
+        }
+        return m;
+      });
+      useRayonerStore.setState({ teamMembers: updatedMembers });
+    }
+  } catch (err) {
+    console.warn('[teamService] Error al limpiar almacén local en cascada:', err);
+  }
+
+  // 2. Transacción por lotes (writeBatch) en Firestore
+  const firestore = db;
+  if (!isFirebaseConfigured() || !firestore) {
+    return { success: true, affectedUsersCount };
+  }
 
   try {
-    const teamRef = doc(db, 'teams', teamId);
-    const deletePromise = deleteDoc(teamRef).then(() => true);
-    return await withTimeout(deletePromise, 2000, false);
+    const batch = writeBatch(firestore);
+
+    // Acción A: Borrado físico del equipo en la colección 'teams'
+    const teamDocRef = doc(firestore, 'teams', teamId);
+    batch.delete(teamDocRef);
+
+    // Acción B: Buscar y actualizar usuarios vinculados en la colección 'users'
+    const usersCollection = collection(firestore, 'users');
+    const userSnapshots = await withTimeout(getDocs(usersCollection), 2500, null);
+
+    if (userSnapshots && !userSnapshots.empty) {
+      userSnapshots.forEach((uDoc) => {
+        const data = uDoc.data();
+        if (!data) return;
+
+        // Excluir de inhabilitación al usuario TI Root / administradores maestros
+        const userRole = String(data.role || '').toLowerCase();
+        const userEmail = String(data.email || '').toLowerCase();
+        if (
+          userRole === 'ti' ||
+          data.isRoot === true ||
+          data.canManageSystemRBAC === true ||
+          userEmail.includes('ti.') ||
+          userEmail === 'admin@bytewise.mx'
+        ) {
+          return;
+        }
+
+        const uTeamId = data.teamId;
+        const uTeam = (data.team || '').trim().toLowerCase();
+        const uTeamName = (data.teamName || '').trim().toLowerCase();
+        const uEquipo = (data.equipo || '').trim().toLowerCase();
+        const uAssigned = Array.isArray(data.assignedTeams) ? data.assignedTeams : [];
+
+        const isDirectMatch =
+          uTeamId === teamId ||
+          (targetName && (uTeam === targetName || uTeamName === targetName || uEquipo === targetName));
+
+        const isInAssignedTeams = uAssigned.some(
+          (t: string) => t === teamId || (targetName && t.trim().toLowerCase() === targetName)
+        );
+
+        if (isDirectMatch || isInAssignedTeams) {
+          affectedUsersCount++;
+          const userRef = doc(firestore, 'users', uDoc.id);
+
+          // Si el usuario tiene múltiples equipos asignados (ej. rol RH)
+          if (uAssigned.length > 0) {
+            const remainingTeams = uAssigned.filter(
+              (t: string) => t !== teamId && (!targetName || t.trim().toLowerCase() !== targetName)
+            );
+
+            if (remainingTeams.length > 0) {
+              // Sigue activo con los equipos restantes
+              const nextTeamName = remainingTeams[0];
+              batch.update(userRef, {
+                assignedTeams: remainingTeams,
+                team: isDirectMatch ? nextTeamName : (data.team || nextTeamName),
+                teamName: isDirectMatch ? nextTeamName : (data.teamName || nextTeamName),
+                teamId: isDirectMatch ? null : (data.teamId || null),
+                updatedAt: new Date().toISOString(),
+              });
+            } else {
+              // Se quedó con 0 equipos -> Inhabilitado
+              batch.update(userRef, {
+                teamId: null,
+                teamName: 'Sin equipo asignado',
+                team: 'Sin equipo asignado',
+                equipo: 'Sin equipo asignado',
+                assignedTeams: [],
+                status: 'inactive',
+                isActive: false,
+                updatedAt: new Date().toISOString(),
+              });
+            }
+          } else {
+            // Usuario estándar (Colaborador, Supervisor, Gerente, Socio) -> Inhabilitado
+            batch.update(userRef, {
+              teamId: null,
+              teamName: 'Sin equipo asignado',
+              team: 'Sin equipo asignado',
+              equipo: 'Sin equipo asignado',
+              assignedTeams: [],
+              status: 'inactive',
+              isActive: false,
+              updatedAt: new Date().toISOString(),
+            });
+          }
+        }
+      });
+    }
+
+    await batch.commit();
+    console.log(
+      `[teamService] Eliminación en cascada exitosa de equipo "${teamName || teamId}". Usuarios inhabilitados/actualizados: ${affectedUsersCount}`
+    );
+
+    return { success: true, affectedUsersCount };
   } catch (err) {
-    console.warn('[teamService] Error al eliminar equipo en Firestore:', err);
-    return false;
+    console.error('[teamService] Error durante la eliminación en cascada:', err);
+    // Fallback de borrado individual si falla el lote
+    try {
+      await deleteDoc(doc(firestore, 'teams', teamId));
+    } catch (singleErr) {
+      console.warn('[teamService] Error en deleteDoc fallback:', singleErr);
+    }
+    return { success: false, affectedUsersCount };
   }
+}
+
+/**
+ * Elimina un equipo en Firestore (manteniendo retrocompatibilidad)
+ */
+export async function deleteTeamFromFirestore(teamId: string, teamName?: string): Promise<boolean> {
+  const result = await cascadeDeleteTeam(teamId, teamName);
+  return result.success;
 }

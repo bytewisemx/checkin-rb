@@ -50,6 +50,8 @@ export interface User {
   teamId?: string;
   assignedTeams?: string[];
   status?: 'active' | 'inactive';
+  isActive?: boolean;
+  accessRevoked?: boolean;
   isProfileComplete: boolean;
   expectedEntryTime: string;
   photoURL?: string | null;
@@ -206,6 +208,10 @@ interface CheckinState {
       supervisorName?: string;
       supervisorCode?: string;
       team?: string;
+      teamId?: string | null;
+      assignedTeams?: string[];
+      status?: 'active' | 'inactive';
+      isActive?: boolean;
       roleTitle?: string;
       role?: UserRole | 'employee' | 'supervisor';
       created_by_ti_id?: string | null;
@@ -230,6 +236,7 @@ interface CheckinState {
   // Gestión granular de permisos y estructura jerárquica por usuario (Panel TI)
   updateUserPermissions: (userId: string, permissions: Partial<UserGranularPermissions>) => void;
   updateUserAssignedTeams: (userId: string, assignedTeams: string[]) => void;
+  assignUserTeam: (userId: string, teamName: string, teamId?: string) => void;
   changeUserRole: (userId: string, newRole: UserRole) => void;
   getEffectiveUserPermissions: (userId?: string) => UserGranularPermissions;
   updateUserModules: (
@@ -239,6 +246,7 @@ interface CheckinState {
   ) => Promise<void>;
   getEffectiveUserModules: (userId?: string) => UserModules;
   toggleUserAccessRevoked: (targetUserId: string) => void;
+  disassociateTeamFromUsers: (teamId: string, teamName?: string) => void;
   updateRHAllowedTeams: (rhUserId: string, supervisorIds: string[]) => void;
   reassignEmployeeSupervisor: (employeeId: string, newSupervisorId: string) => void;
 
@@ -616,6 +624,59 @@ export const useCheckinStore = create<CheckinState>()(
         broadcastPermissionsUpdate({ userId, assignedTeams });
       },
 
+      assignUserTeam: (userId, teamName, teamId) => {
+        const { userPermissionsDirectory, mockEmployeesData, user } = get();
+        const existing = userPermissionsDirectory[userId];
+        const hasTeam = Boolean(teamName && teamName.trim() !== '' && teamName !== 'Sin equipo asignado');
+
+        const updatedEntry = existing
+          ? {
+              ...existing,
+              team: teamName || 'Sin equipo asignado',
+              teamId: teamId || undefined,
+              accessRevoked: !hasTeam,
+            }
+          : undefined;
+
+        const nextDirectory = updatedEntry
+          ? { ...userPermissionsDirectory, [userId]: updatedEntry }
+          : userPermissionsDirectory;
+
+        const nextMockEmployees = mockEmployeesData.map((emp) =>
+          emp.id === userId
+            ? {
+                ...emp,
+                team: teamName || 'Sin equipo asignado',
+                status: hasTeam ? ('active' as const) : ('inactive' as const),
+              }
+            : emp
+        );
+
+        let nextUser = user;
+        if (user && user.id === userId) {
+          nextUser = {
+            ...user,
+            team: teamName || 'Sin equipo asignado',
+            teamId: teamId || undefined,
+            status: hasTeam ? 'active' : 'inactive',
+            isActive: hasTeam,
+            accessRevoked: !hasTeam,
+          };
+        }
+
+        set({
+          userPermissionsDirectory: nextDirectory,
+          mockEmployeesData: nextMockEmployees,
+          user: nextUser,
+        });
+
+        broadcastPermissionsUpdate({
+          userId,
+          team: teamName || 'Sin equipo asignado',
+          accessRevoked: !hasTeam,
+        });
+      },
+
       changeUserRole: (userId, newRole) => {
         const { userPermissionsDirectory, user, mockEmployeesData } = get();
         const existing = userPermissionsDirectory[userId];
@@ -784,6 +845,116 @@ export const useCheckinStore = create<CheckinState>()(
           userId: targetUserId,
           accessRevoked: nextRevoked,
           modules: nextModules,
+        });
+      },
+
+      disassociateTeamFromUsers: (teamId, teamName) => {
+        const { userPermissionsDirectory, mockEmployeesData, user } = get();
+        const targetClean = (teamName || '').trim().toLowerCase();
+
+        // 1. Limpiar en userPermissionsDirectory
+        const nextDirectory = { ...userPermissionsDirectory };
+        let dirChanged = false;
+
+        Object.keys(nextDirectory).forEach((uid) => {
+          const entry = nextDirectory[uid];
+          const entryRole = normalizeRole(entry.role);
+          if (entryRole === 'TI' || uid === 'ti-root-01') return;
+
+          const uTeam = (entry.team || '').trim().toLowerCase();
+          const uTeamId = entry.teamId;
+          const uAssigned = entry.assignedTeams || [];
+
+          const isDirectMatch = uTeamId === teamId || (targetClean && uTeam === targetClean);
+          const isInAssigned = uAssigned.some(
+            (t) => t === teamId || (targetClean && t.trim().toLowerCase() === targetClean)
+          );
+
+          if (isDirectMatch || isInAssigned) {
+            dirChanged = true;
+            if (uAssigned.length > 0) {
+              const remaining = uAssigned.filter(
+                (t) => t !== teamId && (!targetClean || t.trim().toLowerCase() !== targetClean)
+              );
+              const isNowInactive = remaining.length === 0;
+              nextDirectory[uid] = {
+                ...entry,
+                assignedTeams: remaining,
+                team: isNowInactive ? 'Sin equipo asignado' : isDirectMatch ? remaining[0] : entry.team,
+                teamId: isNowInactive ? undefined : entry.teamId === teamId ? undefined : entry.teamId,
+                accessRevoked: isNowInactive ? true : entry.accessRevoked,
+              };
+            } else {
+              nextDirectory[uid] = {
+                ...entry,
+                team: 'Sin equipo asignado',
+                teamId: undefined,
+                assignedTeams: [],
+                accessRevoked: true,
+              };
+            }
+          }
+        });
+
+        // 2. Limpiar en mockEmployeesData
+        const nextMockEmployees = mockEmployeesData.map((emp) => {
+          const empTeam = (emp.team || '').trim().toLowerCase();
+          if (empTeam === targetClean || (emp as any).teamId === teamId) {
+            return {
+              ...emp,
+              team: 'Sin equipo asignado',
+              status: 'inactive' as const,
+              assignedTeams: [],
+            };
+          }
+          return emp;
+        });
+
+        // 3. Limpiar en sesión activa si coincide
+        let nextUser = user;
+        if (user) {
+          const userRole = normalizeRole(user.role);
+          if (userRole !== 'TI') {
+            const uTeam = (user.team || '').trim().toLowerCase();
+            const uTeamId = user.teamId;
+            const uAssigned = user.assignedTeams || [];
+            const isDirectMatch = uTeamId === teamId || (targetClean && uTeam === targetClean);
+            const isInAssigned = uAssigned.some(
+              (t) => t === teamId || (targetClean && t.trim().toLowerCase() === targetClean)
+            );
+
+            if (isDirectMatch || isInAssigned) {
+              if (uAssigned.length > 0) {
+                const remaining = uAssigned.filter(
+                  (t) => t !== teamId && (!targetClean || t.trim().toLowerCase() !== targetClean)
+                );
+                const isNowInactive = remaining.length === 0;
+                nextUser = {
+                  ...user,
+                  assignedTeams: remaining,
+                  team: isNowInactive ? 'Sin equipo asignado' : isDirectMatch ? remaining[0] : user.team,
+                  teamId: isNowInactive ? undefined : user.teamId,
+                  status: isNowInactive ? 'inactive' : user.status,
+                  isActive: !isNowInactive,
+                };
+              } else {
+                nextUser = {
+                  ...user,
+                  team: 'Sin equipo asignado',
+                  teamId: undefined,
+                  assignedTeams: [],
+                  status: 'inactive',
+                  isActive: false,
+                };
+              }
+            }
+          }
+        }
+
+        set({
+          userPermissionsDirectory: dirChanged ? nextDirectory : userPermissionsDirectory,
+          mockEmployeesData: nextMockEmployees,
+          user: nextUser,
         });
       },
 
@@ -1267,7 +1438,7 @@ export const useCheckinStore = create<CheckinState>()(
           invitationData?.team ||
           existingEmp?.team ||
           existingDir?.team ||
-          (assignedRole === 'Supervisor' ? 'Supervisión General' : 'Auditoría Fiscal');
+          (assignedRole === 'TI' ? 'TI Root' : 'Sin equipo asignado');
 
         const resolvedSupervisorId =
           assignedRole === 'Colaborador'
@@ -1283,7 +1454,19 @@ export const useCheckinStore = create<CheckinState>()(
         const resolvedPermissions =
           existingDir?.permissions || existingEmp?.permissions || defaultPerms;
         const resolvedAssignedTeams =
-          existingDir?.assignedTeams || existingEmp?.assignedTeams || (assignedRole === 'Gerente' || assignedRole === 'RH' ? [resolvedTeam] : undefined);
+          invitationData?.assignedTeams ||
+          existingDir?.assignedTeams ||
+          existingEmp?.assignedTeams ||
+          (assignedRole === 'Gerente' || assignedRole === 'RH' ? (resolvedTeam !== 'Sin equipo asignado' ? [resolvedTeam] : []) : undefined);
+
+        const resolvedStatus: 'active' | 'inactive' =
+          invitationData?.status ||
+          existingEmp?.status ||
+          (existingDir?.accessRevoked ? 'inactive' : 'active');
+        const resolvedIsActive =
+          invitationData?.isActive !== undefined
+            ? invitationData.isActive
+            : resolvedStatus !== 'inactive' && !existingDir?.accessRevoked;
 
         const updatedEmp: MockEmployee = {
           id: fbUser.uid,
@@ -1293,7 +1476,7 @@ export const useCheckinStore = create<CheckinState>()(
           team: resolvedTeam,
           assignedTeams: resolvedAssignedTeams,
           permissions: resolvedPermissions,
-          status: 'active',
+          status: resolvedStatus,
           isProfileComplete,
           workedMinutesToday: existingEmp?.workedMinutesToday || 0,
           history: existingEmp?.history || [],
@@ -1344,7 +1527,11 @@ export const useCheckinStore = create<CheckinState>()(
             verified: true,
             isProfileComplete,
             team: updatedEmp.team,
+            teamId: (invitationData as any)?.teamId,
             assignedTeams: resolvedAssignedTeams,
+            status: resolvedStatus,
+            isActive: resolvedIsActive,
+            accessRevoked: !resolvedIsActive,
             expectedEntryTime: '09:00',
             supervisor_id: updatedEmp.supervisor_id,
             supervisorId: updatedEmp.supervisor_id || undefined,

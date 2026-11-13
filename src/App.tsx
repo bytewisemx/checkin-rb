@@ -20,6 +20,7 @@ import { KanbanBoard } from './features/projects/KanbanBoard';
 import { ToastContainer } from './components/common/ToastContainer';
 import { GlobalHeader } from './components/common/GlobalHeader';
 import { CheckinLoader } from './components/common/CheckinLoader';
+import { PendingTeamAssignmentNotice } from './components/common/PendingTeamAssignmentNotice';
 
 interface EmployeeDashboardProps {
   initialTab?: 'checkin' | 'projects';
@@ -149,17 +150,41 @@ function MainLayout({
 }: MainLayoutProps = {}) {
   const { user } = useCheckinStore();
   const normalizedRole = normalizeRole(user?.role);
+  const isTi = normalizedRole === 'TI';
+
+  const hasNoTeam =
+    normalizedRole === 'RH'
+      ? (!user?.assignedTeams || user.assignedTeams.length === 0) &&
+        (!user?.team || user.team === 'Sin equipo asignado' || user.team === 'Sin equipo')
+      : !user?.team ||
+        user.team.trim() === '' ||
+        user.team === 'Sin equipo asignado' ||
+        user.team === 'Sin equipo' ||
+        user.team === 'Sin equipo disponible';
+
+  const isInactiveByPolicy =
+    !isTi &&
+    (user?.status === 'inactive' ||
+      user?.isActive === false ||
+      (user as any)?.accessRevoked === true ||
+      hasNoTeam);
 
   return (
     <div className="min-h-screen bg-[#F8FAFC] dark:bg-[#090E17] text-slate-900 dark:text-slate-200">
       <GlobalHeader />
 
-      {normalizedRole === 'TI' && <TIDashboard initialTab={initialTiTab} />}
-      {(normalizedRole === 'Socio' || normalizedRole === 'Gerente' || normalizedRole === 'Supervisor') && (
-        <SupervisorDashboard initialTab={initialSupervisorTab} />
+      {isInactiveByPolicy ? (
+        <PendingTeamAssignmentNotice />
+      ) : (
+        <>
+          {normalizedRole === 'TI' && <TIDashboard initialTab={initialTiTab} />}
+          {(normalizedRole === 'Socio' || normalizedRole === 'Gerente' || normalizedRole === 'Supervisor') && (
+            <SupervisorDashboard initialTab={initialSupervisorTab} />
+          )}
+          {normalizedRole === 'RH' && <RHDashboard />}
+          {normalizedRole === 'Colaborador' && <EmployeeDashboard initialTab={initialEmployeeTab} />}
+        </>
       )}
-      {normalizedRole === 'RH' && <RHDashboard />}
-      {normalizedRole === 'Colaborador' && <EmployeeDashboard initialTab={initialEmployeeTab} />}
     </div>
   );
 }
@@ -228,6 +253,28 @@ function ModuleProtectedRoute({
   if (!isProfileComplete) return <Navigate to="/register" replace />;
 
   const role = normalizeRole(user?.role);
+  const isTi = role === 'TI';
+  const hasNoTeam =
+    role === 'RH'
+      ? (!user?.assignedTeams || user.assignedTeams.length === 0) &&
+        (!user?.team || user.team === 'Sin equipo asignado' || user.team === 'Sin equipo')
+      : !user?.team ||
+        user.team.trim() === '' ||
+        user.team === 'Sin equipo asignado' ||
+        user.team === 'Sin equipo' ||
+        user.team === 'Sin equipo disponible';
+
+  const isInactiveByPolicy =
+    !isTi &&
+    (user?.status === 'inactive' ||
+      user?.isActive === false ||
+      (user as any)?.accessRevoked === true ||
+      hasNoTeam);
+
+  if (isInactiveByPolicy) {
+    return <Navigate to="/" replace />;
+  }
+
   if (blockRH && role === 'RH') {
     return <Navigate to="/" replace />;
   }
