@@ -83,24 +83,26 @@ export function KanbanBoard() {
   const [isExtraordinaryModalOpen, setIsExtraordinaryModalOpen] = useState(false);
 
   // Identificador de usuario activo
-  const currentUserId = user?.id || 'usr-ana';
+  const currentUserId = user?.id || '';
 
   // Perfil del colaborador en Rayoner
   const currentMember = useMemo(() => {
+    if (!user) return null;
     return teamMembers.find(
-      m => m.id === currentUserId || m.email.toLowerCase() === user?.email.toLowerCase()
-    ) || teamMembers[0] || null;
+      m => m.id === currentUserId || (user.email && m.email.toLowerCase() === user.email.toLowerCase())
+    ) || null;
   }, [teamMembers, currentUserId, user]);
 
   // Tareas asignadas al usuario actual (vinculación real por assigned_to y assignments)
   const userAssignedTasks = useMemo(() => {
+    if (!currentUserId && !currentMember) return [];
     const userAssignments = assignments.filter(
-      a => a.userId === currentUserId || (currentMember && a.userId === currentMember.id)
+      a => (currentUserId && a.userId === currentUserId) || (currentMember && a.userId === currentMember.id)
     );
     const assignedTaskIds = new Set(userAssignments.map(a => a.taskId));
     return tasks.filter(
       t =>
-        t.assigned_to === currentUserId ||
+        (currentUserId && t.assigned_to === currentUserId) ||
         (currentMember && t.assigned_to === currentMember.id) ||
         assignedTaskIds.has(t.id)
     );
@@ -121,23 +123,26 @@ export function KanbanBoard() {
       }
     });
 
-    const list = clients.filter(c => clientIds.has(c.id) && c.id !== 'cli-extraordinario');
-    return list.length > 0 ? list : clients.filter(c => c.id !== 'cli-extraordinario');
+    return clients.filter(c => clientIds.has(c.id) && c.id !== 'cli-extraordinario');
   }, [clients, currentMember, userAssignedTasks, projects]);
 
   // Horas asignadas a una tarea específica para el colaborador
   const getTaskAllocatedHours = (taskId: string): number => {
     const asg = assignments.find(
-      a => a.taskId === taskId && (a.userId === currentUserId || a.userId === 'usr-ana')
+      a => a.taskId === taskId && (
+        (currentUserId && a.userId === currentUserId) || 
+        (currentMember && a.userId === currentMember.id)
+      )
     );
     return asg?.allocatedHours || 0;
   };
 
   // Horas reales invertidas en una tarea por el colaborador
   const getTaskUserActualHours = (taskId: string): number => {
-    const userKey = `${taskId}_${currentUserId}`;
-    const userAltKey = `${taskId}_usr-ana`;
-    return userTaskActualHours[userKey] || userTaskActualHours[userAltKey] || 0;
+    if (!currentUserId && !currentMember) return 0;
+    const userKey = currentUserId ? `${taskId}_${currentUserId}` : '';
+    const memberKey = currentMember ? `${taskId}_${currentMember.id}` : '';
+    return (userKey && userTaskActualHours[userKey]) || (memberKey && userTaskActualHours[memberKey]) || 0;
   };
 
   // Regla de Negocio: Clasificación efectiva de la columna según el estado del sistema
@@ -377,6 +382,26 @@ export function KanbanBoard() {
 
         </div>
 
+        {/* Mensaje amigable cuando el colaborador no tiene tareas asignadas */}
+        {userAssignedTasks.length === 0 && (
+          <div className="mb-4 p-4 bg-slate-50 border border-slate-200 rounded-lg text-slate-600 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <p className="text-xs font-semibold text-slate-800">
+                Aún no tienes proyectos o tareas asignadas
+              </p>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Tu tiempo se contabiliza como jornada general hasta que tu supervisor te asigne una actividad o crees una extraordinaria.
+              </p>
+            </div>
+            <button
+              onClick={() => setIsExtraordinaryModalOpen(true)}
+              className="px-3 py-1.5 text-xs font-semibold text-blue-700 bg-white border border-blue-200 hover:bg-blue-50 rounded-md transition-colors self-start sm:self-auto cursor-pointer"
+            >
+              + Tarea Extraordinaria
+            </button>
+          </div>
+        )}
+
         {/* 4 Columnas del Tablero Kanban */}
         <div className="flex-1 overflow-x-auto pb-4">
           <div className="flex space-x-6 items-start min-h-[550px] min-w-[1240px]">
@@ -420,7 +445,7 @@ export function KanbanBoard() {
                         : 0;
 
                       const isCurrentlyActive = activeWorkers.some(
-                        w => (w.userId === currentUserId || w.userId === 'usr-ana') && w.taskId === task.id
+                        w => ((currentUserId && w.userId === currentUserId) || (currentMember && w.userId === currentMember.id)) && w.taskId === task.id
                       );
 
                       return (

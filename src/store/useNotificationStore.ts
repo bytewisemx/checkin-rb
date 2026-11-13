@@ -50,40 +50,7 @@ interface NotificationState {
   clearAll: (userId?: string, role?: string, targetIds?: string[]) => void;
 }
 
-const INITIAL_NOTIFICATIONS: AppNotification[] = [
-  {
-    id: 'notif-1',
-    recipient_id: 'usr-ana',
-    sender_id: 'admin-99',
-    type: 'task_assigned',
-    title: 'Nueva Tarea Asignada',
-    message: 'Tu supervisor te asignó la tarea "1. Planificación Preliminar y Entendimiento del Negocio" en Auditoría Fiscal Anual 2026.',
-    timeAgo: 'Hace 15 min',
-    createdAt: Date.now() - 15 * 60 * 1000,
-    created_at: new Date(Date.now() - 15 * 60 * 1000).toISOString(),
-    read: false,
-    taskId: 'tsk-plan',
-    taskTitle: '1. Planificación Preliminar y Entendimiento del Negocio',
-    projectName: 'Grupo Baluarte S.A. de C.V. • Auditoría Fiscal Anual 2026',
-    authorName: 'Supervisor Prueba',
-  },
-  {
-    id: 'notif-2',
-    recipient_id: 'admin-99',
-    sender_id: 'usr-ana',
-    type: 'task_completed',
-    title: 'Tarea Finalizada por Empleado',
-    message: 'Colaborador Prueba completó la tarea "Diagnóstico de Activos y Empresas Familiares".',
-    timeAgo: 'Hace 40 min',
-    createdAt: Date.now() - 40 * 60 * 1000,
-    created_at: new Date(Date.now() - 40 * 60 * 1000).toISOString(),
-    read: false,
-    taskId: 'tsk-patr-1',
-    taskTitle: 'Diagnóstico de Activos y Empresas Familiares',
-    projectName: 'Dra. Patricia Montes • Planeación Patrimonial y Fiscal',
-    authorName: 'Colaborador Prueba',
-  },
-];
+const INITIAL_NOTIFICATIONS: AppNotification[] = [];
 
 // Canal en tiempo real para sincronizar notificaciones bidireccionales entre pestañas
 const notifChannel =

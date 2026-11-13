@@ -12,7 +12,8 @@ import { UserPermissionsTable } from './UserPermissionsTable';
 import { ExecutiveAuditLogView } from '../audit/ExecutiveAuditLogView';
 import { AuditHierarchyView } from '../hierarchy/AuditHierarchyView';
 import { normalizeCorporateDatabase } from '../../services/dataNormalizationService';
-import { Send, Loader2, X, RefreshCw } from 'lucide-react';
+import { executeCleanSlateAdministrativeReset } from '../../services/adminResetService';
+import { Send, Loader2, X, RefreshCw, Trash2, AlertTriangle } from 'lucide-react';
 
 export interface TIDashboardProps {
   initialTab?: 'invitations' | 'users_permissions' | 'audit_accounts' | 'rbac_matrix' | 'supervisor_view' | 'audit_logs';
@@ -122,6 +123,31 @@ export function TIDashboard({ initialTab = 'users_permissions' }: TIDashboardPro
       addToast('Error al normalizar la base de datos.', 'error');
     } finally {
       setIsNormalizing(false);
+    }
+  };
+
+  const [isCleanSlateModalOpen, setIsCleanSlateModalOpen] = useState(false);
+  const [isResetting, setIsResetting] = useState(false);
+
+  const handleExecuteCleanSlate = async () => {
+    setIsResetting(true);
+    try {
+      const res = await executeCleanSlateAdministrativeReset();
+      await fetchTeams();
+      if (res.success) {
+        addToast(
+          `Reinicio Limpio exitoso: Base de datos purgada. "Equipo Prueba" activo y 5 cuentas base configuradas.`,
+          'success'
+        );
+        setIsCleanSlateModalOpen(false);
+      } else {
+        addToast(`Error en el reinicio administrativo: ${res.error || 'Fallo general'}`, 'error');
+      }
+    } catch (err: any) {
+      console.error('Error al ejecutar Clean Slate:', err);
+      addToast(`Error al ejecutar el reinicio: ${err?.message || 'Error desconocido'}`, 'error');
+    } finally {
+      setIsResetting(false);
     }
   };
 
@@ -297,12 +323,22 @@ export function TIDashboard({ initialTab = 'users_permissions' }: TIDashboardPro
             <button
               type="button"
               onClick={handleNormalizeDatabase}
-              disabled={isNormalizing}
+              disabled={isNormalizing || isResetting}
               className="px-2.5 py-1 text-xs font-semibold text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-800 hover:bg-blue-100 dark:hover:bg-blue-900/60 rounded-lg transition-colors cursor-pointer flex items-center gap-1.5 shadow-xs"
               title="Normaliza la colección 'teams' dejando únicamente 'Equipo Prueba' y sincroniza a todos los usuarios"
             >
               <RefreshCw className={`w-3 h-3 ${isNormalizing ? 'animate-spin' : ''}`} />
-              <span>{isNormalizing ? 'Normalizando...' : 'Sincronizar y Normalizar Firestore'}</span>
+              <span>{isNormalizing ? 'Normalizando...' : 'Sincronizar y Normalizar'}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsCleanSlateModalOpen(true)}
+              disabled={isResetting || isNormalizing}
+              className="px-2.5 py-1 text-xs font-semibold text-rose-700 dark:text-rose-300 bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-800 hover:bg-rose-100 dark:hover:bg-rose-900/60 rounded-lg transition-colors cursor-pointer flex items-center gap-1.5 shadow-xs"
+              title="Reinicio Limpio (Clean Slate): Vacía colecciones operativas y deja solo 5 cuentas oficiales y Equipo Prueba"
+            >
+              <Trash2 className="w-3 h-3 text-rose-600 dark:text-rose-400" />
+              <span>Reinicio Limpio (Clean Slate)</span>
             </button>
           </div>
           <p className="text-sm text-slate-500 mt-0.5">
@@ -788,6 +824,83 @@ export function TIDashboard({ initialTab = 'users_permissions' }: TIDashboardPro
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Confirmación para Reinicio Limpio (Clean Slate) */}
+      {isCleanSlateModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-fade-in">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 dark:border-slate-800 space-y-4">
+            <div className="flex items-start gap-3">
+              <div className="p-2.5 bg-rose-100 dark:bg-rose-950/60 rounded-xl text-rose-600 dark:text-rose-400">
+                <AlertTriangle className="w-6 h-6" />
+              </div>
+              <div className="flex-1">
+                <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                  Reinicio Limpio de Base de Datos (Clean Slate)
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                  Esta acción purga todos los datos ficticios y reinicia el sistema a su estado puro inicial.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => !isResetting && setIsCleanSlateModalOpen(false)}
+                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1 rounded-lg"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-2 text-xs text-slate-600 dark:text-slate-300 bg-slate-50 dark:bg-slate-800/40 p-3.5 rounded-xl border border-slate-200/80 dark:border-slate-700/80">
+              <p className="font-semibold text-slate-800 dark:text-slate-200">
+                Operaciones que se ejecutarán:
+              </p>
+              <ul className="list-disc list-inside space-y-1 text-slate-500 dark:text-slate-400">
+                <li>
+                  <strong>Vaciar colecciones operativas:</strong> tasks, projects, clients, checkins, attendance, time_logs, invitations, audit_logs y active_timers.
+                </li>
+                <li>
+                  <strong>Colección teams:</strong> Preservar exclusivamente el documento <code>team-prueba-01</code> ("Equipo Prueba").
+                </li>
+                <li>
+                  <strong>Colección users:</strong> Configurar únicamente las 5 cuentas oficiales (TI, Gerente, Supervisor, Colaborador y RH) eliminando cualquier usuario residual.
+                </li>
+                <li>
+                  <strong>Almacenamiento local:</strong> Limpiar cachés y cronómetros de tareas en el navegador.
+                </li>
+              </ul>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+              <button
+                type="button"
+                onClick={() => setIsCleanSlateModalOpen(false)}
+                disabled={isResetting}
+                className="px-3.5 py-1.5 text-xs font-semibold text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg cursor-pointer transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleExecuteCleanSlate}
+                disabled={isResetting}
+                className="px-4 py-1.5 text-xs font-semibold text-white bg-rose-600 hover:bg-rose-700 rounded-lg shadow-sm cursor-pointer disabled:opacity-50 transition-colors flex items-center gap-2"
+              >
+                {isResetting ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    <span>Purgando Base de Datos...</span>
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Confirmar Reinicio Limpio</span>
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       )}

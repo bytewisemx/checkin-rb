@@ -162,8 +162,9 @@ export interface MockEmployee {
   id: string;
   email: string;
   name: string;
-  role?: UserRole;
+  role?: UserRole | string;
   team: string;
+  teamId?: string | null;
   assignedTeams?: string[];
   permissions?: UserGranularPermissions;
   status: 'active' | 'inactive';
@@ -322,76 +323,28 @@ const getPastDateStr = (daysAgo: number) => {
   return d.toISOString().split('T')[0];
 };
 
-const generateMockHistory = (days: number): CheckinRecord[] => {
-  const history: CheckinRecord[] = [];
-  const now = Date.now();
-  const dayMs = 24 * 60 * 60 * 1000;
-
-  for (let i = 1; i <= days; i++) {
-    const d = new Date(now - i * dayMs);
-    if (d.getDay() === 0 || d.getDay() === 6) continue;
-
-    const isLate = Math.random() > 0.7;
-    const minutesLate = isLate ? Math.floor(Math.random() * 45) + 11 : 0;
-
-    const checkinDate = new Date(d);
-    checkinDate.setHours(9, isLate ? minutesLate : Math.floor(Math.random() * 9), 0, 0);
-
-    const checkoutDate = new Date(checkinDate);
-    const workedHours = 8 + Math.random() * 1.5;
-    checkoutDate.setHours(checkoutDate.getHours() + Math.floor(workedHours));
-    checkoutDate.setMinutes(Math.floor(Math.random() * 60));
-
-    const durationMins = Math.floor((checkoutDate.getTime() - checkinDate.getTime()) / 60000);
-
-    history.push({
-      id: `mock-r-${i}`,
-      date: checkinDate.toISOString().split('T')[0],
-      checkInTimeMs: checkinDate.getTime(),
-      checkOutTimeMs: checkoutDate.getTime(),
-      pauses: [],
-      location: { lat: 19.4326 + Math.random() * 0.01, lng: -99.1332 + Math.random() * 0.01 },
-      address: 'Av. Reforma, CDMX (Simulado)',
-      totalDurationMinutes: durationMins,
-      clientIp: '189.200.10.15',
-      isLate,
-      minutesLate,
-    });
-  }
-  return history;
-};
-
 const initialPermissionsDirectory: Record<string, ManagedUserPermissionEntry> = {
   'ti-root-01': {
     id: 'ti-root-01',
     name: 'TI Prueba',
     email: 'ti.root@russellbedford.mx',
     role: 'ti',
-    team: 'Equipo Prueba (TI Root)',
+    team: 'Sin equipo (Acceso Global)',
+    teamName: 'Sin equipo (Acceso Global)',
     permissions: getDefaultPermissionsForRole('ti'),
     modules: getDefaultModulesForRole('ti'),
     biometrics: null,
     accessRevoked: false,
-  },
-  'socio-01': {
-    id: 'socio-01',
-    name: 'Socio Director Prueba',
-    email: 'socio.prueba@russellbedford.mx',
-    role: 'socio',
-    team: 'Jefatura y Dirección de Práctica',
-    permissions: getDefaultPermissionsForRole('socio'),
-    modules: getDefaultModulesForRole('socio'),
-    biometrics: null,
-    accessRevoked: false,
-    created_by_ti_id: 'ti-root-01',
   },
   'gerente-01': {
     id: 'gerente-01',
     name: 'Gerente Prueba',
     email: 'gerente.prueba@russellbedford.mx',
     role: 'gerente',
-    team: 'Auditoría Fiscal',
-    assignedTeams: ['Auditoría Fiscal', 'Equipo Prueba'],
+    team: 'Equipo Prueba',
+    teamName: 'Equipo Prueba',
+    teamId: 'team-prueba-01',
+    assignedTeams: ['team-prueba-01'],
     permissions: getDefaultPermissionsForRole('gerente'),
     modules: getDefaultModulesForRole('gerente'),
     biometrics: null,
@@ -404,24 +357,12 @@ const initialPermissionsDirectory: Record<string, ManagedUserPermissionEntry> = 
     email: 'supervisor.prueba@russellbedford.mx',
     role: 'supervisor',
     team: 'Equipo Prueba',
+    teamName: 'Equipo Prueba',
+    teamId: 'team-prueba-01',
     permissions: getDefaultPermissionsForRole('supervisor'),
     modules: getDefaultModulesForRole('supervisor'),
     biometrics: null,
     accessRevoked: false,
-    created_by_ti_id: 'ti-root-01',
-  },
-  'rh-01': {
-    id: 'rh-01',
-    name: 'RH Prueba',
-    email: 'rh.prueba@russellbedford.mx',
-    role: 'rh',
-    team: 'Recursos Humanos',
-    assignedTeams: ['Equipo Prueba', 'Auditoría Fiscal'],
-    permissions: getDefaultPermissionsForRole('rh'),
-    modules: getDefaultModulesForRole('rh'),
-    biometrics: null,
-    accessRevoked: false,
-    allowedSupervisorIds: ['admin-99'],
     created_by_ti_id: 'ti-root-01',
   },
   'usr-ana': {
@@ -430,11 +371,29 @@ const initialPermissionsDirectory: Record<string, ManagedUserPermissionEntry> = 
     email: 'colaborador.prueba@russellbedford.mx',
     role: 'colaborador',
     team: 'Equipo Prueba',
+    teamName: 'Equipo Prueba',
+    teamId: 'team-prueba-01',
     permissions: getDefaultPermissionsForRole('colaborador'),
     modules: getDefaultModulesForRole('colaborador'),
     biometrics: null,
     accessRevoked: false,
     supervisor_id: 'admin-99',
+  },
+  'rh-01': {
+    id: 'rh-01',
+    name: 'RH Prueba',
+    email: 'rh.prueba@russellbedford.mx',
+    role: 'rh',
+    team: 'Equipo Prueba',
+    teamName: 'Equipo Prueba',
+    teamId: 'team-prueba-01',
+    assignedTeams: ['team-prueba-01'],
+    permissions: getDefaultPermissionsForRole('rh'),
+    modules: getDefaultModulesForRole('rh'),
+    biometrics: null,
+    accessRevoked: false,
+    allowedSupervisorIds: ['admin-99'],
+    created_by_ti_id: 'ti-root-01',
   },
 };
 
@@ -442,16 +401,74 @@ const initialMockEmployees: MockEmployee[] = [
   {
     id: 'usr-ana',
     email: 'colaborador.prueba@russellbedford.mx',
-    name: 'Empleado Prueba',
+    name: 'Colaborador Prueba',
     role: 'Empleado',
     team: 'Equipo Prueba',
+    teamId: 'team-prueba-01',
     status: 'active',
     isProfileComplete: true,
-    workedMinutesToday: 405,
+    workedMinutesToday: 0,
     expectedEntryTime: '09:00',
     supervisor_id: 'admin-99',
     modules: getDefaultModulesForRole('Empleado'),
-    history: generateMockHistory(20),
+    history: [],
+  },
+  {
+    id: 'admin-99',
+    email: 'supervisor.prueba@russellbedford.mx',
+    name: 'Supervisor Prueba',
+    role: 'Supervisor',
+    team: 'Equipo Prueba',
+    teamId: 'team-prueba-01',
+    status: 'active',
+    isProfileComplete: true,
+    workedMinutesToday: 0,
+    expectedEntryTime: '09:00',
+    modules: getDefaultModulesForRole('Supervisor'),
+    history: [],
+  },
+  {
+    id: 'gerente-01',
+    email: 'gerente.prueba@russellbedford.mx',
+    name: 'Gerente Prueba',
+    role: 'Gerente',
+    team: 'Equipo Prueba',
+    teamId: 'team-prueba-01',
+    assignedTeams: ['team-prueba-01'],
+    status: 'active',
+    isProfileComplete: true,
+    workedMinutesToday: 0,
+    expectedEntryTime: '09:00',
+    modules: getDefaultModulesForRole('Gerente'),
+    history: [],
+  },
+  {
+    id: 'rh-01',
+    email: 'rh.prueba@russellbedford.mx',
+    name: 'RH Prueba',
+    role: 'RH',
+    team: 'Equipo Prueba',
+    teamId: 'team-prueba-01',
+    assignedTeams: ['team-prueba-01'],
+    status: 'active',
+    isProfileComplete: true,
+    workedMinutesToday: 0,
+    expectedEntryTime: '09:00',
+    modules: getDefaultModulesForRole('RH'),
+    history: [],
+  },
+  {
+    id: 'ti-root-01',
+    email: 'ti.root@russellbedford.mx',
+    name: 'TI Prueba',
+    role: 'TI',
+    team: 'Sin equipo (Acceso Global)',
+    status: 'active',
+    isProfileComplete: true,
+    workedMinutesToday: 0,
+    expectedEntryTime: '09:00',
+    modules: getDefaultModulesForRole('TI'),
+    history: [],
   },
 ];
 
@@ -529,9 +546,9 @@ export const useCheckinStore = create<CheckinState>()(
             title: taskData.title,
             name: taskData.title,
             description: taskData.description,
-            projectId: 'prj-aud-2026',
-            assigned_to: 'usr-ana',
-            created_by: user?.id || 'admin-99',
+            projectId: '',
+            assigned_to: user?.id || '',
+            created_by: user?.id || '',
             status: taskData.status === 'progress' ? 'in_progress' : taskData.status,
             plannedHours: 8,
             priority: 'medium',
@@ -1343,7 +1360,7 @@ export const useCheckinStore = create<CheckinState>()(
             return false;
           }
           const anaActive = get().userActiveCheckins?.['usr-ana'] || null;
-          const anaHist = get().userHistories?.['usr-ana'] || generateMockHistory(15);
+          const anaHist = get().userHistories?.['usr-ana'] || [];
           set({
             user: {
               id: 'usr-ana',
@@ -1385,7 +1402,7 @@ export const useCheckinStore = create<CheckinState>()(
             status: 'active',
             isProfileComplete: true,
             workedMinutesToday: 0,
-            history: generateMockHistory(5),
+            history: [],
             expectedEntryTime: '09:00',
             supervisor_id: 'admin-99',
             modules: getDefaultModulesForRole('Empleado'),

@@ -369,27 +369,27 @@ export async function findPendingInvitationInFirestore(
 
 export type LoginAccessResult =
   | {
-      allowed: true;
-      user: UserProfileDocument;
-      message?: string;
-    }
+    allowed: true;
+    user: UserProfileDocument;
+    message?: string;
+  }
   | {
-      allowed: false;
-      action: 'redirect_activate';
-      invitation: Invitation;
-      inviteUrl: string;
-      message: string;
-    }
+    allowed: false;
+    action: 'redirect_activate';
+    invitation: Invitation;
+    inviteUrl: string;
+    message: string;
+  }
   | {
-      allowed: false;
-      action: 'blocked_inactive';
-      message: string;
-    }
+    allowed: false;
+    action: 'blocked_inactive';
+    message: string;
+  }
   | {
-      allowed: false;
-      action: 'not_whitelisted';
-      message: string;
-    };
+    allowed: false;
+    action: 'not_whitelisted';
+    message: string;
+  };
 
 /**
  * Guardia Maestro de Inicio de Sesión (Orden Estricto de Validación):

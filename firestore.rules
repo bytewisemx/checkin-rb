@@ -15,19 +15,28 @@ service cloud.firestore {
     }
 
     function isTI() {
-      return isAuthenticated() && getUserRole() == 'TI';
+      let r = getUserRole();
+      return isAuthenticated() && (r == 'TI' || r == 'ti');
+    }
+
+    function isGerente() {
+      let r = getUserRole();
+      return isAuthenticated() && (r == 'Gerente' || r == 'gerente' || r == 'Socio' || r == 'socio');
     }
 
     function isSupervisor() {
-      return isAuthenticated() && getUserRole() == 'Supervisor';
+      let r = getUserRole();
+      return isAuthenticated() && (r == 'Supervisor' || r == 'supervisor' || isGerente());
     }
 
     function isEmpleado() {
-      return isAuthenticated() && getUserRole() == 'Empleado';
+      let r = getUserRole();
+      return isAuthenticated() && (r == 'Empleado' || r == 'empleado' || r == 'Colaborador' || r == 'colaborador');
     }
 
     function isRH() {
-      return isAuthenticated() && getUserRole() == 'RH';
+      let r = getUserRole();
+      return isAuthenticated() && (r == 'RH' || r == 'rh');
     }
 
     function isOwner(userId) {
@@ -142,10 +151,23 @@ service cloud.firestore {
 
     match /checkins/{checkinId} {
       allow read: if isAuthenticated() && (
-        getUserRole() in ['TI', 'Supervisor', 'RH'] ||
+        getUserRole() in ['TI', 'ti', 'Supervisor', 'supervisor', 'Gerente', 'gerente', 'RH', 'rh'] ||
         resource.data.userId == request.auth.uid
       );
-      allow write: if isAuthenticated() && getUserRole() != 'RH';
+      allow write: if isAuthenticated() && getUserRole() != 'RH' && getUserRole() != 'rh';
+    }
+
+    match /attendance/{attendanceId} {
+      allow read: if isAuthenticated() && (
+        isTI() || isSupervisor() || isRH() ||
+        resource.data.userId == request.auth.uid
+      );
+      allow write: if isAuthenticated();
+    }
+
+    match /audit_logs/{logId} {
+      allow read: if isAuthenticated() && (isTI() || isGerente() || isRH());
+      allow write: if isAuthenticated();
     }
 
     // =========================================================

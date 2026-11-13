@@ -118,9 +118,11 @@ export interface TeamMember {
   role?: UserRole;
   roleTitle: string;
   team: string;
+  teamId?: string | null;
+  assignedTeams?: string[];
   status: 'active' | 'inactive';
   workedMinutesToday: number;
-  entryTime: string;
+  entryTime?: string;
   checkOutTime?: string | null;
   isLate: boolean;
   minutesLate: number;

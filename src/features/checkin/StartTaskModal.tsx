@@ -31,46 +31,53 @@ export function StartTaskModal({
 
   // Obtener el perfil del colaborador en Rayoner
   const currentMember = useMemo(() => {
-    if (!user) return teamMembers[0] || null;
+    if (!user) return null;
     return teamMembers.find(
-      m => m.id === user.id || m.email.toLowerCase() === user.email.toLowerCase()
-    ) || teamMembers[0] || null;
+      m => m.id === user.id || (user.email && m.email.toLowerCase() === user.email.toLowerCase())
+    ) || null;
   }, [user, teamMembers]);
 
   // Clientes a los que tiene permiso
-  const allowedClientIds = currentMember?.allowedClientIds || clients.map(c => c.id);
+  const allowedClientIds = useMemo(() => {
+    return currentMember?.allowedClientIds || [];
+  }, [currentMember]);
 
   // Proyectos disponibles (solo de los clientes autorizados)
   const allowedProjects = useMemo(() => {
+    if (allowedClientIds.length === 0) return [];
     return projects.filter(p => allowedClientIds.includes(p.clientId) && p.isActive);
   }, [projects, allowedClientIds]);
 
-  // Tareas disponibles para este colaborador
-  const availableTasks = useMemo(() => {
-    const allowedProjectIds = allowedProjects.map(p => p.id);
-    return tasks.filter(t => allowedProjectIds.includes(t.projectId) && t.isActive);
-  }, [tasks, allowedProjects]);
-
-  // Tareas específicamente asignadas al colaborador
+  // Tareas específicamente asignadas al colaborador actual
   const myAssignedTaskIds = useMemo(() => {
-    if (!currentMember) return [];
-    const fromAssignments = assignments.filter(a => a.userId === currentMember.id).map(a => a.taskId);
-    const fromDirectField = tasks.filter(t => t.assigned_to === currentMember.id).map(t => t.id);
+    if (!user) return [];
+    const fromAssignments = assignments
+      .filter(a => a.userId === user.id || (currentMember && a.userId === currentMember.id))
+      .map(a => a.taskId);
+    const fromDirectField = tasks
+      .filter(t => t.assigned_to === user.id || (currentMember && t.assigned_to === currentMember.id))
+      .map(t => t.id);
     return Array.from(new Set([...fromAssignments, ...fromDirectField]));
-  }, [assignments, tasks, currentMember]);
+  }, [assignments, tasks, user, currentMember]);
 
-  // Detección de última tarea activa del día anterior o prioritaria asignada
+  // Tareas disponibles para este colaborador (estrictamente filtradas por asignación)
+  const availableTasks = useMemo(() => {
+    return tasks.filter(t => myAssignedTaskIds.includes(t.id) && t.isActive);
+  }, [tasks, myAssignedTaskIds]);
+
+  // Detección de última tarea activa del día anterior o prioritaria asignada (solo si está asignada)
   const smartPreselectedTask = useMemo(() => {
-    const userId = currentMember?.id || user?.id || 'usr-ana';
-    const storedLastId = localStorage.getItem(`rb_active_task_id_${userId}`);
-    if (storedLastId) {
-      const found = availableTasks.find(t => t.id === storedLastId);
-      if (found) return found;
+    if (availableTasks.length === 0) return null;
+    const userId = user?.id || currentMember?.id;
+    if (userId) {
+      const storedLastId = localStorage.getItem(`rb_active_task_id_${userId}`);
+      if (storedLastId) {
+        const found = availableTasks.find(t => t.id === storedLastId);
+        if (found) return found;
+      }
     }
-    const myFirstAssigned = availableTasks.find(t => myAssignedTaskIds.includes(t.id));
-    if (myFirstAssigned) return myFirstAssigned;
     return availableTasks[0] || null;
-  }, [availableTasks, myAssignedTaskIds, currentMember?.id, user?.id]);
+  }, [availableTasks, currentMember?.id, user?.id]);
 
   // Estados locales
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(
@@ -303,14 +310,23 @@ export function StartTaskModal({
 
               <div className="space-y-2 max-h-[280px] overflow-y-auto pr-1">
                 {availableTasks.length === 0 ? (
-                  <div className="p-6 text-center bg-[#1A2742] rounded-xl border border-[#233354]">
-                    <CheckSquare className="w-6 h-6 text-[#64748B] mx-auto mb-1.5" />
-                    <p className="text-xs font-medium text-[#F8FAFC]">
-                      No tienes tareas activas asignadas
-                    </p>
-                    <p className="text-[11px] text-[#94A3B8] mt-0.5">
-                      Puedes crear una tarea en este momento con el botón superior.
-                    </p>
+                  <div className="p-6 text-center bg-[#1A2742] rounded-xl border border-[#233354] space-y-3">
+                    <CheckSquare className="w-7 h-7 text-[#38BDF8] mx-auto mb-1" />
+                    <div>
+                      <p className="text-sm font-bold text-[#F8FAFC]">
+                        Jornada General (Sin tarea específica asignada)
+                      </p>
+                      <p className="text-xs text-[#94A3B8] mt-1 max-w-sm mx-auto leading-relaxed">
+                        Aún no tienes proyectos o tareas asignadas. Tu tiempo se contabiliza como jornada general hasta que se te asigne una actividad o crees una en un proyecto.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => onSelectTaskAndStart(null)}
+                      className="px-5 py-2.5 bg-[#1E40AF] hover:bg-[#1D4ED8] text-white text-xs font-semibold rounded-xl shadow-md transition-all cursor-pointer"
+                    >
+                      Iniciar Jornada General
+                    </button>
                   </div>
                 ) : (
                   availableTasks.map((task) => {

@@ -75,51 +75,7 @@ interface InvitationState {
   findInvitationForEmail: (email: string) => Invitation | undefined;
 }
 
-const INITIAL_INVITATIONS: Invitation[] = [
-  {
-    id: 'inv-ti-sup-prueba',
-    token: 'demo-invite-supervisor-ti-2026',
-    email: 'supervisor.prueba@russellbedford.mx',
-    supervisorId: 'ti-root-01',
-    supervisorName: 'TI Prueba',
-    supervisorEmail: 'ti.root@russellbedford.mx',
-    created_by_ti_id: 'ti-root-01',
-    issuerRole: 'TI',
-    targetRole: 'Supervisor',
-    team: 'Equipo Prueba',
-    roleTitle: 'Socio / Supervisor Líder (Prueba)',
-    role: 'Supervisor',
-    status: 'accepted',
-    createdAt: Date.now() - 72 * 60 * 60 * 1000,
-    expiresAt: Date.now() + 70 * 60 * 60 * 1000,
-    acceptedAt: Date.now() - 48 * 60 * 60 * 1000,
-    acceptedUserId: 'admin-99',
-    sentCount: 1,
-    lastSentAt: Date.now() - 72 * 60 * 60 * 1000,
-    notes: 'Enlace emitido por TI Prueba para alta de Supervisor Prueba.',
-  },
-  {
-    id: 'inv-demo-3',
-    token: 'demo-accepted-colaborador',
-    email: 'colaborador.prueba@russellbedford.mx',
-    supervisorId: 'admin-99',
-    supervisorName: 'Supervisor Prueba',
-    supervisorEmail: 'supervisor.prueba@russellbedford.mx',
-    issuerRole: 'Supervisor',
-    targetRole: 'Empleado',
-    team: 'Equipo Prueba',
-    roleTitle: 'Colaborador Operativo (Prueba)',
-    role: 'Empleado',
-    status: 'accepted',
-    createdAt: Date.now() - 48 * 60 * 60 * 1000,
-    expiresAt: Date.now() + 24 * 60 * 60 * 1000,
-    acceptedAt: Date.now() - 24 * 60 * 60 * 1000,
-    acceptedUserId: 'usr-ana',
-    sentCount: 1,
-    lastSentAt: Date.now() - 48 * 60 * 60 * 1000,
-    notes: 'Perfil de Empleado Prueba vinculado a Supervisor Prueba.',
-  },
-];
+const INITIAL_INVITATIONS: Invitation[] = [];
 
 export const useInvitationStore = create<InvitationState>()(
   persist(

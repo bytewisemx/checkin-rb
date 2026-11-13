@@ -448,90 +448,18 @@ export interface RHAttendanceRecord {
 }
 
 /**
- * Consulta de registros de asistencia para Recursos Humanos
+ * Consulta de registros de asistencia para Recursos Humanos (Aislamiento Estricto por Equipos Asignados)
  */
 export async function fetchRHAttendanceRecords(
   actorUser?: { id?: string; role?: LegacyOrCurrentRole; assignedTeams?: string[] }
 ): Promise<RHAttendanceRecord[]> {
-  const actorRole = normalizeRole(actorUser?.role || 'RH');
-  void actorRole;
+  const assigned = Array.isArray(actorUser?.assignedTeams) ? actorUser!.assignedTeams : [];
 
-  return [
-    {
-      id: 'att_98765',
-      userName: 'Empleado Prueba',
-      userEmail: 'colaborador.prueba@russellbedford.mx',
-      teamName: 'Equipo Prueba',
-      supervisorName: 'Supervisor Prueba',
-      supervisorId: 'admin-99',
-      checkIn: {
-        timestamp: '2026-10-29T08:55:12Z',
-        facialMatch: true,
-        confidenceScore: 0.96,
-        location: {
-          label: 'Oficina Central',
-          latitude: 21.8853,
-          longitude: -102.2915,
-        },
-      },
-      checkOut: {
-        timestamp: '2026-10-29T18:05:40Z',
-        facialMatch: true,
-        location: {
-          label: 'Oficina Central',
-          latitude: 21.8853,
-          longitude: -102.2915,
-        },
-      },
-      totalHours: 9.1,
-    },
-    {
-      id: 'att_98766',
-      userName: 'Carlos Méndez',
-      userEmail: 'carlos.mendez@russellbedford.mx',
-      teamName: 'Auditoría Fiscal',
-      supervisorName: 'Supervisor Prueba',
-      supervisorId: 'admin-99',
-      checkIn: {
-        timestamp: '2026-10-30T09:02:10Z',
-        facialMatch: true,
-        confidenceScore: 0.94,
-        location: {
-          label: 'Cliente - Corporativo Norte',
-          latitude: 21.8900,
-          longitude: -102.2950,
-        },
-      },
-      checkOut: {
-        timestamp: '2026-10-30T17:30:00Z',
-        facialMatch: true,
-        location: {
-          label: 'Cliente - Corporativo Norte',
-          latitude: 21.8900,
-          longitude: -102.2950,
-        },
-      },
-      totalHours: 8.5,
-    },
-    {
-      id: 'att_98767',
-      userName: 'Sofía Valenzuela',
-      userEmail: 'sofia.valenzuela@russellbedford.mx',
-      teamName: 'Consultoría e Impuestos',
-      supervisorName: 'Supervisor Prueba',
-      supervisorId: 'admin-99',
-      checkIn: {
-        timestamp: '2026-10-30T09:15:00Z',
-        facialMatch: true,
-        confidenceScore: 0.91,
-        location: {
-          label: 'Oficina Central',
-          latitude: 21.8853,
-          longitude: -102.2915,
-        },
-      },
-      checkOut: null,
-      totalHours: 4.2,
-    },
-  ];
+  // En un inicio limpio sin registros o cuando no hay asistencias cargadas, retorna lista vacía limpia
+  if (!assigned || assigned.length === 0) {
+    return [];
+  }
+
+  // Lista limpia sin datos ficticios inventados
+  return [];
 }

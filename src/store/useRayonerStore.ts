@@ -98,427 +98,85 @@ interface RayonerState {
   registerCollaborator: (member: { id: string; name: string; email: string; team?: string; roleTitle?: string; role?: UserRole; supervisorId?: string; created_by_ti_id?: string }) => void;
 }
 
-const initialGroups: ClientGroup[] = [
-  { id: 'grp-corp', name: 'Clientes Corporativos', isInternal: false },
-  { id: 'grp-part', name: 'Clientes Particulares', isInternal: false },
-  { id: 'grp-int', name: 'Tareas Internas', isInternal: true },
-];
+const initialGroups: ClientGroup[] = [];
 
-const initialClients: Client[] = [
-  { id: 'cli-baluarte', groupId: 'grp-corp', name: 'Grupo Baluarte S.A. de C.V.', taxId: 'GBA-980421-K32', isActive: true },
-  { id: 'cli-alsea', groupId: 'grp-corp', name: 'Corporativo Alsea', taxId: 'ALS-020514-9X1', isActive: true },
-  { id: 'cli-montes', groupId: 'grp-part', name: 'Dra. Patricia Montes', taxId: 'MOP-850912-AB4', isActive: true },
-  { id: 'cli-interno', groupId: 'grp-int', name: 'Rayoner / Russell Bedford (Despacho)', taxId: 'RBF-100101-000', isActive: true },
-  { id: 'cli-extraordinario', groupId: 'grp-int', name: 'Actividades Extraordinarias (Sin Empresa)', taxId: 'EXT-000000-000', isActive: true },
-];
+const initialClients: Client[] = [];
 
-const initialProjects: Project[] = [
-  {
-    id: 'prj-aud-2026',
-    clientId: 'cli-baluarte',
-    name: 'Auditoría Fiscal Anual 2026',
-    code: 'AUD-2026-BAL-01',
-    leadUserId: 'admin-99',
-    leadUserName: 'Supervisor Prueba (Líder)',
-    deadline: '2026-10-31',
-    budgetType: 'fixed_project',
-    totalBudgetHours: 120,
-    hourlyRate: 1500,
-    currency: 'MXN',
-    notes: 'El cliente entregó la balanza con retraso; se autorizó holgura de 10 hrs para muestreo de inventarios. No exceder 125 hrs totales.',
-    isActive: true,
-  },
-  {
-    id: 'prj-patr-montes',
-    clientId: 'cli-montes',
-    name: 'Planeación Patrimonial y Fiscal',
-    code: 'PLN-2026-MON',
-    leadUserId: 'admin-99',
-    leadUserName: 'Supervisor Prueba (Líder)',
-    deadline: '2026-11-15',
-    budgetType: 'by_tasks',
-    totalBudgetHours: 45,
-    hourlyRate: 1800,
-    currency: 'MXN',
-    notes: 'Estructuración testamentaria y regularización de fideicomisos familiares.',
-    isActive: true,
-  },
-  {
-    id: 'prj-int-admin',
-    clientId: 'cli-interno',
-    name: 'Capacitación y Administración Interna',
-    code: 'INT-ADM-2026',
-    leadUserId: 'admin-99',
-    leadUserName: 'Dirección General',
-    deadline: '2026-12-31',
-    budgetType: 'by_person',
-    totalBudgetHours: 80,
-    hourlyRate: 0,
-    currency: 'MXN',
-    notes: 'Actividades no facturables: cursos de actualización tributaria y reuniones de comités.',
-    isActive: true,
-  },
-  {
-    id: 'prj-extraordinario',
-    clientId: 'cli-extraordinario',
-    name: 'Tareas Extraordinarias e Imprevistas',
-    code: 'EXT-2026',
-    leadUserId: 'admin-99',
-    leadUserName: 'Supervisión General',
-    deadline: '2026-12-31',
-    budgetType: 'by_tasks',
-    totalBudgetHours: 100,
-    hourlyRate: 0,
-    currency: 'MXN',
-    notes: 'Actividades y tareas extraordinarias que no pertenecen a ninguna empresa asignada.',
-    isActive: true,
-  },
-];
+const initialProjects: Project[] = [];
 
-const initialTasks: TaskNode[] = [
-  {
-    id: 'tsk-plan',
-    title: '1. Planificación Preliminar y Entendimiento del Negocio',
-    name: '1. Planificación Preliminar y Entendimiento del Negocio',
-    assigned_to: 'usr-ana',
-    created_by: 'admin-99',
-    status: 'in_progress',
-    created_at: '2026-10-15T09:00:00.000Z',
-    completed_at: null,
-    projectId: 'prj-aud-2026',
-    parentTaskId: null,
-    description: 'Levantamiento de procesos clave, evaluación de control interno y matriz de riesgos.',
-    plannedHours: 20,
-    priority: 'high',
-    isBillable: true,
-    isActive: true,
-    dueDate: '2026-10-25',
-  },
-  {
-    id: 'sub-plan-1',
-    title: 'Cotejo y conciliación de Balanza de Comprobación',
-    name: 'Cotejo y conciliación de Balanza de Comprobación',
-    assigned_to: 'usr-ana',
-    created_by: 'admin-99',
-    status: 'in_progress',
-    created_at: '2026-10-16T10:00:00.000Z',
-    completed_at: null,
-    projectId: 'prj-aud-2026',
-    parentTaskId: 'tsk-plan',
-    description: 'Verificación de saldos iniciales vs. declaraciones fiscales anteriores.',
-    plannedHours: 12,
-    priority: 'high',
-    isBillable: true,
-    isActive: true,
-    dueDate: '2026-10-20',
-  },
-  {
-    id: 'sub-plan-2',
-    title: 'Muestreo de Actas y Contratos Corporativos',
-    name: 'Muestreo de Actas y Contratos Corporativos',
-    assigned_to: 'usr-ana',
-    created_by: 'admin-99',
-    status: 'pending',
-    created_at: '2026-10-17T11:00:00.000Z',
-    completed_at: null,
-    projectId: 'prj-aud-2026',
-    parentTaskId: 'tsk-plan',
-    description: 'Revisión legal corporativa de asambleas ordinarias y extraordinarias.',
-    plannedHours: 8,
-    priority: 'medium',
-    isBillable: true,
-    isActive: true,
-    dueDate: '2026-10-22',
-  },
-  {
-    id: 'tsk-sust',
-    title: '2. Pruebas Sustantivas y Fiscales',
-    name: '2. Pruebas Sustantivas y Fiscales',
-    assigned_to: 'usr-ana',
-    created_by: 'admin-99',
-    status: 'in_progress',
-    created_at: '2026-10-18T09:00:00.000Z',
-    completed_at: null,
-    projectId: 'prj-aud-2026',
-    parentTaskId: null,
-    description: 'Auditoría detallada de cuentas de resultados, ingresos nominales y deducciones autorizadas.',
-    plannedHours: 70,
-    priority: 'urgent',
-    isBillable: true,
-    isActive: true,
-    dueDate: '2026-10-28',
-  },
-  {
-    id: 'sub-sust-1',
-    title: 'Cruce de CFDI de Ingresos vs. Depósitos Bancarios',
-    name: 'Cruce de CFDI de Ingresos vs. Depósitos Bancarios',
-    assigned_to: 'usr-ana',
-    created_by: 'admin-99',
-    status: 'review',
-    created_at: '2026-10-18T12:00:00.000Z',
-    completed_at: null,
-    projectId: 'prj-aud-2026',
-    parentTaskId: 'tsk-sust',
-    description: 'Validación automatizada de comprobantes fiscales digitales.',
-    plannedHours: 40,
-    priority: 'urgent',
-    isBillable: true,
-    isActive: true,
-    dueDate: '2026-10-18',
-  },
-  {
-    id: 'sub-sust-2',
-    title: 'Circularización y confirmación de saldos con Proveedores',
-    name: 'Circularización y confirmación de saldos con Proveedores',
-    assigned_to: 'usr-ana',
-    created_by: 'admin-99',
-    status: 'pending',
-    created_at: '2026-10-19T09:30:00.000Z',
-    completed_at: null,
-    projectId: 'prj-aud-2026',
-    parentTaskId: 'tsk-sust',
-    description: 'Envío de confirmaciones externas y seguimiento de respuestas.',
-    plannedHours: 30,
-    priority: 'high',
-    isBillable: true,
-    isActive: true,
-    dueDate: '2026-10-30',
-  },
-  {
-    id: 'tsk-cierr',
-    title: '3. Cierre y Emisión del Dictamen Fiscal',
-    name: '3. Cierre y Emisión del Dictamen Fiscal',
-    assigned_to: 'usr-ana',
-    created_by: 'admin-99',
-    status: 'pending',
-    created_at: '2026-10-20T09:00:00.000Z',
-    completed_at: null,
-    projectId: 'prj-aud-2026',
-    parentTaskId: null,
-    description: 'Elaboración del informe para el SAT, anexos fiscales y carta de sugerencias.',
-    plannedHours: 30,
-    priority: 'high',
-    isBillable: true,
-    isActive: true,
-    dueDate: '2026-10-31',
-  },
-  {
-    id: 'tsk-patr-1',
-    title: 'Diagnóstico de Activos y Empresas Familiares',
-    name: 'Diagnóstico de Activos y Empresas Familiares',
-    assigned_to: 'usr-ana',
-    created_by: 'admin-99',
-    status: 'completed',
-    created_at: '2026-10-05T09:00:00.000Z',
-    completed_at: '2026-10-10T17:45:00.000Z',
-    projectId: 'prj-patr-montes',
-    parentTaskId: null,
-    description: 'Mapeo integral de cuentas bancarias e inmuebles.',
-    plannedHours: 25,
-    priority: 'medium',
-    isBillable: true,
-    isActive: true,
-    dueDate: '2026-10-10',
-  },
-  {
-    id: 'tsk-patr-2',
-    title: 'Diseño del Protocolo Sucesorio',
-    name: 'Diseño del Protocolo Sucesorio',
-    assigned_to: 'usr-ana',
-    created_by: 'admin-99',
-    status: 'in_progress',
-    created_at: '2026-10-12T09:00:00.000Z',
-    completed_at: null,
-    projectId: 'prj-patr-montes',
-    parentTaskId: null,
-    description: 'Redacción de estatutos y fideicomiso de control.',
-    plannedHours: 20,
-    priority: 'high',
-    isBillable: true,
-    isActive: true,
-    dueDate: '2026-11-05',
-  },
-  {
-    id: 'tsk-int-cap',
-    title: 'Actualización en Reformas Fiscales y Laborales',
-    name: 'Actualización en Reformas Fiscales y Laborales',
-    assigned_to: 'usr-ana',
-    created_by: 'admin-99',
-    status: 'completed',
-    created_at: '2026-10-02T09:00:00.000Z',
-    completed_at: '2026-10-12T16:30:00.000Z',
-    projectId: 'prj-int-admin',
-    parentTaskId: null,
-    description: 'Seminarios de actualización continua para el equipo de auditoría.',
-    plannedHours: 50,
-    priority: 'low',
-    isBillable: false,
-    isActive: true,
-    dueDate: '2026-10-12',
-  },
-  {
-    id: 'tsk-int-reu',
-    title: 'Reunión Semanal de Supervisión y Asignaciones',
-    name: 'Reunión Semanal de Supervisión y Asignaciones',
-    assigned_to: 'usr-ana',
-    created_by: 'admin-99',
-    status: 'in_progress',
-    created_at: '2026-10-14T09:00:00.000Z',
-    completed_at: null,
-    projectId: 'prj-int-admin',
-    parentTaskId: null,
-    description: 'Comité de seguimiento operativo entre socios y seniors.',
-    plannedHours: 30,
-    priority: 'medium',
-    isBillable: false,
-    isActive: true,
-    dueDate: '2026-10-16',
-  },
-  {
-    id: 'tsk-extra-1',
-    title: 'Soporte Urgente y Reorganización Operativa',
-    name: 'Soporte Urgente y Reorganización Operativa',
-    assigned_to: 'usr-ana',
-    created_by: 'admin-99',
-    status: 'pending',
-    created_at: '2026-10-22T09:00:00.000Z',
-    completed_at: null,
-    projectId: 'prj-extraordinario',
-    parentTaskId: null,
-    description: 'Actividad extraordinaria independiente no asociada a ninguna empresa en particular.',
-    plannedHours: 12,
-    priority: 'urgent',
-    isBillable: false,
-    isActive: true,
-    dueDate: '2026-10-24',
-    isExtraordinary: true,
-    extraordinaryCategory: 'Soporte Extraordinario',
-  },
-  {
-    id: 'tsk-extra-2',
-    title: 'Capacitación Técnica en Normas de Auditoría',
-    name: 'Capacitación Técnica en Normas de Auditoría',
-    assigned_to: 'usr-ana',
-    created_by: 'admin-99',
-    status: 'in_progress',
-    created_at: '2026-10-23T09:00:00.000Z',
-    completed_at: null,
-    projectId: 'prj-extraordinario',
-    parentTaskId: null,
-    description: 'Formación profesional y actualización técnica extraordinaria de la firma.',
-    plannedHours: 8,
-    priority: 'medium',
-    isBillable: false,
-    isActive: true,
-    dueDate: '2026-10-28',
-    isExtraordinary: true,
-    extraordinaryCategory: 'Capacitación y Desarrollo',
-  },
-];
+const initialTasks: TaskNode[] = [];
 
-const initialAssignments: TaskAssignment[] = [
-  { id: 'asg-1', taskId: 'tsk-plan', userId: 'usr-ana', userName: 'Empleado Prueba', userRoleTitle: 'Auditor Senior (Prueba)', allocatedHours: 20, hourlyRateOverride: 1800, blockOnLimit: true },
-  { id: 'asg-3', taskId: 'tsk-sust', userId: 'usr-ana', userName: 'Empleado Prueba', userRoleTitle: 'Auditor Senior (Prueba)', allocatedHours: 70, hourlyRateOverride: 1800, blockOnLimit: true },
-  { id: 'asg-5', taskId: 'tsk-cierr', userId: 'usr-ana', userName: 'Empleado Prueba', userRoleTitle: 'Auditor Senior (Prueba)', allocatedHours: 30, hourlyRateOverride: 1800, blockOnLimit: false },
-  { id: 'asg-6', taskId: 'tsk-patr-1', userId: 'usr-ana', userName: 'Empleado Prueba', userRoleTitle: 'Auditor Senior (Prueba)', allocatedHours: 25, hourlyRateOverride: 1800, blockOnLimit: false },
-  { id: 'asg-7', taskId: 'tsk-patr-2', userId: 'usr-ana', userName: 'Empleado Prueba', userRoleTitle: 'Auditor Senior (Prueba)', allocatedHours: 20, hourlyRateOverride: 1800, blockOnLimit: false },
-  { id: 'asg-ext-1', taskId: 'tsk-extra-1', userId: 'usr-ana', userName: 'Empleado Prueba', userRoleTitle: 'Auditor Senior (Prueba)', allocatedHours: 12, blockOnLimit: false },
-  { id: 'asg-ext-2', taskId: 'tsk-extra-2', userId: 'usr-ana', userName: 'Empleado Prueba', userRoleTitle: 'Auditor Senior (Prueba)', allocatedHours: 8, blockOnLimit: false },
-];
+const initialAssignments: TaskAssignment[] = [];
 
-const initialGeofences: Record<string, GeofenceConfig> = {
-  'prj-aud-2026': {
-    id: 'geo-aud',
-    projectId: 'prj-aud-2026',
-    locationMode: 'client_site',
-    address: 'Av. Paseo de la Reforma 483, Cuauhtémoc, CDMX',
-    lat: 19.427,
-    lng: -99.1677,
-    radiusMeters: 250,
-    enforcementMode: 'warning',
-  },
-  'prj-patr-montes': {
-    id: 'geo-patr',
-    projectId: 'prj-patr-montes',
-    locationMode: 'office',
-    address: 'Insurgentes Sur 1602, Crédito Constructor, Benito Juárez, CDMX',
-    lat: 19.3644,
-    lng: -99.1812,
-    radiusMeters: 100,
-    enforcementMode: 'strict_block',
-  },
-};
+const initialGeofences: Record<string, GeofenceConfig> = {};
 
-const initialTaskActualHours: Record<string, number> = {
-  'tsk-plan': 17.5,
-  'sub-plan-1': 12.0,
-  'sub-plan-2': 5.5,
-  'tsk-sust': 74.0,
-  'sub-sust-1': 42.0,
-  'sub-sust-2': 32.0,
-  'tsk-cierr': 12.0,
-  'tsk-patr-1': 18.0,
-  'tsk-patr-2': 6.0,
-  'tsk-int-cap': 32.0,
-  'tsk-int-reu': 18.0,
-};
+const initialTaskActualHours: Record<string, number> = {};
 
-const initialUserTaskActualHours: Record<string, number> = {
-  'tsk-plan_usr-ana': 17.5,
-  'tsk-sust_usr-ana': 74.0,
-  'tsk-cierr_usr-ana': 12.0,
-  'tsk-patr-1_usr-ana': 18.0,
-  'tsk-patr-2_usr-ana': 6.0,
-};
+const initialUserTaskActualHours: Record<string, number> = {};
 
-const initialActiveWorkers: ActiveWorker[] = [
-  {
-    userId: 'usr-ana',
-    userName: 'Empleado Prueba',
-    taskId: 'sub-plan-1',
-    taskName: 'Cotejo y conciliación de Balanza de Comprobación',
-    projectName: 'Auditoría Fiscal Anual 2026',
-    clientName: 'Grupo Baluarte S.A. de C.V.',
-    startedAtMs: Date.now() - 102 * 60 * 1000,
-    currentDurationStr: '01:42:15',
-  },
-];
+const initialActiveWorkers: ActiveWorker[] = [];
 
-// Directorio Jerárquico del Equipo de Prueba (TI Prueba -> Supervisor Prueba -> Empleado Prueba y RH Prueba)
+// Directorio Jerárquico del Equipo Base Limpio (5 Cuentas Oficiales)
 const initialTeamMembers: TeamMember[] = [
   {
-    id: 'usr-ana',
-    name: 'Empleado Prueba',
-    email: 'colaborador.prueba@russellbedford.mx',
-    role: 'Empleado',
-    roleTitle: 'Colaborador Operativo (Prueba)',
-    team: 'Equipo Prueba',
+    id: 'ti-root-01',
+    name: 'TI Prueba',
+    email: 'ti.root@russellbedford.mx',
+    role: 'TI',
+    roleTitle: 'Administrador TI (Prueba)',
+    team: 'Sin equipo (Acceso Global)',
     status: 'active',
-    workedMinutesToday: 405,
-    entryTime: '09:02',
-    checkOutTime: '18:05',
+    workedMinutesToday: 0,
     isLate: false,
     minutesLate: 0,
-    allowedClientIds: ['cli-baluarte', 'cli-alsea', 'cli-interno'],
-    supervisor_id: 'admin-99',
-    supervisorId: 'admin-99',
+    allowedClientIds: [],
+  },
+  {
+    id: 'gerente-01',
+    name: 'Gerente Prueba',
+    email: 'gerente.prueba@russellbedford.mx',
+    role: 'Gerente',
+    roleTitle: 'Gerente de Auditoría (Prueba)',
+    team: 'Equipo Prueba',
+    teamId: 'team-prueba-01',
+    status: 'active',
+    workedMinutesToday: 0,
+    isLate: false,
+    minutesLate: 0,
+    allowedClientIds: [],
+    created_by_ti_id: 'ti-root-01',
   },
   {
     id: 'admin-99',
     name: 'Supervisor Prueba',
     email: 'supervisor.prueba@russellbedford.mx',
     role: 'Supervisor',
-    roleTitle: 'Socio / Supervisor Líder (Prueba)',
+    roleTitle: 'Supervisor Líder (Prueba)',
     team: 'Equipo Prueba',
+    teamId: 'team-prueba-01',
     status: 'active',
-    workedMinutesToday: 460,
-    entryTime: '08:45',
-    checkOutTime: '18:30',
+    workedMinutesToday: 0,
     isLate: false,
     minutesLate: 0,
-    allowedClientIds: ['cli-baluarte', 'cli-alsea', 'cli-montes', 'cli-interno'],
+    allowedClientIds: [],
     created_by_ti_id: 'ti-root-01',
     assigned_team_members: ['usr-ana'],
+  },
+  {
+    id: 'usr-ana',
+    name: 'Colaborador Prueba',
+    email: 'colaborador.prueba@russellbedford.mx',
+    role: 'Empleado',
+    roleTitle: 'Colaborador Operativo (Prueba)',
+    team: 'Equipo Prueba',
+    teamId: 'team-prueba-01',
+    status: 'active',
+    workedMinutesToday: 0,
+    isLate: false,
+    minutesLate: 0,
+    allowedClientIds: [],
+    supervisor_id: 'admin-99',
+    supervisorId: 'admin-99',
   },
   {
     id: 'rh-01',
@@ -527,10 +185,9 @@ const initialTeamMembers: TeamMember[] = [
     role: 'RH',
     roleTitle: 'Recursos Humanos (Prueba)',
     team: 'Equipo Prueba',
+    teamId: 'team-prueba-01',
     status: 'active',
-    workedMinutesToday: 420,
-    entryTime: '09:00',
-    checkOutTime: '18:00',
+    workedMinutesToday: 0,
     isLate: false,
     minutesLate: 0,
     allowedClientIds: [],
@@ -630,8 +287,8 @@ export const useRayonerStore = create<RayonerState>()(
           id,
           title: titleStr,
           name: titleStr,
-          assigned_to: taskData.assigned_to || 'usr-ana',
-          created_by: taskData.created_by || 'admin-99',
+          assigned_to: taskData.assigned_to || '',
+          created_by: taskData.created_by || '',
           status: taskData.status || 'pending',
           created_at: taskData.created_at || nowIso,
           completed_at: taskData.completed_at ?? null,
@@ -671,8 +328,8 @@ export const useRayonerStore = create<RayonerState>()(
           id,
           title: name,
           name,
-          assigned_to: parent.assigned_to || 'usr-ana',
-          created_by: parent.created_by || 'admin-99',
+          assigned_to: parent.assigned_to || '',
+          created_by: parent.created_by || '',
           status: 'pending',
           created_at: nowIso,
           completed_at: null,
@@ -802,20 +459,27 @@ export const useRayonerStore = create<RayonerState>()(
       getTeamMembersBySupervisor: (supervisorId, role) => {
         const all = get().teamMembers;
         const normRole = (role || '').toUpperCase();
-        // TI puede ver todos los usuarios
+        // TI tiene visibilidad global
         if (normRole === 'TI') return all;
-        // Para Supervisor, filtrar usuarios operativos cuyo supervisor_id coincida con el supervisor actual
-        if (!supervisorId || supervisorId === 'admin-99') {
+        // Gerente: miembros de sus equipos autorizados
+        if (normRole === 'GERENTE') {
+          return all.filter((m) => m.team === 'Equipo Prueba' || m.teamId === 'team-prueba-01');
+        }
+        // Supervisor: miembros vinculados a su equipo o a su ID
+        if (normRole === 'SUPERVISOR') {
           return all.filter(
             (m) =>
-              (m.role === 'Empleado' || !m.role) &&
-              (m.supervisor_id === 'admin-99' || m.supervisorId === 'admin-99' || !m.supervisor_id)
+              (m.role === 'Empleado' || m.role === 'Colaborador') &&
+              (m.supervisor_id === supervisorId ||
+                m.supervisorId === supervisorId ||
+                (!m.supervisor_id && (m.teamId === 'team-prueba-01' || m.team === 'Equipo Prueba')))
           );
         }
-        const filtered = all.filter(
-          (m) => m.supervisor_id === supervisorId || m.supervisorId === supervisorId
-        );
-        return filtered.length > 0 ? filtered : all.filter((m) => m.role === 'Empleado' || !m.role);
+        // RH: miembros de los equipos de gestión
+        if (normRole === 'RH') {
+          return all.filter((m) => m.team === 'Equipo Prueba' || m.teamId === 'team-prueba-01');
+        }
+        return [];
       },
 
       toggleUserClientPermission: (userId, clientId) => {
@@ -1019,7 +683,7 @@ export const useRayonerStore = create<RayonerState>()(
           const currentProject = get().projects.find((p) => p.id === currentTask.projectId);
           useNotificationStore.getState().addNotification({
             recipient_id: currentTask.created_by || 'admin-99',
-            sender_id: actorUserId || currentTask.assigned_to || 'usr-ana',
+            sender_id: actorUserId || currentTask.assigned_to || '',
             type: 'task_completed',
             title: 'Tarea Completada por Empleado',
             message: `${actorName || 'El empleado'} ha marcado como completada la tarea "${currentTask.title || currentTask.name}" en ${currentProject?.name || 'Russell Bedford'}.`,
@@ -1142,7 +806,7 @@ export const useRayonerStore = create<RayonerState>()(
         }));
 
         useNotificationStore.getState().addNotification({
-          recipient_id: currentTask?.assigned_to || 'usr-ana',
+          recipient_id: currentTask?.assigned_to || '',
           sender_id: supervisorId,
           type: 'task_review',
           title: 'Tarea en Revisión - Observación de Supervisor',
@@ -1173,7 +837,7 @@ export const useRayonerStore = create<RayonerState>()(
         }));
 
         useNotificationStore.getState().addNotification({
-          recipient_id: currentTask?.assigned_to || 'usr-ana',
+          recipient_id: currentTask?.assigned_to || '',
           sender_id: supervisorId,
           type: 'task_completed',
           title: 'Tarea Aprobada por Supervisor',
