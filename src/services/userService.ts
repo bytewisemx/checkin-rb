@@ -520,15 +520,88 @@ export async function processLoginAccess(
     };
   }
 
-  // Si es TI Root y aún no estaba en users, se le autoriza acceso maestro
-  if (isTiRoot) {
-    const tiDoc: UserProfileDocument = {
+  // Si es una cuenta base oficial de prueba o TI Root y aún no estaba en users, se auto-provisiona y autoriza
+  const PRECONFIGURED_BASE_ACCOUNTS: Record<string, Partial<UserProfileDocument>> = {
+    'ti.root@russellbedford.mx': {
+      name: 'TI Prueba',
+      role: 'TI',
+      team: undefined,
+      teamName: undefined,
+      teamId: null,
+      assignedTeams: [],
+      status: 'active',
+      isActive: true,
+      isProfileComplete: true,
+    },
+    'socio.prueba@russellbedford.mx': {
+      name: 'Socio Prueba',
+      role: 'socio' as any,
+      team: 'Equipo Prueba',
+      teamName: 'Equipo Prueba',
+      teamId: 'team-prueba-01',
+      assignedTeams: ['team-prueba-01'],
+      status: 'active',
+      isActive: true,
+      isProfileComplete: true,
+    },
+    'gerente.prueba@russellbedford.mx': {
+      name: 'Gerente Prueba',
+      role: 'gerente' as any,
+      team: 'Equipo Prueba',
+      teamName: 'Equipo Prueba',
+      teamId: 'team-prueba-01',
+      assignedTeams: ['team-prueba-01'],
+      status: 'active',
+      isActive: true,
+      isProfileComplete: true,
+    },
+    'supervisor.prueba@russellbedford.mx': {
+      name: 'Supervisor Prueba',
+      role: 'Supervisor',
+      team: 'Equipo Prueba',
+      teamName: 'Equipo Prueba',
+      teamId: 'team-prueba-01',
+      assignedTeams: ['team-prueba-01'],
+      status: 'active',
+      isActive: true,
+      isProfileComplete: true,
+    },
+    'colaborador.prueba@russellbedford.mx': {
+      name: 'Colaborador Prueba',
+      role: 'Empleado',
+      team: 'Equipo Prueba',
+      teamName: 'Equipo Prueba',
+      teamId: 'team-prueba-01',
+      assignedTeams: ['team-prueba-01'],
+      status: 'active',
+      isActive: true,
+      isProfileComplete: true,
+    },
+    'rh.prueba@russellbedford.mx': {
+      name: 'RH Prueba',
+      role: 'RH',
+      team: 'Equipo Prueba',
+      teamName: 'Equipo Prueba',
+      teamId: 'team-prueba-01',
+      assignedTeams: ['team-prueba-01'],
+      status: 'active',
+      isActive: true,
+      isProfileComplete: true,
+    },
+  };
+
+  const demoProfile = PRECONFIGURED_BASE_ACCOUNTS[cleanEmail];
+  if (demoProfile || isTiRoot) {
+    const roleVal = demoProfile?.role || 'TI';
+    const finalDoc: UserProfileDocument = {
       uid: cleanUid,
       email: cleanEmail,
-      name: firebaseUser.displayName || 'TI Root',
-      role: 'TI',
-      team: 'TI Root',
-      teamName: 'TI Root',
+      name: demoProfile?.name || firebaseUser.displayName || 'TI Root',
+      role: roleVal,
+      team: demoProfile?.team,
+      teamName: demoProfile?.teamName,
+      teamId: demoProfile?.teamId,
+      assignedTeams: demoProfile?.assignedTeams,
       status: 'active',
       isActive: true,
       isProfileComplete: true,
@@ -537,24 +610,26 @@ export async function processLoginAccess(
       {
         uid: cleanUid,
         email: cleanEmail,
-        displayName: tiDoc.name,
+        displayName: finalDoc.name,
         photoURL: firebaseUser.photoURL || null,
       },
       {
-        role: 'TI',
-        team: 'TI Root',
+        role: finalDoc.role,
+        team: finalDoc.team || finalDoc.teamName || 'Sin equipo asignado',
+        teamId: finalDoc.teamId || undefined,
+        assignedTeams: finalDoc.assignedTeams,
         status: 'active',
         isActive: true,
         isProfileComplete: true,
       }
     );
     if (isFirebaseConfigured() && db) {
-      setDoc(doc(db, 'users', cleanUid), tiDoc, { merge: true }).catch(console.warn);
+      setDoc(doc(db, 'users', cleanUid), finalDoc, { merge: true }).catch(console.warn);
     }
     return {
       allowed: true,
-      user: tiDoc,
-      message: 'Bienvenido: Administrador TI Root',
+      user: finalDoc,
+      message: `¡Bienvenido! Sesión iniciada como ${finalDoc.name}.`,
     };
   }
 

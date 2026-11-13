@@ -4,6 +4,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { 
   loginWithEmail, 
   loginWithGoogle, 
+  registerWithEmail,
   logoutFirebase,
   isFirebaseConfigured 
 } from '../../services/firebase';
@@ -19,6 +20,39 @@ gsap.registerPlugin(ScrollTrigger);
 // 100 cajas para cubrir 100vh exactos (1.2vh con margin-bottom -0.2vh = 1.0vh por caja)
 const BOX_COUNT = 100;
 const BOX_ARRAY = Array.from({ length: BOX_COUNT }, (_, i) => i);
+
+export const DEMO_PROFILES = [
+  {
+    label: 'Colaborador',
+    email: 'colaborador.prueba@russellbedford.mx',
+    title: 'Colaborador Operativo (Prueba)',
+  },
+  {
+    label: 'Supervisor',
+    email: 'supervisor.prueba@russellbedford.mx',
+    title: 'Supervisor Líder (Prueba)',
+  },
+  {
+    label: 'Gerente',
+    email: 'gerente.prueba@russellbedford.mx',
+    title: 'Gerente de Área (Prueba)',
+  },
+  {
+    label: 'Socio',
+    email: 'socio.prueba@russellbedford.mx',
+    title: 'Socio / Jefatura (Prueba)',
+  },
+  {
+    label: 'RH',
+    email: 'rh.prueba@russellbedford.mx',
+    title: 'Recursos Humanos (Prueba)',
+  },
+  {
+    label: 'TI Root',
+    email: 'ti.root@russellbedford.mx',
+    title: 'Administrador TI (Prueba)',
+  },
+];
 
 export function AuthPage() {
   const { login, addToast, isAuthenticated, user } = useCheckinStore();
@@ -216,6 +250,69 @@ export function AuthPage() {
     }
   };
 
+  /**
+   * Autenticación Directa para Perfiles de Prueba Oficiales
+   * Autentica con credenciales predeterminadas (o crea la cuenta en Firebase Auth si no existe aún)
+   * y redirige directamente al dashboard del perfil correspondiente.
+   */
+  const handleQuickDemoLogin = async (demoEmail: string, roleLabel: string) => {
+    setErrorMsg('');
+    setIsLoading(true);
+    setEmail(demoEmail);
+    setPassword('admin123');
+
+    try {
+      if (firebaseReady) {
+        let authRes = await loginWithEmail(demoEmail, 'admin123');
+
+        // Si aún no está dado de alta en Firebase Auth, crearlo automáticamente
+        if (!authRes.success) {
+          const errStr = String(authRes.error || '').toLowerCase();
+          if (
+            errStr.includes('no existe') ||
+            errStr.includes('user-not-found') ||
+            errStr.includes('invalid-credential') ||
+            errStr.includes('incorrectos')
+          ) {
+            const regRes = await registerWithEmail(demoEmail, 'admin123');
+            if (regRes.success) {
+              authRes = regRes;
+            }
+          }
+        }
+
+        if (authRes.success && authRes.user) {
+          const access = await processLoginAccess(authRes.user);
+          if (access.allowed) {
+            addToast(`¡Bienvenido! Sesión iniciada como ${roleLabel}.`, 'success');
+            navigate('/');
+            return;
+          }
+        }
+      }
+
+      // Fallback a demo local directo si Firebase no responde
+      const localSuccess = login(demoEmail, 'admin123');
+      if (localSuccess) {
+        addToast(`Bienvenido: ${roleLabel}`, 'success');
+        navigate('/');
+      } else {
+        setErrorMsg('Error al conectar con la cuenta demo.');
+      }
+    } catch (err: unknown) {
+      console.warn('[AuthPage] Error en acceso rápido demo, usando fallback local:', err);
+      const localSuccess = login(demoEmail, 'admin123');
+      if (localSuccess) {
+        addToast(`Bienvenido: ${roleLabel}`, 'success');
+        navigate('/');
+      } else {
+        setErrorMsg('No se pudo autenticar el perfil de prueba.');
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const handleGoogleSignIn = async () => {
     setErrorMsg('');
     setIsGoogleLoading(true);
@@ -351,66 +448,34 @@ export function AuthPage() {
                 />
               </div>
 
-              {/* Accesos Rápidos de Prueba de los 4 Niveles RBAC (Ocultos por defecto con botón sutil) */}
+              {/* Accesos Rápidos de Prueba de los 6 Niveles RBAC (Ocultos por defecto con botón sutil) */}
               <div className="mb-4 pt-1 border-t border-slate-100">
                 <button
                   type="button"
                   onClick={() => setShowDemoProfiles(!showDemoProfiles)}
                   className="inline-flex items-center space-x-1.5 text-[11px] font-semibold text-slate-400 hover:text-[#0D5C75] transition-colors cursor-pointer select-none py-1"
                 >
-                  <span>{showDemoProfiles ? '▾ Ocultar equipo de prueba' : '▸ Equipo de Prueba (Acceso directo)'}</span>
+                  <span>{showDemoProfiles ? '▾ Ocultar perfiles de prueba' : '▸ Perfiles de Prueba (Acceso directo)'}</span>
                 </button>
 
                 {showDemoProfiles && (
                   <div className="mt-2 space-y-2 animate-fade-in">
                     <span className="font-medium text-slate-500 text-[10px] block">
-                      Equipo de Prueba • Contraseña: <code className="font-mono text-slate-700 font-semibold">admin123</code>
+                      Cuentas Demo • Haz clic para acceder directamente:
                     </span>
-                    <div className="grid grid-cols-2 gap-2">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setEmail('ti.root@russellbedford.mx');
-                          setPassword('admin123');
-                        }}
-                        className="inline-flex items-center justify-center px-2.5 py-1.5 bg-[#0F172A] hover:bg-[#1E40AF] text-[#F8FAFC] text-[10px] font-heading font-semibold uppercase tracking-wider transition-colors cursor-pointer"
-                        title="TI Prueba (Nivel más alto)"
-                      >
-                        <span>TI Prueba</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setEmail('supervisor.prueba@russellbedford.mx');
-                          setPassword('admin123');
-                        }}
-                        className="inline-flex items-center justify-center px-2.5 py-1.5 border border-slate-300 hover:border-[#1E40AF] text-[#0F172A] text-[10px] font-heading font-semibold uppercase tracking-wider transition-colors cursor-pointer"
-                        title="Supervisor Prueba (Socio / Líder)"
-                      >
-                        <span>Supervisor Prueba</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setEmail('colaborador.prueba@russellbedford.mx');
-                          setPassword('admin123');
-                        }}
-                        className="inline-flex items-center justify-center px-2.5 py-1.5 border border-slate-300 hover:border-[#1E40AF] text-[#0F172A] text-[10px] font-heading font-semibold uppercase tracking-wider transition-colors cursor-pointer"
-                        title="Empleado Prueba"
-                      >
-                        <span>Empleado Prueba</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setEmail('rh.prueba@russellbedford.mx');
-                          setPassword('admin123');
-                        }}
-                        className="inline-flex items-center justify-center px-2.5 py-1.5 border border-slate-300 hover:border-[#1E40AF] text-[#0F172A] text-[10px] font-heading font-semibold uppercase tracking-wider transition-colors cursor-pointer"
-                        title="RH Prueba"
-                      >
-                        <span>RH Prueba</span>
-                      </button>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                      {DEMO_PROFILES.map((p) => (
+                        <button
+                          key={p.email}
+                          type="button"
+                          disabled={isLoading}
+                          onClick={() => handleQuickDemoLogin(p.email, p.label)}
+                          className="text-xs font-semibold py-2 px-3 rounded-lg border border-blue-200 bg-blue-50/60 text-blue-900 hover:bg-blue-700 hover:text-white hover:border-blue-700 transition-colors text-center cursor-pointer disabled:opacity-50"
+                          title={`${p.title} (${p.email})`}
+                        >
+                          <span>{p.label}</span>
+                        </button>
+                      ))}
                     </div>
                   </div>
                 )}

@@ -86,6 +86,38 @@ export async function normalizeCorporateDatabase(): Promise<NormalizationSummary
             },
           });
         }
+        // Socio Prueba
+        else if (role === 'socio' || name.includes('socio') || email.includes('socio')) {
+          usersToUpdate.push({
+            id: uDoc.id,
+            patch: {
+              teamId: 'team-prueba-01',
+              teamName: 'Equipo Prueba',
+              team: 'Equipo Prueba',
+              assignedTeams: ['team-prueba-01'],
+              status: 'active',
+              isActive: true,
+              role: 'socio',
+              updatedAt: new Date().toISOString(),
+            },
+          });
+        }
+        // Gerente Prueba
+        else if (role === 'gerente' || name.includes('gerente') || email.includes('gerente')) {
+          usersToUpdate.push({
+            id: uDoc.id,
+            patch: {
+              teamId: 'team-prueba-01',
+              teamName: 'Equipo Prueba',
+              team: 'Equipo Prueba',
+              assignedTeams: ['team-prueba-01'],
+              status: 'active',
+              isActive: true,
+              role: 'gerente',
+              updatedAt: new Date().toISOString(),
+            },
+          });
+        }
         // RH Prueba
         else if (role === 'rh' || name.includes('rh') || email.includes('rh.')) {
           usersToUpdate.push({
