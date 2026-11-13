@@ -13,6 +13,8 @@ export interface Invitation {
   created_by_ti_id?: string | null;
   issuerRole?: LegacyOrCurrentRole;
   team: string;
+  teamId?: string;
+  teamName?: string;
   assignedTeamId?: string;
   roleTitle: string;
   role: UserRole | string;
@@ -40,6 +42,8 @@ export interface CreateInvitationDTO {
   targetRole?: UserRole | string;
   assignedRole?: UserRole | string;
   team: string;
+  teamId?: string;
+  teamName?: string;
   assignedTeamId?: string;
   roleTitle?: string;
   expiresInHours?: number;

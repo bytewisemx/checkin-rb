@@ -36,6 +36,7 @@ export function TIDashboard({ initialTab = 'users_permissions' }: TIDashboardPro
     fetchTeams();
   }, [fetchTeams]);
 
+  // Carga global de todos los equipos activos (TI no pertenece a un equipo operativo)
   const activeTeams = useMemo(() => teams.filter((t) => t.status === 'active'), [teams]);
 
   const [activeTab, setActiveTab] = useState<'invitations' | 'users_permissions' | 'audit_accounts' | 'rbac_matrix' | 'supervisor_view' | 'audit_logs'>(initialTab);
@@ -47,14 +48,17 @@ export function TIDashboard({ initialTab = 'users_permissions' }: TIDashboardPro
 
   const [emailsInput, setEmailsInput] = useState('');
   const [selectedRole, setSelectedRole] = useState<'colaborador' | 'supervisor' | 'gerente' | 'socio'>('supervisor');
-  const [selectedTeam, setSelectedTeam] = useState('');
+  const [selectedTeamId, setSelectedTeamId] = useState('');
   const [expiresInHours, setExpiresInHours] = useState(48);
 
+  // Preselección por defecto según la regla de TI
   useEffect(() => {
-    if (!selectedTeam && activeTeams.length > 0) {
-      setSelectedTeam(activeTeams[0].name);
+    if (activeTeams.length > 0) {
+      if (!selectedTeamId || !activeTeams.some((t) => t.id === selectedTeamId)) {
+        setSelectedTeamId(activeTeams[0].id);
+      }
     }
-  }, [activeTeams, selectedTeam]);
+  }, [activeTeams, selectedTeamId]);
 
   const tiSupervisorInvitations = useMemo(() => {
     return invitations.filter((inv) => inv.issuerRole === 'TI' && inv.targetRole === 'Supervisor');
@@ -103,6 +107,11 @@ export function TIDashboard({ initialTab = 'users_permissions' }: TIDashboardPro
       const issuerName = `${user?.name || 'Administrador'} ${user?.lastName || 'TI'}`.trim();
       const roleTitle = allowedRoles.find((r) => r.value === selectedRole)?.label || 'Supervisor';
 
+      // Resolver equipo seleccionado asegurando teamId y teamName no nulos
+      const chosenTeam = activeTeams.find((t) => t.id === selectedTeamId) || activeTeams[0];
+      const targetTeamId = chosenTeam?.id || selectedTeamId || 'team-default';
+      const targetTeamName = chosenTeam?.name || 'Equipo Corporativo';
+
       const created = createInvitations({
         emails: emailsList,
         supervisorId: user?.id || 'ti-root-01',
@@ -111,7 +120,9 @@ export function TIDashboard({ initialTab = 'users_permissions' }: TIDashboardPro
         created_by_ti_id: user?.id || 'ti-root-01',
         issuerRole: 'TI',
         targetRole: selectedRole,
-        team: selectedTeam,
+        team: targetTeamName,
+        teamId: targetTeamId,
+        teamName: targetTeamName,
         roleTitle,
         expiresInHours,
         notes: `Alta de ${roleTitle} autorizada por TI (Root)`,
@@ -137,18 +148,19 @@ export function TIDashboard({ initialTab = 'users_permissions' }: TIDashboardPro
           actorEmail: user?.email || 'ti.root@russellbedford.mx',
           actorRole: 'TI',
           targetResource: `Invitación: ${inv.email}`,
-          details: `Emisión de invitación con rol ${roleTitle} en equipo ${inv.team}`,
+          details: `Emisión de invitación con rol ${roleTitle} en equipo ${inv.teamName || inv.team}`,
         });
 
         // 3. Generar activationUrl exacta (/activar-cuenta?token=XYZ&email=...)
         const activationUrl = buildActivationUrl(inv.token, inv.email);
 
-        // 4. Despachar al servicio Webhook n8n (el único medio de invitación)
+        // 4. Despachar al servicio Webhook n8n con teamId y teamName garantizados
         const webhookRes = await sendInviteWebhook({
           event: 'invite_created',
           recipientEmail: inv.email,
           supervisorName: inv.supervisorName,
-          teamName: inv.team,
+          teamId: inv.teamId || targetTeamId,
+          teamName: inv.teamName || targetTeamName,
           roleName: inv.roleTitle,
           activationUrl,
           expiresAt: new Date(inv.expiresAt).toISOString(),
@@ -388,23 +400,33 @@ export function TIDashboard({ initialTab = 'users_permissions' }: TIDashboardPro
                       </button>
                     )}
                   </div>
-                  <select
-                    value={selectedTeam}
-                    onChange={(e) => setSelectedTeam(e.target.value)}
-                    className="w-full px-3 py-2 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white outline-none focus:border-blue-600 cursor-pointer"
-                  >
-                    {activeTeams.length === 0 ? (
-                      <option value="" disabled>
-                        Sin equipos registrados
-                      </option>
-                    ) : (
-                      activeTeams.map((t) => (
-                        <option key={t.id} value={t.name}>
-                          {t.name} ({t.code})
+
+                  {activeTeams.length === 1 ? (
+                    <div className="w-full px-3 py-2 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200 font-medium flex items-center justify-between">
+                      <span className="truncate">{activeTeams[0].name} ({activeTeams[0].code})</span>
+                      <span className="text-[10px] uppercase font-mono px-1.5 py-0.5 bg-slate-200 dark:bg-slate-700 rounded text-slate-600 dark:text-slate-400 shrink-0">
+                        Único Equipo
+                      </span>
+                    </div>
+                  ) : (
+                    <select
+                      value={selectedTeamId}
+                      onChange={(e) => setSelectedTeamId(e.target.value)}
+                      className="w-full px-3 py-2 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white outline-none focus:border-blue-600 cursor-pointer"
+                    >
+                      {activeTeams.length === 0 ? (
+                        <option value="" disabled>
+                          Sin equipos registrados
                         </option>
-                      ))
-                    )}
-                  </select>
+                      ) : (
+                        activeTeams.map((t) => (
+                          <option key={t.id} value={t.id}>
+                            {t.name} ({t.code})
+                          </option>
+                        ))
+                      )}
+                    </select>
+                  )}
                 </div>
 
                 <div>

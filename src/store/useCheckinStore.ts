@@ -47,6 +47,7 @@ export interface User {
   verified: boolean;
   birthDate?: string;
   team?: string;
+  teamId?: string;
   assignedTeams?: string[];
   status?: 'active' | 'inactive';
   isProfileComplete: boolean;
@@ -79,6 +80,7 @@ export interface ManagedUserPermissionEntry {
   email: string;
   role: UserRole | string;
   team?: string;
+  teamId?: string;
   assignedTeams?: string[];
   permissions?: UserGranularPermissions;
   customPermissions?: Partial<UserGranularPermissions>;

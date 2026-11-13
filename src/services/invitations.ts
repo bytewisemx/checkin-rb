@@ -53,6 +53,9 @@ export async function saveInvitationToFirestore(invitation: Invitation): Promise
 
   try {
     const invRef = doc(db, 'invitations', invitation.token);
+    const resolvedTeamName = invitation.teamName || invitation.team || 'Equipo Corporativo';
+    const resolvedTeamId = invitation.teamId || invitation.assignedTeamId || 'team-default';
+
     const writePromise = setDoc(
       invRef,
       {
@@ -64,7 +67,10 @@ export async function saveInvitationToFirestore(invitation: Invitation): Promise
         supervisorEmail: invitation.supervisorEmail || '',
         created_by_ti_id: invitation.created_by_ti_id || null,
         issuerRole: invitation.issuerRole || 'Supervisor',
-        team: invitation.team,
+        team: resolvedTeamName,
+        teamName: resolvedTeamName,
+        teamId: resolvedTeamId,
+        assignedTeamId: resolvedTeamId,
         roleTitle: invitation.roleTitle,
         role: invitation.role,
         targetRole: invitation.targetRole || invitation.role,

@@ -49,6 +49,9 @@ interface InvitationState {
     issuerRole?: 'TI' | 'Supervisor';
     targetRole?: UserRole;
     team: string;
+    teamId?: string;
+    teamName?: string;
+    assignedTeamId?: string;
     roleTitle?: string;
     expiresInHours?: number;
     notes?: string;
@@ -133,6 +136,9 @@ export const useInvitationStore = create<InvitationState>()(
           issuerRole = 'Supervisor',
           targetRole = issuerRole === 'TI' ? 'Supervisor' : 'Empleado',
           team,
+          teamId,
+          teamName,
+          assignedTeamId,
           roleTitle = targetRole === 'Supervisor' ? 'Supervisor de Equipo' : 'Colaborador Operativo',
           expiresInHours = 48,
           notes = '',
@@ -141,6 +147,9 @@ export const useInvitationStore = create<InvitationState>()(
         const durationMs = expiresInHours * 60 * 60 * 1000;
         const now = Date.now();
         const expiresAt = now + durationMs;
+
+        const finalTeamName = (teamName || team || 'Equipo Corporativo').trim();
+        const finalTeamId = (teamId || assignedTeamId || 'team-default').trim();
 
         const newInvitations: Invitation[] = [];
 
@@ -160,7 +169,10 @@ export const useInvitationStore = create<InvitationState>()(
             supervisorEmail,
             created_by_ti_id: issuerRole === 'TI' ? supervisorId : created_by_ti_id,
             issuerRole,
-            team: team || 'Auditoría y Consultoría',
+            team: finalTeamName,
+            teamName: finalTeamName,
+            teamId: finalTeamId,
+            assignedTeamId: finalTeamId,
             roleTitle: roleTitle || (targetRole === 'Supervisor' ? 'Supervisor' : 'Empleado'),
             role: targetRole,
             status: 'pending',

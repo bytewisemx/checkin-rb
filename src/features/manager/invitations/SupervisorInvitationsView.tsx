@@ -33,6 +33,108 @@ export function SupervisorInvitationsView() {
     deleteInvitation 
   } = useInvitationStore();
 
+  const normRole = normalizeRole(user?.role);
+
+  // Equipos vinculados al perfil del emisor según Regla 2 (assignedTeams o team principal)
+  const userAvailableTeams = useMemo(() => {
+    if (!user) return [];
+    const assigned = user.assignedTeams || [];
+    const primaryTeam = user.team || '';
+    const primaryTeamId = user.teamId || '';
+
+    // 1. Si administra múltiples equipos (assignedTeams)
+    if (assigned.length > 0) {
+      const matched = activeTeams.filter(
+        (t) =>
+          assigned.includes(t.name) ||
+          assigned.includes(t.id) ||
+          t.name === primaryTeam ||
+          t.id === primaryTeamId
+      );
+      if (matched.length > 0) return matched;
+
+      // Si algunos nombres en assignedTeams no están aún en la colección
+      return assigned.map((name, idx) => ({
+        id: `team-assigned-${idx}`,
+        name,
+        code: `EQ-0${idx + 1}`,
+        leaderId: user.id,
+        leaderName: user.name,
+        leaderRole: normRole,
+        memberIds: [],
+        status: 'active' as const,
+        createdAt: '',
+        updatedAt: '',
+      }));
+    }
+
+    // 2. Si solo tiene 1 equipo asignado como principal (team o teamId)
+    if (primaryTeam || primaryTeamId) {
+      const matched = activeTeams.filter(
+        (t) => t.name === primaryTeam || t.id === primaryTeamId
+      );
+      if (matched.length > 0) return matched;
+
+      return [
+        {
+          id: primaryTeamId || 'team-primary',
+          name: primaryTeam,
+          code: 'EQ-01',
+          leaderId: user.id,
+          leaderName: user.name,
+          leaderRole: normRole,
+          memberIds: [],
+          status: 'active' as const,
+          createdAt: '',
+          updatedAt: '',
+        },
+      ];
+    }
+
+    // Equipos donde es líder
+    const ledTeams = activeTeams.filter((t) => t.leaderId === user.id);
+    if (ledTeams.length > 0) return ledTeams;
+
+    // Directivos sin filtro restrictivo en perfil
+    if (normRole === 'Socio' || normRole === 'Gerente') {
+      return activeTeams;
+    }
+
+    return activeTeams;
+  }, [user, activeTeams, normRole]);
+
+  // Asignación Automática por Defecto: currentUser.teamId o el primer elemento de currentUser.assignedTeams
+  const defaultTeam = useMemo(() => {
+    if (!user || userAvailableTeams.length === 0) return null;
+
+    if (user.teamId) {
+      const match = userAvailableTeams.find((t) => t.id === user.teamId);
+      if (match) return match;
+    }
+
+    if (user.assignedTeams && user.assignedTeams.length > 0) {
+      const first = user.assignedTeams[0];
+      const match = userAvailableTeams.find((t) => t.name === first || t.id === first);
+      if (match) return match;
+    }
+
+    if (user.team) {
+      const match = userAvailableTeams.find((t) => t.name === user.team);
+      if (match) return match;
+    }
+
+    return userAvailableTeams[0];
+  }, [user, userAvailableTeams]);
+
+  const [selectedTeamId, setSelectedTeamId] = useState('');
+
+  // Preselección por defecto inmediata
+  useEffect(() => {
+    if (defaultTeam && (!selectedTeamId || !userAvailableTeams.some((t) => t.id === selectedTeamId))) {
+      setSelectedTeamId(defaultTeam.id);
+    }
+  }, [defaultTeam, selectedTeamId, userAvailableTeams]);
+
   const allowedRoles = useMemo(() => {
     return getAllowedRolesToInvite(user?.role);
   }, [user?.role]);
@@ -50,14 +152,7 @@ export function SupervisorInvitationsView() {
   // Estados del Formulario Rápido de Emisión
   const [emailInput, setEmailInput] = useState('');
   const [selectedRole, setSelectedRole] = useState<UserRole>(allowedRoles[0]?.value || 'colaborador');
-  const [selectedTeam, setSelectedTeam] = useState(user?.team || '');
   const [isSubmitting, setIsSubmitting] = useState(false);
-
-  useEffect(() => {
-    if (!selectedTeam && activeTeams.length > 0) {
-      setSelectedTeam(user?.team || activeTeams[0].name);
-    }
-  }, [activeTeams, selectedTeam, user?.team]);
 
   // Estados de Filtros y Búsqueda
   const [searchQuery, setSearchQuery] = useState('');
@@ -101,7 +196,10 @@ export function SupervisorInvitationsView() {
       const normRole = normalizeRole(user?.role);
       const roleTitle = allowedRoles.find((r) => r.value === selectedRole)?.label || selectedRole;
 
-      const teamToAssign = selectedTeam.trim() || user?.team || (activeTeams[0]?.name ?? 'Dirección General');
+      // Resolver equipo vinculado respetando selección o asignación por defecto
+      const chosenTeam = userAvailableTeams.find((t) => t.id === selectedTeamId) || defaultTeam || userAvailableTeams[0];
+      const targetTeamId = chosenTeam?.id || user?.teamId || 'team-default';
+      const targetTeamName = chosenTeam?.name || user?.team || 'Equipo Corporativo';
 
       // 1. Generar la invitación en el store con token único y expiración
       const created = createInvitations({
@@ -109,7 +207,9 @@ export function SupervisorInvitationsView() {
         supervisorId: user?.id || 'admin-99',
         supervisorName: `${user?.name || 'Líder'} ${user?.lastName || ''}`.trim(),
         supervisorEmail: user?.email || '',
-        team: teamToAssign,
+        team: targetTeamName,
+        teamId: targetTeamId,
+        teamName: targetTeamName,
         targetRole: selectedRole,
         roleTitle,
         expiresInHours: 48,
@@ -130,18 +230,19 @@ export function SupervisorInvitationsView() {
           actorEmail: user?.email || '',
           actorRole: normRole,
           targetResource: `Invitación: ${inv.email}`,
-          details: `Emisión de invitación con rol ${roleTitle} en equipo ${inv.team}`,
+          details: `Emisión de invitación con rol ${roleTitle} en equipo ${inv.teamName || inv.team}`,
         });
 
         // 2. Construir la URL de activación: /activar-cuenta?token=...&email=...
         const activationUrl = buildActivationUrl(inv.token, inv.email);
 
-        // 3. Despachar payload al Webhook de n8n (el único medio de invitación)
+        // 3. Despachar payload al Webhook de n8n con teamId y teamName garantizados
         const webhookRes = await dispatchInviteWebhook({
           event: 'invite_created',
           recipientEmail: inv.email,
           supervisorName: inv.supervisorName,
-          teamName: inv.team,
+          teamId: inv.teamId || targetTeamId,
+          teamName: inv.teamName || targetTeamName,
           roleName: inv.roleTitle,
           activationUrl,
           expiresAt: new Date(inv.expiresAt).toISOString(),
@@ -176,7 +277,8 @@ export function SupervisorInvitationsView() {
       event: 'invite_created',
       recipientEmail: inv.email,
       supervisorName: inv.supervisorName,
-      teamName: inv.team,
+      teamId: inv.teamId || inv.assignedTeamId || 'team-default',
+      teamName: inv.teamName || inv.team || 'Equipo Corporativo',
       roleName: inv.roleTitle,
       activationUrl,
       expiresAt: new Date(inv.expiresAt).toISOString(),
@@ -327,25 +429,38 @@ export function SupervisorInvitationsView() {
               <div className="sm:col-span-4 flex items-end gap-2">
                 <div className="flex-1">
                   <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-1">
-                    Equipo
+                    Equipo Asignado
                   </label>
-                  <select
-                    value={selectedTeam}
-                    onChange={(e) => setSelectedTeam(e.target.value)}
-                    className="w-full text-xs font-semibold py-2 px-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 outline-none cursor-pointer focus:border-blue-600"
-                  >
-                    {activeTeams.length === 0 ? (
-                      <option value="" disabled>
-                        Sin equipos registrados
-                      </option>
-                    ) : (
-                      activeTeams.map((team) => (
-                        <option key={team.id} value={team.name}>
-                          {team.name} ({team.code})
+
+                  {userAvailableTeams.length === 1 ? (
+                    <div
+                      className="w-full text-xs font-semibold py-2 px-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-800/70 text-slate-700 dark:text-slate-300 flex items-center justify-between"
+                      title="Equipo predeterminado según tu asignación"
+                    >
+                      <span className="truncate">{userAvailableTeams[0].name}</span>
+                      <span className="text-[10px] uppercase font-mono px-1.5 py-0.5 bg-slate-200 dark:bg-slate-700 rounded text-slate-600 dark:text-slate-400 shrink-0">
+                        Asignado
+                      </span>
+                    </div>
+                  ) : (
+                    <select
+                      value={selectedTeamId}
+                      onChange={(e) => setSelectedTeamId(e.target.value)}
+                      className="w-full text-xs font-semibold py-2 px-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 outline-none cursor-pointer focus:border-blue-600"
+                    >
+                      {userAvailableTeams.length === 0 ? (
+                        <option value="" disabled>
+                          Sin equipos disponibles
                         </option>
-                      ))
-                    )}
-                  </select>
+                      ) : (
+                        userAvailableTeams.map((team) => (
+                          <option key={team.id} value={team.id}>
+                            {team.name} ({team.code})
+                          </option>
+                        ))
+                      )}
+                    </select>
+                  )}
                 </div>
 
                 <button

@@ -7,6 +7,7 @@ export interface N8nInvitePayload {
   event: 'invite_created';
   recipientEmail: string;
   supervisorName: string;
+  teamId?: string;
   teamName: string;
   roleName: string;
   activationUrl: string;

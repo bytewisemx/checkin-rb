@@ -28,6 +28,87 @@ export function generateTeamCode(name: string, count = 1): string {
   return `${prefix}-${paddedNum}`;
 }
 
+export const INITIAL_CORPORATE_TEAMS: Team[] = [
+  {
+    id: 'team-prueba-01',
+    name: 'Equipo Prueba',
+    code: 'EQ-PRU-01',
+    leaderId: 'admin-99',
+    leaderName: 'Supervisor Prueba',
+    leaderRole: 'Supervisor',
+    memberIds: ['usr-ana'],
+    status: 'active',
+    description: 'Equipo de operaciones y entorno de pruebas',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  },
+  {
+    id: 'team-aud-01',
+    name: 'Auditoría Fiscal',
+    code: 'EQ-AUD-01',
+    leaderId: 'gerente-01',
+    leaderName: 'Gerente Prueba',
+    leaderRole: 'Gerente',
+    memberIds: [],
+    status: 'active',
+    description: 'Auditoría Fiscal y Dictamen SAT',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  },
+  {
+    id: 'team-con-01',
+    name: 'Consultoría e Impuestos',
+    code: 'EQ-CON-01',
+    leaderId: 'gerente-01',
+    leaderName: 'Gerente Prueba',
+    leaderRole: 'Gerente',
+    memberIds: [],
+    status: 'active',
+    description: 'Consultoría fiscal corporativa',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  },
+  {
+    id: 'team-cnt-01',
+    name: 'Contabilidad Corporativa',
+    code: 'EQ-CNT-01',
+    leaderId: 'admin-99',
+    leaderName: 'Supervisor Prueba',
+    leaderRole: 'Supervisor',
+    memberIds: [],
+    status: 'active',
+    description: 'Contabilidad corporativa y cumplimiento',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  },
+  {
+    id: 'team-ptr-01',
+    name: 'Precios de Transferencia',
+    code: 'EQ-PTR-01',
+    leaderId: 'socio-01',
+    leaderName: 'Socio Director Prueba',
+    leaderRole: 'Socio',
+    memberIds: [],
+    status: 'active',
+    description: 'Estudios integrales de Precios de Transferencia',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  },
+  {
+    id: 'team-dir-01',
+    name: 'Dirección y Supervisión de Auditoría',
+    code: 'EQ-DIR-01',
+    leaderId: 'socio-01',
+    leaderName: 'Socio Director Prueba',
+    leaderRole: 'Socio',
+    memberIds: [],
+    status: 'active',
+    description: 'Dirección General de Auditoría',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  },
+];
+
 interface TeamState {
   teams: Team[];
   isLoading: boolean;
@@ -47,7 +128,7 @@ interface TeamState {
 export const useTeamStore = create<TeamState>()(
   persist(
     (set, get) => ({
-      teams: [],
+      teams: INITIAL_CORPORATE_TEAMS,
       isLoading: false,
       hasLoadedFromRemote: false,
 
@@ -56,17 +137,31 @@ export const useTeamStore = create<TeamState>()(
         try {
           const remoteTeams = await fetchTeamsFromFirestore();
           if (remoteTeams && remoteTeams.length > 0) {
+            const currentTeams = get().teams.length > 0 ? get().teams : INITIAL_CORPORATE_TEAMS;
+            const teamsMap = new Map<string, Team>();
+            currentTeams.forEach((t) => teamsMap.set(t.name.toLowerCase().trim(), t));
+            remoteTeams.forEach((t) => teamsMap.set(t.name.toLowerCase().trim(), t));
+
             set({
-              teams: remoteTeams,
+              teams: Array.from(teamsMap.values()),
               isLoading: false,
               hasLoadedFromRemote: true,
             });
           } else {
-            set({ isLoading: false, hasLoadedFromRemote: true });
+            if (get().teams.length === 0) {
+              set({ teams: INITIAL_CORPORATE_TEAMS, isLoading: false, hasLoadedFromRemote: true });
+              INITIAL_CORPORATE_TEAMS.forEach((t) => saveTeamToFirestore(t).catch(console.warn));
+            } else {
+              set({ isLoading: false, hasLoadedFromRemote: true });
+            }
           }
         } catch (error) {
           console.warn('[useTeamStore] Error al cargar equipos remotos:', error);
-          set({ isLoading: false });
+          if (get().teams.length === 0) {
+            set({ teams: INITIAL_CORPORATE_TEAMS, isLoading: false });
+          } else {
+            set({ isLoading: false });
+          }
         }
       },
 
