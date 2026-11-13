@@ -63,6 +63,8 @@ service cloud.firestore {
         isTI() ||
         isRH() ||
         isOwner(userId) ||
+        (resource.data.email != null && request.auth.token.email != null && resource.data.email == request.auth.token.email) ||
+        (resource.data.uid != null && resource.data.uid == request.auth.uid) ||
         (isSupervisor() && resource.data.supervisor_id == request.auth.uid)
       );
 
@@ -74,7 +76,8 @@ service cloud.firestore {
       // Solo TI puede modificar el objeto modules de cualquier usuario; el propio usuario puede actualizar su vector biometrics (sin fotos)
       allow update: if hasNoBiometricImages(request.resource.data) && (
         isTI() ||
-        (isOwner(userId) && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['modules', 'role'])) ||
+        ((isOwner(userId) || (resource.data.email != null && request.auth.token.email != null && resource.data.email == request.auth.token.email)) &&
+         !request.resource.data.diff(resource.data).affectedKeys().hasAny(['modules', 'role'])) ||
         (isSupervisor() && resource.data.supervisor_id == request.auth.uid && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['modules', 'role']))
       );
       allow delete: if isTI();

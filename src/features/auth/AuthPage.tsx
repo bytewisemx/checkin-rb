@@ -1,7 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
 import { useCheckinStore } from '../../store/useCheckinStore';
-import { useInvitationStore } from '../../store/useInvitationStore';
-import { useRayonerStore } from '../../store/useRayonerStore';
 import { useNavigate, Link } from 'react-router-dom';
 import { 
   loginWithEmail, 
@@ -9,8 +7,7 @@ import {
   logoutFirebase,
   isFirebaseConfigured 
 } from '../../services/firebase';
-import { handleUserSession } from '../../services/userService';
-import { normalizeRole } from '../../services/rbac';
+import { processLoginAccess } from '../../services/userService';
 import { ArrowDown, ChevronUp } from 'lucide-react';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
@@ -24,7 +21,7 @@ const BOX_COUNT = 100;
 const BOX_ARRAY = Array.from({ length: BOX_COUNT }, (_, i) => i);
 
 export function AuthPage() {
-  const { login, loginWithFirebaseUser, addToast, isAuthenticated, user } = useCheckinStore();
+  const { login, addToast, isAuthenticated, user } = useCheckinStore();
   const navigate = useNavigate();
 
   // Si ya tiene sesión activa con perfil completo, redirigir automáticamente a su dashboard
@@ -138,71 +135,6 @@ export function AuthPage() {
     });
   };
 
-  // Validación de Lista Blanca / Invitación Corporativa Previa y Estado de Revocación TI
-  const verifyAccessAndGetInvitation = (emailAddress: string) => {
-    const cleanEmail = emailAddress.trim().toLowerCase();
-    const { mockEmployeesData, userPermissionsDirectory } = useCheckinStore.getState();
-    const { isEmailWhitelisted, findInvitationForEmail } = useInvitationStore.getState();
-    const { getSupervisorCode } = useRayonerStore.getState();
-
-    // 0. Verificar si TI revocó los permisos de esta cuenta (incluso Socios / Supervisores)
-    const dirEntry = Object.values(userPermissionsDirectory).find(
-      (u) => u.email.toLowerCase() === cleanEmail
-    );
-    if (dirEntry?.accessRevoked) {
-      return {
-        allowed: false,
-        error: `Acceso revocado por TI: Los permisos de la cuenta "${cleanEmail}" (${dirEntry.name}) fueron revocados por el administrador de TI.`,
-        invitationData: undefined,
-      };
-    }
-
-    // 1. Cuentas maestras de TI Root
-    const isTiRoot = cleanEmail.includes('ti.root') || cleanEmail.startsWith('ti@') || cleanEmail.includes('root');
-    if (isTiRoot) {
-      return { allowed: true, invitationData: undefined };
-    }
-
-    // 2. Colaboradores existentes con perfil ya completado
-    const existingCompleted = mockEmployeesData.find(
-      (e) => e.email.toLowerCase() === cleanEmail && e.isProfileComplete
-    );
-    if (existingCompleted) {
-      return { allowed: true, invitationData: undefined };
-    }
-
-    // 3. Verificación de Invitación Corporativa previa emitida por un Supervisor o TI
-    const hasWhitelist = isEmailWhitelisted(cleanEmail);
-    const invitation = findInvitationForEmail(cleanEmail);
-
-    if (!hasWhitelist && !invitation) {
-      return {
-        allowed: false,
-        error: `Acceso restringido: La cuenta "${cleanEmail}" no cuenta con una invitación previa en la lista blanca de la firma. Para poder registrarte y crear tu perfil, solicita previamente a tu supervisor o a TI que emita tu invitación.`,
-        invitationData: undefined,
-      };
-    }
-
-    // 4. Si cuenta con invitación previa, recuperar datos jerárquicos y código de supervisor en automático
-    let invitationData = undefined;
-    if (invitation) {
-      const supervisorCode = getSupervisorCode(invitation.supervisorId);
-      const role = normalizeRole(invitation.targetRole || invitation.role);
-      invitationData = {
-        role,
-        team: invitation.team,
-        roleTitle: invitation.roleTitle,
-        supervisorId: invitation.supervisorId,
-        supervisorName: invitation.supervisorName,
-        supervisorCode,
-        created_by_ti_id: invitation.created_by_ti_id,
-        token: invitation.token,
-      };
-    }
-
-    return { allowed: true, invitationData };
-  };
-
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg('');
@@ -231,32 +163,31 @@ export function AuthPage() {
         }
       }
 
-      // 2. Si hay Firebase configurado, intentar autenticación con cuenta real
+      // 2. Si hay Firebase configurado, validar siguiendo el orden estricto (Paso 1: users -> Paso 2: invitations)
       if (firebaseReady) {
         const res = await loginWithEmail(email, password);
         if (res.success && res.user) {
-          // Consultar perfil existente por UID y por Email (evita bucle de re-registro)
-          const session = await handleUserSession(res.user);
-          if (session.isProfileComplete) {
-            addToast(`¡Bienvenido! Sesión iniciada con éxito.`, 'success');
+          const access = await processLoginAccess(res.user);
+
+          // Si el usuario ya existe y está activo en users -> Acceso Inmediato
+          if (access.allowed) {
+            addToast(access.message || '¡Bienvenido! Sesión iniciada con éxito.', 'success');
             navigate('/');
             return;
           }
 
-          const access = verifyAccessAndGetInvitation(res.user.email || email);
-          if (!access.allowed) {
-            await logoutFirebase();
-            setErrorMsg(access.error || 'Acceso restringido por lista blanca corporativa.');
+          // Si NO existe en users pero tiene invitación válida pendiente -> Redirigir a activación
+          if (access.action === 'redirect_activate') {
+            addToast(access.message || 'Invitación corporativa validada.', 'info');
+            navigate(
+              `/activar-cuenta?token=${encodeURIComponent(access.invitation.token)}&email=${encodeURIComponent(res.user.email || email)}`
+            );
             return;
           }
 
-          loginWithFirebaseUser(res.user, access.invitationData);
-          if (access.invitationData) {
-            addToast(`¡Invitación validada para ${access.invitationData.supervisorName}!`, 'success');
-          } else {
-            addToast('Inicio de sesión exitoso con Firebase', 'success');
-          }
-          navigate('/');
+          // Bloqueado (cuenta inactiva o sin invitación en lista blanca)
+          await logoutFirebase();
+          setErrorMsg(access.message);
           return;
         } else {
           // Fallback a demo local si no hubo éxito en Firebase
@@ -293,35 +224,29 @@ export function AuthPage() {
       if (firebaseReady) {
         const res = await loginWithGoogle();
         if (res.success && res.user) {
-          // 1. Manejo y verificación de perfil existente en BD/Firestore (evita bucle infinito y captura photoURL)
-          const session = await handleUserSession(res.user);
-          if (session.isProfileComplete) {
-            addToast(`¡Bienvenido! Conectado con ${res.user.email}`, 'success');
+          // Validación en Orden Estricto:
+          // 1. users (Acceso inmediato si existe y está activo; vincula UID y photoURL)
+          // 2. invitations (Redirige a activación solo si no existe en users)
+          const access = await processLoginAccess(res.user);
+
+          if (access.allowed) {
+            addToast(access.message || `¡Bienvenido! Conectado con ${res.user.email}`, 'success');
             navigate('/');
             return;
           }
 
-          const userEmail = res.user.email || '';
-          const access = verifyAccessAndGetInvitation(userEmail);
-
-          if (!access.allowed) {
-            // Se bloquea el acceso si no hay invitación previa
-            await logoutFirebase();
-            setErrorMsg(access.error || 'Acceso no autorizado por lista blanca.');
+          if (access.action === 'redirect_activate') {
+            addToast(access.message || 'Invitación corporativa validada.', 'info');
+            navigate(
+              `/activar-cuenta?token=${encodeURIComponent(access.invitation.token)}&email=${encodeURIComponent(res.user.email || '')}`
+            );
             return;
           }
 
-          // Iniciar sesión inyectando automáticamente la invitación y el código del supervisor
-          loginWithFirebaseUser(res.user, access.invitationData);
-          if (access.invitationData) {
-            addToast(
-              `¡Invitación validada con ${access.invitationData.supervisorName}! Asignación automática cargada.`,
-              'success'
-            );
-          } else {
-            addToast(`¡Bienvenido! Conectado con ${res.user.email}`, 'success');
-          }
-          navigate('/');
+          // Bloqueado (cuenta inactiva o sin invitación en lista blanca)
+          await logoutFirebase();
+          setErrorMsg(access.message);
+          return;
         } else {
           setErrorMsg(res.error || 'No se pudo iniciar con Google.');
         }
