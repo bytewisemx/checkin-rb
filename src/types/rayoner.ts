@@ -86,9 +86,13 @@ export interface ActiveWorker {
   userAvatar?: string;
   taskId: string;
   taskName: string;
+  projectId?: string;
   projectName: string;
   clientName: string;
   startedAtMs: number;
+  startedAt?: number | string;
+  accumulatedSeconds?: number;
+  isRunning?: boolean;
   currentDurationStr: string;
 }
 

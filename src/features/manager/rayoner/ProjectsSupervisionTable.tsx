@@ -12,6 +12,8 @@ import { RayonerProjectModal } from './RayonerProjectModal';
 import { ProjectTeamAssignmentModal } from './ProjectTeamAssignmentModal';
 import { ProjectTasksDrawerModal } from './ProjectTasksDrawerModal';
 import { ProjectExecutiveReportModal } from './ProjectExecutiveReportModal';
+import { LiveTimerCell } from '../../../components/common/LiveTimerCell';
+import { useLiveTeamTimers } from '../../../hooks/useLiveTeamTimers';
 
 interface ProjectsSupervisionTableProps {
   onOpenTaskModal: (taskId?: string | null, projectId?: string | null) => void;
@@ -22,6 +24,7 @@ export function ProjectsSupervisionTable({
   onOpenTaskModal,
   onSelectProjectForReport,
 }: ProjectsSupervisionTableProps) {
+  useLiveTeamTimers();
   const {
     projects,
     clients,
@@ -310,14 +313,19 @@ export function ProjectsSupervisionTable({
                         )}
                       </td>
 
-                      {/* 5. Actividad en Vivo */}
+                      {/* 5. Actividad en Vivo con Cronometraje en Tiempo Real */}
                       <td className="p-4">
                         {activeWorker ? (
-                          <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 text-xs font-medium border border-emerald-100 dark:border-emerald-900/50">
-                            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                            <span>
-                              {activeWorker.userName} ({activeWorker.currentDurationStr})
+                          <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-lg bg-blue-50/80 dark:bg-blue-950/40 text-blue-800 dark:text-blue-300 text-xs font-medium border border-blue-200 dark:border-blue-900/60 shadow-xs">
+                            <span className="font-semibold text-slate-800 dark:text-slate-100 truncate max-w-[120px]" title={activeWorker.userName}>
+                              {activeWorker.userName}
                             </span>
+                            <span className="text-slate-300 dark:text-slate-700">•</span>
+                            <LiveTimerCell
+                              startedAt={activeWorker.startedAt || activeWorker.startedAtMs}
+                              accumulatedSeconds={activeWorker.accumulatedSeconds || 0}
+                              isRunning={activeWorker.isRunning !== false}
+                            />
                           </div>
                         ) : (
                           <span className="text-xs text-slate-400 dark:text-slate-600">—</span>

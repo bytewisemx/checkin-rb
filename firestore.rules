@@ -166,6 +166,14 @@ service cloud.firestore {
       allow read: if isAuthenticated();
       allow write: if isAuthenticated();
     }
+
+    // =========================================================
+    // 9. Regla para Cronómetros en Tiempo Vivo (active_timers)
+    // =========================================================
+    match /active_timers/{userId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated();
+    }
   }
 }
 

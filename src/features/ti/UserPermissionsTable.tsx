@@ -217,9 +217,12 @@ export function UserPermissionsTable({ onNewUser }: UserPermissionsTableProps) {
           email: tm.email || existing.email,
           role,
           // Preservar la asignación dinámica de existing sobre el mock estático
-          team: existing.team || tm.team,
-          teamName: existing.teamName || existing.team || (tm as any).teamName || tm.team,
-          teamId: existing.teamId || (tm as any).teamId,
+          team: existing.team !== undefined ? existing.team : tm.team,
+          teamName:
+            existing.teamName !== undefined
+              ? existing.teamName
+              : (existing.team !== undefined ? existing.team : (tm as any).teamName || tm.team),
+          teamId: existing.teamId !== undefined ? existing.teamId : (tm as any).teamId,
         });
       } else {
         const perms = getDefaultPermissionsForRole(role);

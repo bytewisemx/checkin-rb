@@ -12,12 +12,15 @@ import {
 import { useRayonerStore } from '../../../store/useRayonerStore';
 import { useCheckinStore } from '../../../store/useCheckinStore';
 import { UserAvatar } from '../../../components/common/UserAvatar';
+import { LiveTimerCell } from '../../../components/common/LiveTimerCell';
+import { useLiveTeamTimers } from '../../../hooks/useLiveTeamTimers';
 
 interface TeamMembersViewProps {
   onNavigateToTree?: () => void;
 }
 
 export function TeamMembersView({ onNavigateToTree }: TeamMembersViewProps) {
+  useLiveTeamTimers();
   const user = useCheckinStore((state) => state.user);
   const {
     teamMembers: allTeamMembers,
@@ -315,16 +318,23 @@ function FragmentRow({
           </div>
         </td>
 
-        {/* 2. Proyecto y Tarea Activa */}
+        {/* 2. Proyecto y Tarea Activa con Cronometraje en Tiempo Vivo */}
         <td className="p-4">
           {activeWorker ? (
             <div className="flex flex-col">
               <span className="text-xs font-semibold text-slate-800 dark:text-slate-200 truncate max-w-xs">
                 {activeWorker.projectName}
               </span>
-              <span className="text-[11px] text-blue-600 dark:text-blue-400 truncate max-w-xs mt-0.5 font-medium">
-                {activeWorker.taskName} ({activeWorker.currentDurationStr})
-              </span>
+              <div className="flex items-center gap-2 mt-0.5">
+                <span className="text-[11px] text-blue-600 dark:text-blue-400 truncate max-w-[170px] font-medium" title={activeWorker.taskName}>
+                  {activeWorker.taskName}
+                </span>
+                <LiveTimerCell
+                  startedAt={activeWorker.startedAt || activeWorker.startedAtMs}
+                  accumulatedSeconds={activeWorker.accumulatedSeconds || 0}
+                  isRunning={activeWorker.isRunning !== false}
+                />
+              </div>
             </div>
           ) : (
             <span className="text-xs text-slate-400 dark:text-slate-600">—</span>

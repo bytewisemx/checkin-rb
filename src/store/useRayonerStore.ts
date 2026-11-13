@@ -1,5 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { doc, setDoc } from 'firebase/firestore';
+import { db, isFirebaseConfigured } from '../services/firebase';
 import { useNotificationStore } from './useNotificationStore';
 import type {
   ClientGroup,
@@ -840,13 +842,44 @@ export const useRayonerStore = create<RayonerState>()(
       },
 
       startWorkerTimer: (workerData) => {
+        const startedAt = workerData.startedAt || workerData.startedAtMs || Date.now();
+        const accumulatedSeconds = workerData.accumulatedSeconds || 0;
+        const workerWithDefaults: ActiveWorker = {
+          ...workerData,
+          startedAt,
+          startedAtMs: typeof startedAt === 'number' ? startedAt : new Date(startedAt).getTime(),
+          accumulatedSeconds,
+          isRunning: true,
+        };
+
         set((state) => ({
           activeWorkers: [
             ...state.activeWorkers.filter((w) => w.userId !== workerData.userId),
-            workerData,
+            workerWithDefaults,
           ],
         }));
-        broadcastRayonerSync('TIMER_STARTED', workerData);
+        broadcastRayonerSync('TIMER_STARTED', workerWithDefaults);
+
+        // Persistir en Firestore en la colección active_timers/{userId}
+        if (isFirebaseConfigured() && db) {
+          const timerRef = doc(db, 'active_timers', workerData.userId);
+          setDoc(
+            timerRef,
+            {
+              userId: workerData.userId,
+              userName: workerData.userName,
+              taskId: workerData.taskId,
+              taskName: workerData.taskName,
+              projectName: workerData.projectName,
+              clientName: workerData.clientName,
+              startedAt: typeof startedAt === 'number' ? startedAt : new Date(startedAt).toISOString(),
+              accumulatedSeconds,
+              isRunning: true,
+              updatedAt: new Date().toISOString(),
+            },
+            { merge: true }
+          ).catch(console.warn);
+        }
       },
 
       stopWorkerTimer: (userId) => {
@@ -854,6 +887,19 @@ export const useRayonerStore = create<RayonerState>()(
           activeWorkers: state.activeWorkers.filter((w) => w.userId !== userId),
         }));
         broadcastRayonerSync('TIMER_STOPPED', { userId });
+
+        // Actualizar estado en Firestore en active_timers/{userId}
+        if (isFirebaseConfigured() && db) {
+          const timerRef = doc(db, 'active_timers', userId);
+          setDoc(
+            timerRef,
+            {
+              isRunning: false,
+              updatedAt: new Date().toISOString(),
+            },
+            { merge: true }
+          ).catch(console.warn);
+        }
       },
 
       recordDayAllocations: (userId, allocations) => {
