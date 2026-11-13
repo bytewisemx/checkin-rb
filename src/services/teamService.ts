@@ -329,3 +329,119 @@ export async function deleteTeamFromFirestore(teamId: string, teamName?: string)
   const result = await cascadeDeleteTeam(teamId, teamName);
   return result.success;
 }
+
+/**
+ * Asignación / Desasignación Atómica y Dual de Equipo para un Usuario:
+ * 1. Actualiza Firestore users/{uid} simultáneamente: teamId, teamName, team, assignedTeams, updatedAt
+ * 2. Remueve de memberIds del equipo anterior en la colección 'teams'
+ * 3. Agrega a memberIds del nuevo equipo en la colección 'teams'
+ * 4. Actualiza en memoria useCheckinStore y useRayonerStore
+ */
+export async function syncUserTeamAssignment(
+  userId: string,
+  selectedTeam: Team | null,
+  teamsList?: Team[]
+): Promise<void> {
+  const firestore = db;
+  const isOnline = isFirebaseConfigured() && Boolean(firestore);
+
+  // 1. Sincronización en stores locales (useCheckinStore y useRayonerStore)
+  try {
+    const checkinState = useCheckinStore.getState();
+    checkinState.assignUserTeam(
+      userId,
+      selectedTeam ? selectedTeam.name : 'Sin equipo asignado',
+      selectedTeam ? selectedTeam.id : undefined
+    );
+
+    const rayonerState = useRayonerStore.getState();
+    if (rayonerState.teamMembers) {
+      const updatedMembers = rayonerState.teamMembers.map((m) =>
+        m.id === userId
+          ? {
+              ...m,
+              team: selectedTeam ? selectedTeam.name : 'Sin equipo asignado',
+              teamId: selectedTeam ? selectedTeam.id : undefined,
+              status: selectedTeam ? ('active' as const) : ('inactive' as const),
+            }
+          : m
+      );
+      useRayonerStore.setState({ teamMembers: updatedMembers });
+    }
+  } catch (err) {
+    console.warn('[teamService] Error actualizando stores locales:', err);
+  }
+
+  // 2. Actualización atómica en Firestore
+  if (isOnline && firestore) {
+    try {
+      const batch = writeBatch(firestore);
+
+      // A. Actualizar documento users/{userId}
+      const userRef = doc(firestore, 'users', userId);
+      batch.set(
+        userRef,
+        {
+          teamId: selectedTeam ? selectedTeam.id : null,
+          teamName: selectedTeam ? selectedTeam.name : 'Sin equipo asignado',
+          team: selectedTeam ? selectedTeam.name : 'Sin equipo asignado',
+          assignedTeams: selectedTeam ? [selectedTeam.id] : [],
+          status: selectedTeam ? 'active' : 'inactive',
+          isActive: Boolean(selectedTeam),
+          accessRevoked: !selectedTeam,
+          updatedAt: new Date().toISOString(),
+        },
+        { merge: true }
+      );
+
+      // B. Si se proporciona teamsList (o la colección teams):
+      // Remover al usuario del arreglo memberIds de cualquier otro equipo y agregarlo al nuevo equipo
+      if (teamsList && teamsList.length > 0) {
+        teamsList.forEach((t) => {
+          const isTarget = selectedTeam && t.id === selectedTeam.id;
+          const currentMembers = Array.isArray(t.memberIds) ? t.memberIds : [];
+          const hasUser = currentMembers.includes(userId);
+
+          if (isTarget && !hasUser) {
+            const teamRef = doc(firestore, 'teams', t.id);
+            batch.update(teamRef, {
+              memberIds: [...currentMembers, userId],
+              updatedAt: new Date().toISOString(),
+            });
+          } else if (!isTarget && hasUser) {
+            const teamRef = doc(firestore, 'teams', t.id);
+            batch.update(teamRef, {
+              memberIds: currentMembers.filter((mId) => mId !== userId),
+              updatedAt: new Date().toISOString(),
+            });
+          }
+        });
+      }
+
+      await batch.commit();
+    } catch (err) {
+      console.warn('[teamService] Error en actualización batch de equipo:', err);
+      // Fallback puntual a setDoc users
+      try {
+        const userRef = doc(firestore, 'users', userId);
+        await setDoc(
+          userRef,
+          {
+            teamId: selectedTeam ? selectedTeam.id : null,
+            teamName: selectedTeam ? selectedTeam.name : 'Sin equipo asignado',
+            team: selectedTeam ? selectedTeam.name : 'Sin equipo asignado',
+            assignedTeams: selectedTeam ? [selectedTeam.id] : [],
+            status: selectedTeam ? 'active' : 'inactive',
+            isActive: Boolean(selectedTeam),
+            accessRevoked: !selectedTeam,
+            updatedAt: new Date().toISOString(),
+          },
+          { merge: true }
+        );
+      } catch (fallbackErr) {
+        console.warn('[teamService] Error en fallback setDoc user:', fallbackErr);
+      }
+    }
+  }
+}
+

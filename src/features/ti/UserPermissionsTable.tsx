@@ -10,6 +10,8 @@ import {
 import { useCheckinStore, type ManagedUserPermissionEntry } from '../../store/useCheckinStore';
 import { useRayonerStore } from '../../store/useRayonerStore';
 import { useTeamStore } from '../../store/useTeamStore';
+import { syncUserTeamAssignment } from '../../services/teamService';
+import type { Team } from '../../types/team';
 import { UserAvatar } from '../../components/common/UserAvatar';
 import {
   normalizeRole,
@@ -23,6 +25,64 @@ import {
 export interface UserPermissionsTableProps {
   onNewUser?: () => void;
 }
+
+/**
+ * Helper para resolver siempre el nombre actualizado del equipo cruzando dinámicamente con teamsList.
+ */
+export const getResolvedTeamName = (
+  user: {
+    id?: string;
+    role?: string;
+    teamId?: string | null;
+    teamName?: string | null;
+    team?: string | null;
+    assignedTeams?: string[];
+  },
+  teamsList: Team[]
+): string => {
+  const normRole = (user.role || '').toLowerCase();
+  if (normRole === 'ti' || normRole === 'root') {
+    return 'Sin equipo (Acceso Global)';
+  }
+
+  // Para RH (múltiples equipos)
+  if (normRole === 'rh' && Array.isArray(user.assignedTeams)) {
+    if (user.assignedTeams.length === 0) return 'Sin equipo asignado';
+    return user.assignedTeams
+      .map((id) => teamsList.find((t) => t.id === id || t.name === id)?.name || id)
+      .join(', ');
+  }
+
+  // Para roles operativos (Colaborador, Supervisor, Gerente, Socio)
+  // 1. Cruce dinámico prioritario por teamId
+  let foundTeam = user.teamId ? teamsList.find((t) => t.id === user.teamId) : null;
+
+  // 2. Si no se encontró por teamId, verificar si está registrado en memberIds o como líder
+  if (!foundTeam && user.id) {
+    foundTeam = teamsList.find(
+      (t) =>
+        (Array.isArray(t.memberIds) && t.memberIds.includes(user.id!)) ||
+        t.leaderId === user.id
+    );
+  }
+
+  // 3. Fallback por coincidencia de nombre (teamName o team)
+  if (!foundTeam && (user.teamName || user.team)) {
+    const rawName = (user.teamName || user.team || '').trim();
+    if (
+      rawName &&
+      rawName !== 'Sin equipo asignado' &&
+      rawName !== 'Sin equipo' &&
+      rawName !== 'Sin equipo disponible'
+    ) {
+      foundTeam = teamsList.find(
+        (t) => t.name.toLowerCase() === rawName.toLowerCase() || t.id === rawName
+      );
+    }
+  }
+
+  return foundTeam ? foundTeam.name : (user.teamName || user.team || 'Sin equipo asignado');
+};
 
 export const GRANULAR_PERMISSION_DEFINITIONS: Array<{
   key: keyof UserGranularPermissions;
@@ -104,7 +164,6 @@ export function UserPermissionsTable({ onNewUser }: UserPermissionsTableProps) {
     mockEmployeesData,
     updateUserPermissions,
     updateUserAssignedTeams,
-    assignUserTeam,
     changeUserRole,
     toggleUserAccessRevoked,
     addToast,
@@ -128,8 +187,9 @@ export function UserPermissionsTable({ onNewUser }: UserPermissionsTableProps) {
   );
   const [draftAssignedTeams, setDraftAssignedTeams] = useState<string[]>([]);
   const [draftTeam, setDraftTeam] = useState<string>('');
+  const [draftTeamId, setDraftTeamId] = useState<string>('');
 
-  // Unificación de usuarios
+  // Unificación de usuarios (Priorizando siempre la verdad de userPermissionsDirectory sobre listas estáticas)
   const mergedUsers = useMemo<ManagedUserPermissionEntry[]>(() => {
     const map = new Map<string, ManagedUserPermissionEntry>();
 
@@ -139,6 +199,9 @@ export function UserPermissionsTable({ onNewUser }: UserPermissionsTableProps) {
       map.set(entry.id, {
         ...entry,
         role,
+        team: (entry.team || entry.teamName) ?? undefined,
+        teamName: (entry.teamName || entry.team) ?? undefined,
+        teamId: entry.teamId,
         permissions: effectivePerms,
         assignedTeams: entry.assignedTeams || (role === 'RH' ? availableTeamNames : undefined),
       });
@@ -153,7 +216,10 @@ export function UserPermissionsTable({ onNewUser }: UserPermissionsTableProps) {
           name: tm.name || existing.name,
           email: tm.email || existing.email,
           role,
-          team: tm.team || existing.team,
+          // Preservar la asignación dinámica de existing sobre el mock estático
+          team: existing.team || tm.team,
+          teamName: existing.teamName || existing.team || (tm as any).teamName || tm.team,
+          teamId: existing.teamId || (tm as any).teamId,
         });
       } else {
         const perms = getDefaultPermissionsForRole(role);
@@ -163,6 +229,8 @@ export function UserPermissionsTable({ onNewUser }: UserPermissionsTableProps) {
           email: tm.email,
           role,
           team: tm.team,
+          teamName: (tm as any).teamName || tm.team,
+          teamId: (tm as any).teamId,
           permissions: perms,
           modules: {
             checkIn: perms.canCheckIn,
@@ -186,6 +254,7 @@ export function UserPermissionsTable({ onNewUser }: UserPermissionsTableProps) {
           email: emp.email,
           role,
           team: emp.team,
+          teamName: emp.team,
           supervisor_id: emp.supervisor_id || 'admin-99',
           permissions: perms,
           modules: {
@@ -200,7 +269,7 @@ export function UserPermissionsTable({ onNewUser }: UserPermissionsTableProps) {
     });
 
     return Array.from(map.values());
-  }, [userPermissionsDirectory, teamMembers, mockEmployeesData]);
+  }, [userPermissionsDirectory, teamMembers, mockEmployeesData, availableTeamNames]);
 
   // Filtro por rol y búsqueda en tiempo real
   const filteredUsers = useMemo(() => {
@@ -250,8 +319,19 @@ export function UserPermissionsTable({ onNewUser }: UserPermissionsTableProps) {
     setDraftRole(norm);
     setDraftPermissions(userEntry.permissions || getDefaultPermissionsForRole(norm));
     setDraftAssignedTeams(userEntry.assignedTeams || availableTeamNames);
+
+    // Resolver el equipo actual usando teams dinámicamente
+    const foundTeam = teams.find(
+      (t) =>
+        t.id === userEntry.teamId ||
+        t.name === userEntry.team ||
+        t.name === userEntry.teamName ||
+        (Array.isArray(t.memberIds) && t.memberIds.includes(userEntry.id))
+    );
+
+    setDraftTeamId(foundTeam ? foundTeam.id : (userEntry.teamId || ''));
     setDraftTeam(
-      userEntry.team && userEntry.team !== 'Sin equipo asignado' ? userEntry.team : ''
+      foundTeam ? foundTeam.name : (userEntry.team && userEntry.team !== 'Sin equipo asignado' ? userEntry.team : '')
     );
   };
 
@@ -264,31 +344,39 @@ export function UserPermissionsTable({ onNewUser }: UserPermissionsTableProps) {
     }
   };
 
-  // Guardar cambios del modal
-  const handleSaveModal = () => {
+  // Guardar cambios del modal (Sincronización Dual y Atómica - Reglas 2 y 3)
+  const handleSaveModal = async () => {
     if (!editingUser) return;
 
-    // 1. Si cambió el rol
-    if (normalizeRole(editingUser.role) !== draftRole) {
-      changeUserRole(editingUser.id, draftRole);
+    try {
+      // 1. Si cambió el rol
+      if (normalizeRole(editingUser.role) !== draftRole) {
+        changeUserRole(editingUser.id, draftRole);
+      }
+
+      // 2. Aplicar overrides de permisos
+      updateUserPermissions(editingUser.id, draftPermissions);
+
+      // 3. Si es RH o Gerente, guardar los equipos autorizados
+      if (draftRole === 'RH' || draftRole === 'Gerente') {
+        updateUserAssignedTeams(editingUser.id, draftAssignedTeams);
+      }
+
+      // 4. Si no es RH ni TI, actualizar o asignar equipo simultáneamente en Firestore y en local
+      if (draftRole !== 'RH' && draftRole !== 'TI') {
+        const selectedTeamObj = activeTeams.find((t) => t.id === draftTeamId || t.name === draftTeam);
+        await syncUserTeamAssignment(editingUser.id, selectedTeamObj || null, teams);
+      }
+
+      // 5. Refresco inmediato de la lista de equipos en UI
+      await fetchTeams();
+
+      addToast(`Perfil y permisos actualizados para ${editingUser.name}.`, 'success');
+      setEditingUser(null);
+    } catch (err) {
+      console.error('[UserPermissionsTable] Error al guardar cambios de usuario:', err);
+      addToast('Ocurrió un error al sincronizar los cambios de equipo.', 'error');
     }
-
-    // 2. Aplicar overrides de permisos
-    updateUserPermissions(editingUser.id, draftPermissions);
-
-    // 3. Si es RH o Gerente, guardar los equipos autorizados
-    if (draftRole === 'RH' || draftRole === 'Gerente') {
-      updateUserAssignedTeams(editingUser.id, draftAssignedTeams);
-    }
-
-    // 4. Si no es RH ni TI, actualizar o asignar equipo
-    if (draftRole !== 'RH' && draftRole !== 'TI') {
-      const selectedTeamObj = activeTeams.find((t) => t.name === draftTeam);
-      assignUserTeam(editingUser.id, draftTeam, selectedTeamObj?.id);
-    }
-
-    addToast(`Perfil y permisos actualizados para ${editingUser.name}.`, 'success');
-    setEditingUser(null);
   };
 
   // Restablecer a defaults del rol actual
@@ -462,45 +550,68 @@ export function UserPermissionsTable({ onNewUser }: UserPermissionsTableProps) {
 
                       {/* Equipo / Visibilidad Aislada */}
                       <td className="py-3.5 px-4">
-                        {normRole === 'RH' ? (
-                          <div className="space-y-1">
-                            <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">
-                              Equipos Autorizados ({u.assignedTeams?.length || 0}):
-                            </span>
-                            <div className="flex flex-wrap gap-1">
-                              {u.assignedTeams && u.assignedTeams.length > 0 ? (
-                                u.assignedTeams.map((t) => (
-                                  <span
-                                    key={t}
-                                    className="px-2 py-0.5 rounded text-[10px] font-medium bg-rose-50 text-rose-700 dark:bg-rose-950 dark:text-rose-300 border border-rose-100 dark:border-rose-900"
-                                  >
-                                    {t}
-                                  </span>
-                                ))
-                              ) : (
-                                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400">
-                                  Sin equipo
+                        {(() => {
+                          if (normRole === 'RH') {
+                            const rhTeams =
+                              Array.isArray(u.assignedTeams) && u.assignedTeams.length > 0
+                                ? u.assignedTeams.map(
+                                    (id) => teams.find((t) => t.id === id || t.name === id)?.name || id
+                                  )
+                                : [];
+                            return (
+                              <div className="space-y-1">
+                                <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">
+                                  Equipos Autorizados ({rhTeams.length}):
                                 </span>
-                              )}
-                            </div>
-                          </div>
-                        ) : normRole === 'TI' ? (
-                          <span className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
-                            Sin equipo (Acceso Global)
-                          </span>
-                        ) : !u.team ||
-                          u.team.trim() === '' ||
-                          u.team === 'Sin equipo asignado' ||
-                          u.team === 'Sin equipo' ||
-                          u.team === 'Sin equipo disponible' ? (
-                          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400">
-                            Sin equipo
-                          </span>
-                        ) : (
-                          <span className="text-slate-700 dark:text-slate-300 font-medium">
-                            {u.team}
-                          </span>
-                        )}
+                                <div className="flex flex-wrap gap-1">
+                                  {rhTeams.length > 0 ? (
+                                    rhTeams.map((tName) => (
+                                      <span
+                                        key={tName}
+                                        className="px-2 py-0.5 rounded text-[10px] font-medium bg-rose-50 text-rose-700 dark:bg-rose-950 dark:text-rose-300 border border-rose-100 dark:border-rose-900"
+                                      >
+                                        {tName}
+                                      </span>
+                                    ))
+                                  ) : (
+                                    <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400">
+                                      Sin equipo asignado
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          }
+
+                          if (normRole === 'TI') {
+                            return (
+                              <span className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+                                Sin equipo (Acceso Global)
+                              </span>
+                            );
+                          }
+
+                          const resolvedName = getResolvedTeamName(u, teams);
+                          const hasNoTeam =
+                            !resolvedName ||
+                            resolvedName === 'Sin equipo asignado' ||
+                            resolvedName === 'Sin equipo' ||
+                            resolvedName === 'Sin equipo disponible';
+
+                          if (hasNoTeam) {
+                            return (
+                              <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400">
+                                Sin equipo asignado
+                              </span>
+                            );
+                          }
+
+                          return (
+                            <span className="text-slate-700 dark:text-slate-300 font-medium">
+                              {resolvedName}
+                            </span>
+                          );
+                        })()}
                       </td>
 
                       {/* Switches de Acceso Rápido */}
@@ -582,15 +693,12 @@ export function UserPermissionsTable({ onNewUser }: UserPermissionsTableProps) {
                       <td className="py-3.5 px-4 whitespace-nowrap">
                         {(() => {
                           const isTiRoot = normRole === 'TI';
+                          const resolvedTeamName = getResolvedTeamName(u, teams);
                           const hasNoTeam =
-                            normRole === 'RH'
-                              ? (!u.assignedTeams || u.assignedTeams.length === 0) &&
-                                (!u.team || u.team === 'Sin equipo asignado' || u.team === 'Sin equipo')
-                              : !u.team ||
-                                u.team.trim() === '' ||
-                                u.team === 'Sin equipo asignado' ||
-                                u.team === 'Sin equipo' ||
-                                u.team === 'Sin equipo disponible';
+                            resolvedTeamName === 'Sin equipo asignado' ||
+                            resolvedTeamName === 'Sin equipo' ||
+                            resolvedTeamName === 'Sin equipo disponible' ||
+                            !resolvedTeamName;
 
                           const isInactiveByPolicy =
                             !isTiRoot &&
@@ -717,18 +825,23 @@ export function UserPermissionsTable({ onNewUser }: UserPermissionsTableProps) {
                     Equipo Operativo Asignado
                   </label>
                   <select
-                    value={draftTeam}
-                    onChange={(e) => setDraftTeam(e.target.value)}
+                    value={draftTeamId || ''}
+                    onChange={(e) => {
+                      const tid = e.target.value;
+                      setDraftTeamId(tid);
+                      const found = activeTeams.find((t) => t.id === tid);
+                      setDraftTeam(found ? found.name : '');
+                    }}
                     className="w-full p-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-semibold text-slate-800 dark:text-slate-200 focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 cursor-pointer"
                   >
                     <option value="">-- Sin equipo asignado (Inhabilitado) --</option>
                     {activeTeams.map((team) => (
-                      <option key={team.id} value={team.name}>
+                      <option key={team.id} value={team.id}>
                         {team.name} ({team.code})
                       </option>
                     ))}
                   </select>
-                  {!draftTeam && (
+                  {!draftTeamId && !draftTeam && (
                     <p className="text-[11px] text-blue-700 dark:text-blue-300 font-medium bg-blue-50 dark:bg-blue-950/40 p-2 rounded-lg border border-blue-200 dark:border-blue-900">
                       • Nota: Un usuario sin equipo asignado permanece en estado inhabilitado hasta ser vinculado a un equipo activo.
                     </p>

@@ -631,29 +631,46 @@ export const useCheckinStore = create<CheckinState>()(
       assignUserTeam: (userId, teamName, teamId) => {
         const { userPermissionsDirectory, mockEmployeesData, user } = get();
         const existing = userPermissionsDirectory[userId];
-        const hasTeam = Boolean(teamName && teamName.trim() !== '' && teamName !== 'Sin equipo asignado');
+        const hasTeam = Boolean(teamName && teamName.trim() !== '' && teamName !== 'Sin equipo asignado' && teamName !== 'Sin equipo');
+
+        const resolvedTeamName = hasTeam ? teamName.trim() : 'Sin equipo asignado';
+        const resolvedTeamId = hasTeam ? (teamId || undefined) : undefined;
 
         const updatedEntry = existing
           ? {
               ...existing,
-              team: teamName || 'Sin equipo asignado',
-              teamName: teamName || 'Sin equipo asignado',
-              teamId: teamId || undefined,
+              team: resolvedTeamName,
+              teamName: resolvedTeamName,
+              teamId: resolvedTeamId,
+              assignedTeams: resolvedTeamId ? [resolvedTeamId] : (hasTeam ? [resolvedTeamName] : []),
               accessRevoked: !hasTeam,
             }
-          : undefined;
+          : {
+              id: userId,
+              name: mockEmployeesData.find((e) => e.id === userId)?.name || userId,
+              email: `${userId}@russellbedford.mx`,
+              role: normalizeRole(mockEmployeesData.find((e) => e.id === userId)?.role || 'Colaborador'),
+              team: resolvedTeamName,
+              teamName: resolvedTeamName,
+              teamId: resolvedTeamId,
+              assignedTeams: resolvedTeamId ? [resolvedTeamId] : (hasTeam ? [resolvedTeamName] : []),
+              accessRevoked: !hasTeam,
+              permissions: getDefaultPermissionsForRole('Colaborador'),
+              modules: getDefaultModulesForRole('Colaborador'),
+            };
 
-        const nextDirectory = updatedEntry
-          ? { ...userPermissionsDirectory, [userId]: updatedEntry }
-          : userPermissionsDirectory;
+        const nextDirectory = {
+          ...userPermissionsDirectory,
+          [userId]: updatedEntry,
+        };
 
         const nextMockEmployees = mockEmployeesData.map((emp) =>
           emp.id === userId
             ? {
                 ...emp,
-                team: teamName || 'Sin equipo asignado',
-                teamName: teamName || 'Sin equipo asignado',
-                teamId: teamId || undefined,
+                team: resolvedTeamName,
+                teamName: resolvedTeamName,
+                teamId: resolvedTeamId,
                 status: hasTeam ? ('active' as const) : ('inactive' as const),
               }
             : emp
@@ -663,9 +680,10 @@ export const useCheckinStore = create<CheckinState>()(
         if (user && user.id === userId) {
           nextUser = {
             ...user,
-            team: teamName || 'Sin equipo asignado',
-            teamName: teamName || 'Sin equipo asignado',
-            teamId: teamId || undefined,
+            team: resolvedTeamName,
+            teamName: resolvedTeamName,
+            teamId: resolvedTeamId,
+            assignedTeams: resolvedTeamId ? [resolvedTeamId] : (hasTeam ? [resolvedTeamName] : []),
             status: hasTeam ? 'active' : 'inactive',
             isActive: hasTeam,
             accessRevoked: !hasTeam,
@@ -678,15 +696,36 @@ export const useCheckinStore = create<CheckinState>()(
           user: nextUser,
         });
 
-        // Persistir sincronizadamente en Firestore
+        // Actualizar simultáneamente en useRayonerStore teamMembers
+        try {
+          const rayonerState = useRayonerStore.getState();
+          if (rayonerState.teamMembers) {
+            const updatedRayonerMembers = rayonerState.teamMembers.map((m) =>
+              m.id === userId
+                ? {
+                    ...m,
+                    team: resolvedTeamName,
+                    teamId: resolvedTeamId,
+                    status: hasTeam ? ('active' as const) : ('inactive' as const),
+                  }
+                : m
+            );
+            useRayonerStore.setState({ teamMembers: updatedRayonerMembers });
+          }
+        } catch (e) {
+          console.warn('[useCheckinStore] Error al sincronizar rayoner teamMembers:', e);
+        }
+
+        // Persistir sincronizadamente en Firestore de forma dual y atómica
         if (isFirebaseConfigured() && db) {
           const userRef = doc(db, 'users', userId);
           setDoc(
             userRef,
             {
-              team: teamName || 'Sin equipo asignado',
-              teamName: teamName || 'Sin equipo asignado',
-              teamId: teamId || null,
+              team: resolvedTeamName,
+              teamName: resolvedTeamName,
+              teamId: resolvedTeamId || null,
+              assignedTeams: resolvedTeamId ? [resolvedTeamId] : [],
               status: hasTeam ? 'active' : 'inactive',
               isActive: hasTeam,
               updatedAt: new Date().toISOString(),

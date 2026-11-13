@@ -3,6 +3,7 @@ import { useTeamStore, generateTeamCode } from '../../store/useTeamStore';
 import { useCheckinStore, type ManagedUserPermissionEntry } from '../../store/useCheckinStore';
 import { useRayonerStore } from '../../store/useRayonerStore';
 import { normalizeRole, type UserRole } from '../../services/rbac';
+import { syncUserTeamAssignment } from '../../services/teamService';
 import type { Team } from '../../types/team';
 import { Search, X, Check, ChevronDown, ChevronRight } from 'lucide-react';
 
@@ -12,7 +13,7 @@ interface AuditHierarchyViewProps {
 
 export function AuditHierarchyView({ onNavigateToInvitations }: AuditHierarchyViewProps = {}) {
   const { teams, isLoading, fetchTeams, createTeam, updateTeam, deleteTeam } = useTeamStore();
-  const { userPermissionsDirectory, mockEmployeesData, updateUserAssignedTeams, assignUserTeam, addToast } = useCheckinStore();
+  const { userPermissionsDirectory, mockEmployeesData, updateUserAssignedTeams, addToast } = useCheckinStore();
   const { teamMembers } = useRayonerStore();
 
   // Estados de interfaz
@@ -212,6 +213,18 @@ export function AuditHierarchyView({ onNavigateToInvitations }: AuditHierarchyVi
     const leaderRole = leaderObj ? normalizeRole(leaderObj.role) : 'Supervisor';
 
     if (editingTeam) {
+      const targetTeam: Team = {
+        ...editingTeam,
+        name: formName.trim(),
+        code: formCode.trim().toUpperCase(),
+        leaderId: formLeaderId,
+        leaderName,
+        leaderRole,
+        parentLeaderId: formParentLeaderId,
+        memberIds: formMemberIds,
+        status: formStatus,
+      };
+
       await updateTeam(editingTeam.id, {
         name: formName.trim(),
         code: formCode.trim().toUpperCase(),
@@ -223,25 +236,26 @@ export function AuditHierarchyView({ onNavigateToInvitations }: AuditHierarchyVi
         status: formStatus,
       });
 
-      // Actualizar perfiles de miembros asignados sincronizando teamId y teamName
-      formMemberIds.forEach((mId) => {
-        assignUserTeam(mId, formName.trim(), editingTeam.id);
+      // Sincronizar atómicamente perfiles de miembros asignados
+      for (const mId of formMemberIds) {
+        await syncUserTeamAssignment(mId, targetTeam, teams);
         updateUserAssignedTeams(mId, [formName.trim()]);
-      });
-
-      // Actualizar líder asignado
-      if (formLeaderId) {
-        assignUserTeam(formLeaderId, formName.trim(), editingTeam.id);
       }
 
-      // Desasignar miembros removidos
+      // Sincronizar líder asignado
+      if (formLeaderId) {
+        await syncUserTeamAssignment(formLeaderId, targetTeam, teams);
+      }
+
+      // Desasignar miembros removidos de forma atómica
       const removedMembers = (editingTeam.memberIds || []).filter(
         (id) => !formMemberIds.includes(id) && id !== formLeaderId
       );
-      removedMembers.forEach((oldId) => {
-        assignUserTeam(oldId, 'Sin equipo asignado', undefined);
-      });
+      for (const oldId of removedMembers) {
+        await syncUserTeamAssignment(oldId, null, teams);
+      }
 
+      await fetchTeams();
       addToast(`Equipo "${formName}" actualizado correctamente`, 'success');
     } else {
       const created = await createTeam({
@@ -255,15 +269,16 @@ export function AuditHierarchyView({ onNavigateToInvitations }: AuditHierarchyVi
         status: formStatus,
       });
 
-      formMemberIds.forEach((mId) => {
-        assignUserTeam(mId, created.name, created.id);
+      for (const mId of formMemberIds) {
+        await syncUserTeamAssignment(mId, created, teams);
         updateUserAssignedTeams(mId, [created.name]);
-      });
-
-      if (formLeaderId) {
-        assignUserTeam(formLeaderId, created.name, created.id);
       }
 
+      if (formLeaderId) {
+        await syncUserTeamAssignment(formLeaderId, created, teams);
+      }
+
+      await fetchTeams();
       addToast(`Equipo "${created.name}" creado con éxito`, 'success');
     }
 
@@ -792,6 +807,7 @@ export function AuditHierarchyView({ onNavigateToInvitations }: AuditHierarchyVi
                     onClick={async () => {
                       if (window.confirm(`¿Seguro que deseas eliminar el equipo "${editingTeam.name}"?`)) {
                         await deleteTeam(editingTeam.id);
+                        await fetchTeams();
                         addToast(`Equipo "${editingTeam.name}" eliminado`, 'info');
                         setIsModalOpen(false);
                       }

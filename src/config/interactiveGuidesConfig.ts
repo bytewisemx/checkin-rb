@@ -553,3 +553,4 @@ export function getInteractiveGuidesForRole(rawRole?: string): InteractiveGuide[
   }
   return INTERACTIVE_GUIDES.colaborador;
 }
+
