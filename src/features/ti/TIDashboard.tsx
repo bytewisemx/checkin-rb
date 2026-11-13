@@ -11,7 +11,8 @@ import { SupervisorDashboard } from '../manager/SupervisorDashboard';
 import { UserPermissionsTable } from './UserPermissionsTable';
 import { ExecutiveAuditLogView } from '../audit/ExecutiveAuditLogView';
 import { AuditHierarchyView } from '../hierarchy/AuditHierarchyView';
-import { Send, Loader2, X } from 'lucide-react';
+import { normalizeCorporateDatabase } from '../../services/dataNormalizationService';
+import { Send, Loader2, X, RefreshCw } from 'lucide-react';
 
 export interface TIDashboardProps {
   initialTab?: 'invitations' | 'users_permissions' | 'audit_accounts' | 'rbac_matrix' | 'supervisor_view' | 'audit_logs';
@@ -105,10 +106,34 @@ export function TIDashboard({ initialTab = 'users_permissions' }: TIDashboardPro
     }
   };
 
-  // Preselección por defecto según la regla de TI
+  const [isNormalizing, setIsNormalizing] = useState(false);
+
+  const handleNormalizeDatabase = async () => {
+    setIsNormalizing(true);
+    try {
+      const res = await normalizeCorporateDatabase();
+      await fetchTeams();
+      addToast(
+        `Normalización completada: "Equipo Prueba" activo (${res.usersUpdated} usuarios sincronizados en Firestore).`,
+        'success'
+      );
+    } catch (err) {
+      console.error('Error al normalizar base de datos:', err);
+      addToast('Error al normalizar la base de datos.', 'error');
+    } finally {
+      setIsNormalizing(false);
+    }
+  };
+
+  // Preselección por defecto: si existe "Equipo Prueba", se selecciona prioritariamente
   useEffect(() => {
     if (activeTeams.length > 0) {
-      if (!selectedTeamId || !activeTeams.some((t) => t.id === selectedTeamId)) {
+      const pruebaTeam = activeTeams.find(
+        (t) => t.id === 'team-prueba-01' || t.name.trim().toLowerCase() === 'equipo prueba'
+      );
+      if (pruebaTeam) {
+        setSelectedTeamId(pruebaTeam.id);
+      } else if (!selectedTeamId || !activeTeams.some((t) => t.id === selectedTeamId)) {
         setSelectedTeamId(activeTeams[0].id);
       }
     }
@@ -265,9 +290,21 @@ export function TIDashboard({ initialTab = 'users_permissions' }: TIDashboardPro
       {/* 1. Encabezado y Tabs */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">
-            Consola de Administración TI y Accesos
-          </h1>
+          <div className="flex items-center gap-3">
+            <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">
+              Consola de Administración TI y Accesos
+            </h1>
+            <button
+              type="button"
+              onClick={handleNormalizeDatabase}
+              disabled={isNormalizing}
+              className="px-2.5 py-1 text-xs font-semibold text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-800 hover:bg-blue-100 dark:hover:bg-blue-900/60 rounded-lg transition-colors cursor-pointer flex items-center gap-1.5 shadow-xs"
+              title="Normaliza la colección 'teams' dejando únicamente 'Equipo Prueba' y sincroniza a todos los usuarios"
+            >
+              <RefreshCw className={`w-3 h-3 ${isNormalizing ? 'animate-spin' : ''}`} />
+              <span>{isNormalizing ? 'Normalizando...' : 'Sincronizar y Normalizar Firestore'}</span>
+            </button>
+          </div>
           <p className="text-sm text-slate-500 mt-0.5">
             Control jerárquico, matriz RBAC y asignación granular de permisos a nivel organizacional.
           </p>

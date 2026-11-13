@@ -19,6 +19,8 @@ import {
   DEFAULT_BIOMETRIC_THRESHOLD,
 } from '../services/facialBiometrics';
 import { useRayonerStore } from './useRayonerStore';
+import { doc, setDoc } from 'firebase/firestore';
+import { db, isFirebaseConfigured } from '../services/firebase';
 
 export interface TaskTag {
   text: string;
@@ -48,6 +50,7 @@ export interface User {
   birthDate?: string;
   team?: string;
   teamId?: string;
+  teamName?: string | null;
   assignedTeams?: string[];
   status?: 'active' | 'inactive';
   isActive?: boolean;
@@ -83,6 +86,7 @@ export interface ManagedUserPermissionEntry {
   role: UserRole | string;
   team?: string;
   teamId?: string;
+  teamName?: string | null;
   assignedTeams?: string[];
   permissions?: UserGranularPermissions;
   customPermissions?: Partial<UserGranularPermissions>;
@@ -633,6 +637,7 @@ export const useCheckinStore = create<CheckinState>()(
           ? {
               ...existing,
               team: teamName || 'Sin equipo asignado',
+              teamName: teamName || 'Sin equipo asignado',
               teamId: teamId || undefined,
               accessRevoked: !hasTeam,
             }
@@ -647,6 +652,8 @@ export const useCheckinStore = create<CheckinState>()(
             ? {
                 ...emp,
                 team: teamName || 'Sin equipo asignado',
+                teamName: teamName || 'Sin equipo asignado',
+                teamId: teamId || undefined,
                 status: hasTeam ? ('active' as const) : ('inactive' as const),
               }
             : emp
@@ -657,6 +664,7 @@ export const useCheckinStore = create<CheckinState>()(
           nextUser = {
             ...user,
             team: teamName || 'Sin equipo asignado',
+            teamName: teamName || 'Sin equipo asignado',
             teamId: teamId || undefined,
             status: hasTeam ? 'active' : 'inactive',
             isActive: hasTeam,
@@ -669,6 +677,23 @@ export const useCheckinStore = create<CheckinState>()(
           mockEmployeesData: nextMockEmployees,
           user: nextUser,
         });
+
+        // Persistir sincronizadamente en Firestore
+        if (isFirebaseConfigured() && db) {
+          const userRef = doc(db, 'users', userId);
+          setDoc(
+            userRef,
+            {
+              team: teamName || 'Sin equipo asignado',
+              teamName: teamName || 'Sin equipo asignado',
+              teamId: teamId || null,
+              status: hasTeam ? 'active' : 'inactive',
+              isActive: hasTeam,
+              updatedAt: new Date().toISOString(),
+            },
+            { merge: true }
+          ).catch(console.warn);
+        }
 
         broadcastPermissionsUpdate({
           userId,

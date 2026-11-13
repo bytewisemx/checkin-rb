@@ -104,6 +104,25 @@ export async function fetchTeamsFromFirestore(): Promise<Team[]> {
       teamsFromFirestore.map((t) => `${t.name} (${t.code})`)
     );
 
+    // Si la colección está vacía, sembramos limpiamente "Equipo Prueba" como equipo corporativo inicial
+    if (teamsFromFirestore.length === 0) {
+      const initialTeam: Team = {
+        id: 'team-prueba-01',
+        name: 'Equipo Prueba',
+        code: 'EQ-PRU-01',
+        leaderId: 'admin-99',
+        leaderName: 'Supervisor Prueba',
+        leaderRole: 'Supervisor',
+        memberIds: [],
+        status: 'active',
+        description: 'Equipo de operaciones y entorno de pruebas corporativas',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      saveTeamToFirestore(initialTeam).catch(console.warn);
+      return [initialTeam];
+    }
+
     return teamsFromFirestore;
   } catch (err) {
     console.warn('[teamService] Error al consultar colección "teams":', err);

@@ -12,7 +12,7 @@ interface AuditHierarchyViewProps {
 
 export function AuditHierarchyView({ onNavigateToInvitations }: AuditHierarchyViewProps = {}) {
   const { teams, isLoading, fetchTeams, createTeam, updateTeam, deleteTeam } = useTeamStore();
-  const { userPermissionsDirectory, mockEmployeesData, updateUserAssignedTeams, addToast } = useCheckinStore();
+  const { userPermissionsDirectory, mockEmployeesData, updateUserAssignedTeams, assignUserTeam, addToast } = useCheckinStore();
   const { teamMembers } = useRayonerStore();
 
   // Estados de interfaz
@@ -97,6 +97,20 @@ export function AuditHierarchyView({ onNavigateToInvitations }: AuditHierarchyVi
       const r = normalizeRole(u.role);
       return (r === 'Socio' || r === 'Gerente' || r === 'Supervisor') && !u.accessRevoked;
     });
+  }, [allUsers]);
+
+  // Administrador TI Root (Nodo Raíz de Sistema, excluido de equipos operativos)
+  const tiRootUser = useMemo(() => {
+    return allUsers.find((u) => normalizeRole(u.role) === 'TI') || {
+      id: 'ti-root-01',
+      name: 'TI Root & Ciberseguridad',
+      email: 'ti.root@russellbedford.mx',
+      role: 'TI' as UserRole,
+      team: 'Dirección de TI',
+      photoURL: null,
+      permissions: {} as any,
+      modules: {} as any,
+    };
   }, [allUsers]);
 
   // Socios / Directores superiores (Nivel Superior)
@@ -209,9 +223,23 @@ export function AuditHierarchyView({ onNavigateToInvitations }: AuditHierarchyVi
         status: formStatus,
       });
 
-      // Actualizar perfiles de usuarios asignados
+      // Actualizar perfiles de miembros asignados sincronizando teamId y teamName
       formMemberIds.forEach((mId) => {
+        assignUserTeam(mId, formName.trim(), editingTeam.id);
         updateUserAssignedTeams(mId, [formName.trim()]);
+      });
+
+      // Actualizar líder asignado
+      if (formLeaderId) {
+        assignUserTeam(formLeaderId, formName.trim(), editingTeam.id);
+      }
+
+      // Desasignar miembros removidos
+      const removedMembers = (editingTeam.memberIds || []).filter(
+        (id) => !formMemberIds.includes(id) && id !== formLeaderId
+      );
+      removedMembers.forEach((oldId) => {
+        assignUserTeam(oldId, 'Sin equipo asignado', undefined);
       });
 
       addToast(`Equipo "${formName}" actualizado correctamente`, 'success');
@@ -228,8 +256,13 @@ export function AuditHierarchyView({ onNavigateToInvitations }: AuditHierarchyVi
       });
 
       formMemberIds.forEach((mId) => {
+        assignUserTeam(mId, created.name, created.id);
         updateUserAssignedTeams(mId, [created.name]);
       });
+
+      if (formLeaderId) {
+        assignUserTeam(formLeaderId, created.name, created.id);
+      }
 
       addToast(`Equipo "${created.name}" creado con éxito`, 'success');
     }
@@ -332,174 +365,228 @@ export function AuditHierarchyView({ onNavigateToInvitations }: AuditHierarchyVi
 
       {/* Contenedor del Árbol Jerárquico */}
       <div className="space-y-6">
-        {topDirectors.map((director) => {
-          const dirRole = normalizeRole(director.role);
-          // Equipos asociados a esta dirección o líder
-          const directorTeams = teams.filter(
-            (t) => t.parentLeaderId === director.id || (!t.parentLeaderId && dirRole === 'TI')
-          );
-          const isNodeCollapsed = Boolean(collapsedNodes[director.id]);
+        {/* 1. Nodo Raíz de Seguridad: Consola Central TI (Excluido de equipos operativos) */}
+        {tiRootUser && (
+          <div className="bg-white dark:bg-[#0B111E] rounded-xl border-l-4 border-l-slate-700 dark:border-l-blue-600 border border-slate-200 dark:border-slate-800 p-4 shadow-xs">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3.5">
+                {tiRootUser.photoURL ? (
+                  <img
+                    src={tiRootUser.photoURL}
+                    alt={tiRootUser.name}
+                    referrerPolicy="no-referrer"
+                    className="w-10 h-10 rounded-xl object-cover border border-slate-200"
+                  />
+                ) : (
+                  <div className="w-10 h-10 rounded-xl bg-slate-900 dark:bg-slate-800 text-white font-bold text-xs flex items-center justify-center">
+                    {getInitials(tiRootUser.name)}
+                  </div>
+                )}
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-bold text-sm text-slate-900 dark:text-white">
+                      {tiRootUser.name}
+                    </span>
+                    <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-300 rounded border border-slate-200 dark:border-slate-700">
+                      Nodo Raíz del Sistema (TI Root)
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                    {tiRootUser.email} • Gobernanza de Infraestructura Global • <strong className="font-medium text-slate-700 dark:text-slate-300">Sin equipo operativo (Acceso Global)</strong>
+                  </p>
+                </div>
+              </div>
+
+              <span className="text-[11px] font-semibold text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-slate-800/80 px-2.5 py-1 rounded-md">
+                Gobernanza TI
+              </span>
+            </div>
+          </div>
+        )}
+
+        {/* 2. Equipos Operativos Registrados en la Colección 'teams' */}
+        {teams.map((team) => {
+          const isTeamCollapsed = Boolean(collapsedNodes[team.id]);
+
+          // Cruce dinámico con la colección/directorio de 'users'
+          const memberUsers = allUsers.filter((u) => {
+            const norm = normalizeRole(u.role);
+            if (norm === 'TI') return false; // Excluido de equipos operativos
+            if (u.id === team.leaderId) return false; // El líder se destaca en su propia cabecera
+
+            const isDirectTeam = u.teamId === team.id;
+            const isNameMatch =
+              (u.team && u.team.trim().toLowerCase() === team.name.trim().toLowerCase()) ||
+              ((u as any).teamName &&
+                (u as any).teamName.trim().toLowerCase() === team.name.trim().toLowerCase());
+            const isInAssigned =
+              u.assignedTeams?.includes(team.id) || u.assignedTeams?.includes(team.name);
+            const isInMemberIds = team.memberIds?.includes(u.id);
+
+            return isDirectTeam || isNameMatch || isInAssigned || isInMemberIds;
+          });
+
+          const leaderObj =
+            allUsers.find((u) => u.id === team.leaderId) || {
+              id: team.leaderId || 'admin-99',
+              name: team.leaderName || 'Supervisor Prueba',
+              role: team.leaderRole || 'Supervisor',
+              email: 'supervisor.prueba@russellbedford.mx',
+              photoURL: null,
+            };
 
           return (
             <div
-              key={director.id}
-              className="bg-white dark:bg-[#0B111E] rounded-xl border-l-4 border-l-blue-800 border border-slate-200 dark:border-slate-800 p-4 shadow-sm"
+              key={team.id}
+              className="bg-white dark:bg-[#0B111E] rounded-xl border-l-4 border-l-blue-800 border border-slate-200 dark:border-slate-800 p-4 shadow-sm space-y-4"
             >
-              <div className="flex items-center justify-between">
+              {/* Cabecera del Equipo Operativo */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-200/80 dark:border-slate-800">
                 <div className="flex items-center gap-3">
-                  {director.photoURL ? (
-                    <img
-                      src={director.photoURL}
-                      alt={director.name}
-                      referrerPolicy="no-referrer"
-                      className="w-9 h-9 rounded-lg object-cover border border-slate-200"
-                    />
-                  ) : (
-                    <div className="w-9 h-9 rounded-lg bg-blue-900 text-white font-bold text-xs flex items-center justify-center">
-                      {getInitials(director.name)}
-                    </div>
-                  )}
-
+                  <div className="w-9 h-9 rounded-lg bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-900 text-blue-700 dark:text-blue-300 font-bold text-xs flex items-center justify-center">
+                    {team.code.substring(0, 5)}
+                  </div>
                   <div>
                     <div className="flex items-center gap-2">
-                      <span className="font-bold text-sm text-slate-900 dark:text-white">
-                        {director.name}
+                      <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                        {team.name}
+                      </h3>
+                      <span className="text-[11px] font-mono text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded border border-slate-200 dark:border-slate-700">
+                        {team.code}
                       </span>
-                      <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-blue-100 text-blue-900 dark:bg-blue-950 dark:text-blue-300 rounded">
-                        {dirRole}
+                      <span
+                        className={`text-[10px] font-semibold px-2 py-0.5 rounded ${
+                          team.status === 'active'
+                            ? 'bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300'
+                            : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400'
+                        }`}
+                      >
+                        {team.status === 'active' ? '● Activo' : '○ Inactivo'}
                       </span>
                     </div>
-                    <p className="text-xs text-slate-500 dark:text-slate-400">
-                      {director.email} • {directorTeams.length} {directorTeams.length === 1 ? 'Equipo asignado' : 'Equipos asignados'}
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                      Equipo Operativo Corporativo • Total integrantes activos: {memberUsers.length + 1} (1 Líder + {memberUsers.length} Colaboradores/RH)
                     </p>
                   </div>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={() => handleToggleCollapse(director.id)}
-                  className="p-1.5 text-slate-400 hover:text-slate-700 dark:hover:text-white rounded-lg transition-colors cursor-pointer"
-                  title={isNodeCollapsed ? 'Expandir' : 'Colapsar'}
-                >
-                  {isNodeCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                </button>
+                <div className="flex items-center gap-2 self-start sm:self-center">
+                  <button
+                    type="button"
+                    onClick={() => handleOpenEditModal(team)}
+                    className="px-3 py-1.5 text-xs font-semibold text-blue-700 dark:text-blue-400 bg-white dark:bg-slate-800 border border-blue-200 dark:border-blue-900 hover:bg-blue-50 dark:hover:bg-blue-950/50 rounded-lg transition-colors cursor-pointer"
+                  >
+                    Editar Equipo y Miembros
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleToggleCollapse(team.id)}
+                    className="p-1.5 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 cursor-pointer"
+                    title={isTeamCollapsed ? 'Expandir' : 'Colapsar'}
+                  >
+                    {isTeamCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                  </button>
+                </div>
               </div>
 
-              {/* Ramas Hijas: Equipos bajo esta dirección */}
-              {!isNodeCollapsed && directorTeams.length > 0 && (
-                <div className="mt-4 ml-4 pl-6 border-l-2 border-slate-200 dark:border-slate-800 space-y-4">
-                  {directorTeams.map((team) => {
-                    const isTeamCollapsed = Boolean(collapsedNodes[team.id]);
-                    const memberUsers = (team.memberIds || [])
-                      .map((id) => allUsers.find((u) => u.id === id))
-                      .filter(Boolean) as ManagedUserPermissionEntry[];
+              {!isTeamCollapsed && (
+                <div className="space-y-4 pt-1">
+                  {/* Tarjeta del Líder de Equipo */}
+                  <div className="bg-slate-50/80 dark:bg-slate-900/60 p-3.5 rounded-xl border border-slate-200/80 dark:border-slate-800 flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      {leaderObj.photoURL ? (
+                        <img
+                          src={leaderObj.photoURL}
+                          alt={leaderObj.name}
+                          referrerPolicy="no-referrer"
+                          className="w-8 h-8 rounded-full object-cover border border-slate-200 shrink-0"
+                        />
+                      ) : (
+                        <div className="w-8 h-8 rounded-full bg-blue-700 text-white font-bold text-xs flex items-center justify-center shrink-0">
+                          {getInitials(leaderObj.name)}
+                        </div>
+                      )}
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-bold text-slate-900 dark:text-slate-100">
+                            {leaderObj.name}
+                          </span>
+                          <span className="px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300 rounded">
+                            Líder Responsable ({team.leaderRole || 'Supervisor'})
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                          {leaderObj.email}
+                        </p>
+                      </div>
+                    </div>
+                    <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 dark:bg-emerald-950/60 dark:text-emerald-300 px-2 py-0.5 rounded border border-emerald-200 dark:border-emerald-800">
+                      Líder Activo
+                    </span>
+                  </div>
 
-                    return (
-                      <div
-                        key={team.id}
-                        className="relative bg-slate-50/70 dark:bg-slate-900/50 rounded-xl border border-slate-200 dark:border-slate-800 p-4"
-                      >
-                        {/* Conector horizontal sutil */}
-                        <div className="absolute -left-6 top-6 w-6 h-0.5 bg-slate-200 dark:bg-slate-800" />
-
-                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-200/80 dark:border-slate-800">
-                          <div>
-                            <div className="flex items-center gap-2">
-                              <h3 className="text-sm font-bold text-slate-900 dark:text-white">
-                                {team.name}
-                              </h3>
-                              <span className="text-[11px] font-mono text-slate-500 dark:text-slate-400 bg-white dark:bg-slate-800 px-2 py-0.5 rounded border border-slate-200 dark:border-slate-700">
-                                {team.code}
-                              </span>
+                  {/* Cuadrícula de Colaboradores y Personal de RH Asignados */}
+                  <div>
+                    <h4 className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2">
+                      Colaboradores y Personal Vinculado ({memberUsers.length})
+                    </h4>
+                    {memberUsers.length === 0 ? (
+                      <p className="text-xs text-slate-400 italic py-2">
+                        Sin colaboradores asignados a este equipo.{' '}
+                        <button
+                          type="button"
+                          onClick={() => handleOpenEditModal(team)}
+                          className="text-blue-600 underline font-medium hover:text-blue-800 cursor-pointer"
+                        >
+                          Asignar miembros ahora
+                        </button>
+                      </p>
+                    ) : (
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2.5">
+                        {memberUsers.map((member) => {
+                          const normRole = normalizeRole(member.role);
+                          return (
+                            <div
+                              key={member.id}
+                              className="flex items-center justify-between bg-white dark:bg-slate-950 p-2.5 rounded-lg border border-slate-200/80 dark:border-slate-800 shadow-xs"
+                            >
+                              <div className="flex items-center gap-2.5 min-w-0">
+                                {member.photoURL ? (
+                                  <img
+                                    src={member.photoURL}
+                                    alt={member.name}
+                                    referrerPolicy="no-referrer"
+                                    className="w-7 h-7 rounded-full object-cover border border-slate-200 shrink-0"
+                                  />
+                                ) : (
+                                  <div className="w-7 h-7 rounded-full bg-blue-800 text-white font-bold text-[10px] flex items-center justify-center shrink-0">
+                                    {getInitials(member.name)}
+                                  </div>
+                                )}
+                                <div className="truncate">
+                                  <div className="text-xs font-semibold text-slate-800 dark:text-slate-200 truncate">
+                                    {member.name}
+                                  </div>
+                                  <div className="text-[10px] text-slate-500 truncate">
+                                    {member.email} • {normRole}
+                                  </div>
+                                </div>
+                              </div>
                               <span
-                                className={`text-[10px] font-semibold px-2 py-0.5 rounded ${
-                                  team.status === 'active'
-                                    ? 'bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300'
-                                    : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400'
+                                className={`text-[10px] font-semibold px-2 py-0.5 rounded shrink-0 ${
+                                  normRole === 'RH'
+                                    ? 'bg-rose-50 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300'
+                                    : 'bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300'
                                 }`}
                               >
-                                {team.status === 'active' ? 'Activo' : 'Inactivo'}
+                                {normRole === 'RH' ? 'RH Asignado' : 'Colaborador'}
                               </span>
                             </div>
-                            <p className="text-xs text-slate-600 dark:text-slate-400 mt-0.5">
-                              Líder: <strong className="text-slate-800 dark:text-slate-200">{team.leaderName}</strong>{' '}
-                              ({team.leaderRole || 'Supervisor'}) • {memberUsers.length} integrantes
-                            </p>
-                          </div>
-
-                          <div className="flex items-center gap-2 self-start sm:self-center">
-                            <button
-                              type="button"
-                              onClick={() => handleOpenEditModal(team)}
-                              className="px-3 py-1.5 text-xs font-semibold text-blue-700 dark:text-blue-400 bg-white dark:bg-slate-800 border border-blue-200 dark:border-blue-900 hover:bg-blue-50 dark:hover:bg-blue-950/50 rounded-lg transition-colors cursor-pointer"
-                            >
-                              Editar Equipo y Miembros
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleToggleCollapse(team.id)}
-                              className="p-1 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 cursor-pointer"
-                            >
-                              {isTeamCollapsed ? <ChevronRight className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-                            </button>
-                          </div>
-                        </div>
-
-                        {/* Lista de Colaboradores del Equipo */}
-                        {!isTeamCollapsed && (
-                          <div className="mt-3">
-                            {memberUsers.length === 0 ? (
-                              <p className="text-xs text-slate-400 italic py-1">
-                                Sin colaboradores asignados a este equipo.{' '}
-                                <button
-                                  type="button"
-                                  onClick={() => handleOpenEditModal(team)}
-                                  className="text-blue-600 underline font-medium hover:text-blue-800 cursor-pointer"
-                                >
-                                  Asignar miembros ahora
-                                </button>
-                              </p>
-                            ) : (
-                              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2.5">
-                                {memberUsers.map((member) => (
-                                  <div
-                                    key={member.id}
-                                    className="flex items-center justify-between bg-white dark:bg-slate-950 p-2.5 rounded-lg border border-slate-200/80 dark:border-slate-800"
-                                  >
-                                    <div className="flex items-center gap-2.5 min-w-0">
-                                      {member.photoURL ? (
-                                        <img
-                                          src={member.photoURL}
-                                          alt={member.name}
-                                          referrerPolicy="no-referrer"
-                                          className="w-7 h-7 rounded-full object-cover border border-slate-200 shrink-0"
-                                        />
-                                      ) : (
-                                        <div className="w-7 h-7 rounded-full bg-blue-800 text-white font-bold text-[10px] flex items-center justify-center shrink-0">
-                                          {getInitials(member.name)}
-                                        </div>
-                                      )}
-                                      <div className="truncate">
-                                        <div className="text-xs font-semibold text-slate-800 dark:text-slate-200 truncate">
-                                          {member.name}
-                                        </div>
-                                        <div className="text-[10px] text-slate-500 truncate">
-                                          {normalizeRole(member.role)}
-                                        </div>
-                                      </div>
-                                    </div>
-                                    <span className="text-[10px] font-semibold text-blue-700 bg-blue-50 dark:bg-blue-950/60 dark:text-blue-300 px-2 py-0.5 rounded">
-                                      Activo
-                                    </span>
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        )}
+                          );
+                        })}
                       </div>
-                    );
-                  })}
+                    )}
+                  </div>
                 </div>
               )}
             </div>
