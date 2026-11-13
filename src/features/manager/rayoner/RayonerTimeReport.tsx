@@ -241,7 +241,7 @@ export function RayonerTimeReport({ initialProjectId }: RayonerTimeReportProps) 
         </div>
 
         {/* Botones de Exportación Homogéneos y Accesibles */}
-        <div className="flex items-center gap-2 shrink-0">
+        <div data-tour="reports-export-excel" className="flex items-center gap-2 shrink-0">
           {/* Imprimir */}
           <button
             type="button"

@@ -187,7 +187,7 @@ export function TeamMembersView({ onNavigateToTree }: TeamMembersViewProps) {
       {/* 3. Tabla Moderna de Colaboradores */}
       <div className="w-full bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-xs">
         <div className="w-full overflow-x-auto">
-          <table className="w-full text-left border-collapse">
+          <table data-tour="team-timesheet-table" className="w-full text-left border-collapse">
             <thead>
               <tr className="border-b border-slate-100 dark:border-slate-800 bg-slate-50/75 dark:bg-slate-800/40 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
                 <th className="p-4">Colaborador / Correo</th>
@@ -299,11 +299,11 @@ function FragmentRow({
                   {member.name}
                 </span>
                 {isWorking ? (
-                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-100 dark:bg-emerald-950/40 dark:text-emerald-400 dark:border-emerald-900/50">
+                  <span data-tour="team-member-status" className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-100 dark:bg-emerald-950/40 dark:text-emerald-400 dark:border-emerald-900/50">
                     En Jornada
                   </span>
                 ) : (
-                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400">
+                  <span data-tour="team-member-status" className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400">
                     Fuera de Turno
                   </span>
                 )}

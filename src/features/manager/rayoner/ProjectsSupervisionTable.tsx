@@ -159,6 +159,7 @@ export function ProjectsSupervisionTable({
 
           <button
             type="button"
+            data-tour="btn-new-project"
             onClick={() => {
               setSelectedProjectIdForEdit(null);
               setIsProjectModalOpen(true);
@@ -248,6 +249,7 @@ export function ProjectsSupervisionTable({
 
                           <button
                             type="button"
+                            data-tour="project-actions-team"
                             onClick={() => setTeamAssignmentProject(project)}
                             className="text-xs font-medium text-blue-600 dark:text-blue-400 hover:underline ml-1 cursor-pointer"
                             title="Gestionar asignaciones del equipo"
@@ -258,7 +260,7 @@ export function ProjectsSupervisionTable({
                       </td>
 
                       {/* 3. Consumo de Horas (Presupuesto vs. Real) */}
-                      <td className="p-4">
+                      <td className="p-4" data-tour="project-card-metrics">
                         <div className="w-full max-w-[200px]">
                           <div className="flex justify-between items-center text-xs mb-1">
                             <span className="font-semibold text-slate-700 dark:text-slate-200">

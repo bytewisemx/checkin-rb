@@ -324,6 +324,7 @@ export function AuditHierarchyView({ onNavigateToInvitations }: AuditHierarchyVi
           </button>
           <button
             type="button"
+            data-tour="btn-new-team"
             onClick={handleOpenCreateModal}
             className="px-4 py-2 text-xs font-semibold text-white bg-blue-700 hover:bg-blue-800 rounded-lg shadow-sm transition-colors cursor-pointer"
           >
@@ -364,7 +365,7 @@ export function AuditHierarchyView({ onNavigateToInvitations }: AuditHierarchyVi
       )}
 
       {/* Contenedor del Árbol Jerárquico */}
-      <div className="space-y-6">
+      <div data-tour="hierarchy-tree-view" className="space-y-6">
         {/* 1. Nodo Raíz de Seguridad: Consola Central TI (Excluido de equipos operativos) */}
         {tiRootUser && (
           <div className="bg-white dark:bg-[#0B111E] rounded-xl border-l-4 border-l-slate-700 dark:border-l-blue-600 border border-slate-200 dark:border-slate-800 p-4 shadow-xs">

@@ -284,7 +284,7 @@ export function ExecutiveAuditLogView() {
       </div>
 
       {/* Tabla de Movimientos */}
-      <div className="bg-white dark:bg-[#101726] rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs overflow-hidden">
+      <div data-tour="audit-log-table" className="bg-white dark:bg-[#101726] rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>

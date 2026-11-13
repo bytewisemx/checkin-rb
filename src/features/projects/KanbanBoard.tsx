@@ -315,6 +315,7 @@ export function KanbanBoard() {
             </span>
 
             <select
+              data-tour="task-selector"
               value={selectedClientId}
               onChange={(e) => setSelectedClientId(e.target.value)}
               className="bg-white border border-slate-300 rounded-md px-3 py-1.5 text-xs font-semibold text-slate-900 focus:outline-hidden focus:ring-1 focus:ring-blue-700 focus:border-blue-700 cursor-pointer"
@@ -331,6 +332,7 @@ export function KanbanBoard() {
             {/* Botón para crear una Tarea Extraordinaria rápida */}
             <button
               id="btn-extra-task"
+              data-tour="btn-new-task"
               type="button"
               onClick={() => setIsExtraordinaryModalOpen(true)}
               className="px-3 py-1.5 rounded-md text-xs font-semibold text-blue-700 hover:text-blue-800 hover:bg-blue-50 transition-colors cursor-pointer"
@@ -386,6 +388,7 @@ export function KanbanBoard() {
                 <div
                   key={stage.id}
                   id={stage.id === 'review' ? 'board-in-review-col' : undefined}
+                  data-tour={stage.id === 'progress' ? 'board-column-progress' : undefined}
                   className="flex-1 min-w-[290px] max-w-[330px] flex flex-col"
                 >
                   {/* Cabecera Desencapsulada de la Columna (Sin Cajas ni Bordes Rígidos) */}

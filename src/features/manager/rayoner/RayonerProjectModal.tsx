@@ -359,7 +359,7 @@ export function RayonerProjectModal({
             {/* Horas Presupuestadas y Tarifa */}
             <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 pt-2">
               
-              <div className="sm:col-span-4">
+              <div className="sm:col-span-4" data-tour="project-budget-input">
                 <TimeInputSexagesimal
                   label="Presupuesto Total"
                   totalHours={totalBudgetHours}

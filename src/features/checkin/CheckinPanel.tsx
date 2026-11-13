@@ -446,6 +446,7 @@ export function CheckinPanel() {
             {/* Botón de Inicio Play Minimalista Estilizado (Outline con esquinas redondeadas idéntico a la referencia visual) */}
             <button
               id="btn-play-checkin"
+              data-tour="checkin-biometric-btn"
               onClick={handlePlayButtonClick}
               disabled={isLocating}
               className="group relative flex items-center justify-center p-8 sm:p-10 rounded-full transition-all duration-300 active:scale-95 hover:scale-105 disabled:opacity-75 disabled:hover:scale-100 disabled:active:scale-100 cursor-pointer focus:outline-hidden"
@@ -537,6 +538,7 @@ export function CheckinPanel() {
                 {/* Tiempo Principal con Tipografía Limpia Tabular */}
                 <div
                   id="timer-display"
+                  data-tour="active-timer-display"
                   className={`text-6xl sm:text-7xl font-extrabold tracking-tight font-sans tabular-nums mb-3 ${
                     isOverTime && !isCurrentlyPaused
                       ? 'text-rose-500'
@@ -641,7 +643,7 @@ export function CheckinPanel() {
       </div>
 
       {/* Historial Reciente Deslizable del Mes */}
-      <div className="mt-10 w-full max-w-5xl mx-auto px-2 sm:px-4">
+      <div data-tour="attendance-history-card" className="mt-10 w-full max-w-5xl mx-auto px-2 sm:px-4">
         <StripCardCalendar />
       </div>
 

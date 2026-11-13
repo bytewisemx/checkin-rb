@@ -384,7 +384,7 @@ export function UserPermissionsTable({ onNewUser }: UserPermissionsTableProps) {
       {/* 2. Tabla de Usuarios y Permisos Personalizables */}
       <div className="w-full bg-white dark:bg-[#0B111E] rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs overflow-hidden">
         <div className="w-full overflow-x-auto">
-          <table className="w-full text-left border-collapse">
+          <table data-tour="ti-users-table" className="w-full text-left border-collapse">
             <thead>
               <tr className="border-b border-slate-200/80 dark:border-slate-800 bg-slate-50/75 dark:bg-slate-900/50 text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
                 <th className="py-3.5 px-4">Usuario / Correo</th>
@@ -635,6 +635,7 @@ export function UserPermissionsTable({ onNewUser }: UserPermissionsTableProps) {
                       <td className="py-3.5 px-4 text-right whitespace-nowrap">
                         <button
                           type="button"
+                          data-tour="ti-btn-edit-user"
                           onClick={() => handleOpenEditModal(u)}
                           className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 text-xs font-semibold rounded-lg transition cursor-pointer"
                         >

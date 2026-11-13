@@ -123,6 +123,7 @@ export function ProjectTeamAssignmentModal({
       onClick={onClose}
     >
       <div
+        data-tour="assign-members-modal"
         className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-5 animate-scale-up"
         onClick={(e) => e.stopPropagation()}
       >

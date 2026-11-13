@@ -134,6 +134,7 @@ export function SupervisorDashboard({ initialTab }: SupervisorDashboardProps = {
             {canSeeTree && (
               <button
                 type="button"
+                data-tour="nav-projects-tab"
                 onClick={() => setActiveTab('tree')}
                 className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
                   resolvedTab === 'tree'
@@ -147,6 +148,7 @@ export function SupervisorDashboard({ initialTab }: SupervisorDashboardProps = {
 
             <button
               type="button"
+              data-tour="nav-team-tab"
               onClick={() => setActiveTab('attendance')}
               className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
                 resolvedTab === 'attendance'
@@ -161,6 +163,7 @@ export function SupervisorDashboard({ initialTab }: SupervisorDashboardProps = {
             {canInvite && (
               <button
                 type="button"
+                data-tour="nav-invitations-tab"
                 onClick={() => setActiveTab('invitations')}
                 className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
                   resolvedTab === 'invitations'
@@ -176,6 +179,7 @@ export function SupervisorDashboard({ initialTab }: SupervisorDashboardProps = {
             {canSeeReports && (
               <button
                 type="button"
+                data-tour="nav-reports-tab"
                 onClick={() => setActiveTab('report')}
                 className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
                   resolvedTab === 'report'
@@ -191,6 +195,7 @@ export function SupervisorDashboard({ initialTab }: SupervisorDashboardProps = {
             {canSeeAudit && (
               <button
                 type="button"
+                data-tour="nav-audit-logs"
                 onClick={() => setActiveTab('audit_logs')}
                 className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
                   resolvedTab === 'audit_logs'
@@ -206,6 +211,7 @@ export function SupervisorDashboard({ initialTab }: SupervisorDashboardProps = {
             {canSeeHierarchy && (
               <button
                 type="button"
+                data-tour="nav-audit-hierarchy"
                 onClick={() => setActiveTab('audit_accounts')}
                 className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
                   resolvedTab === 'audit_accounts'

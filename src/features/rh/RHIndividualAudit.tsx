@@ -259,6 +259,7 @@ export function RHIndividualAudit({ allRecords, onOpenRecordDetail }: RHIndividu
                 Colaborador
               </label>
               <select
+                data-tour="rh-user-search"
                 value={selectedUserEmail}
                 onChange={(e) => setSelectedUserEmail(e.target.value)}
                 className="w-full text-xs font-semibold py-2 px-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-white outline-none focus:border-blue-600"
@@ -342,6 +343,7 @@ export function RHIndividualAudit({ allRecords, onOpenRecordDetail }: RHIndividu
             {/* Botón Descargar Kardex Excel */}
             <button
               type="button"
+              data-tour="rh-btn-export-kardex"
               onClick={handleExportKardexExcel}
               className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-700 active:scale-95 rounded-lg shadow-xs transition-colors cursor-pointer"
             >

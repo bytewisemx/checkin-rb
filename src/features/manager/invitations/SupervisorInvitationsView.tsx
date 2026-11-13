@@ -400,6 +400,7 @@ export function SupervisorInvitationsView() {
                   <Mail className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
                   <input
                     type="email"
+                    data-tour="invite-form-email"
                     required
                     value={emailInput}
                     onChange={(e) => setEmailInput(e.target.value)}
@@ -465,6 +466,7 @@ export function SupervisorInvitationsView() {
 
                 <button
                   type="submit"
+                  data-tour="invite-form-submit"
                   disabled={isSubmitting}
                   className="inline-flex items-center justify-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-xl shadow-xs transition cursor-pointer shrink-0 disabled:opacity-50"
                 >

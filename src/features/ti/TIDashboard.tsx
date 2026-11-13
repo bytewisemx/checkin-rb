@@ -314,6 +314,7 @@ export function TIDashboard({ initialTab = 'users_permissions' }: TIDashboardPro
         <div className="flex items-center gap-1 bg-slate-100/80 dark:bg-slate-800/80 p-1 rounded-xl border border-slate-200/60 dark:border-slate-700/60 overflow-x-auto">
           <button
             type="button"
+            data-tour="nav-users-tab"
             onClick={() => setActiveTab('users_permissions')}
             className={`px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer ${
               activeTab === 'users_permissions'
@@ -325,6 +326,7 @@ export function TIDashboard({ initialTab = 'users_permissions' }: TIDashboardPro
           </button>
           <button
             type="button"
+            data-tour="ti-invite-tab"
             onClick={() => setActiveTab('invitations')}
             className={`px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer ${
               activeTab === 'invitations'
@@ -347,6 +349,7 @@ export function TIDashboard({ initialTab = 'users_permissions' }: TIDashboardPro
           </button>
           <button
             type="button"
+            data-tour="nav-audit-hierarchy"
             onClick={() => setActiveTab('audit_accounts')}
             className={`px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer ${
               activeTab === 'audit_accounts'
@@ -358,6 +361,7 @@ export function TIDashboard({ initialTab = 'users_permissions' }: TIDashboardPro
           </button>
           <button
             type="button"
+            data-tour="nav-rbac-matrix"
             onClick={() => setActiveTab('rbac_matrix')}
             className={`px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer ${
               activeTab === 'rbac_matrix'
@@ -443,7 +447,7 @@ export function TIDashboard({ initialTab = 'users_permissions' }: TIDashboardPro
               </p>
             </div>
 
-            <form onSubmit={handleGenerateSupervisorInvite} className="space-y-4">
+            <form data-tour="ti-invite-form" onSubmit={handleGenerateSupervisorInvite} className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="md:col-span-3">
                   <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-1">
@@ -464,6 +468,7 @@ export function TIDashboard({ initialTab = 'users_permissions' }: TIDashboardPro
                     Perfil / Rol
                   </label>
                   <select
+                    data-tour="ti-invite-role-select"
                     value={selectedRole}
                     onChange={(e) => setSelectedRole(e.target.value as 'colaborador' | 'supervisor' | 'gerente' | 'socio')}
                     className="w-full px-3 py-2 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white outline-none focus:border-blue-600 font-semibold cursor-pointer"
@@ -658,7 +663,7 @@ export function TIDashboard({ initialTab = 'users_permissions' }: TIDashboardPro
 
       {/* PESTAÑA 3: MATRIZ DE ACCESO RBAC */}
       {activeTab === 'rbac_matrix' && (
-        <div className="bg-white dark:bg-[#0B111E] rounded-2xl border border-slate-100 dark:border-slate-800 shadow-xs overflow-hidden animate-fade-in">
+        <div data-tour="rbac-save-btn" className="bg-white dark:bg-[#0B111E] rounded-2xl border border-slate-100 dark:border-slate-800 shadow-xs overflow-hidden animate-fade-in">
           <div className="p-4 border-b border-slate-100 dark:border-slate-800">
             <h3 className="text-sm font-bold text-slate-900 dark:text-white">
               Política de Control de Acceso Basada en Roles (RBAC)

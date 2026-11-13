@@ -490,7 +490,7 @@ export function RHFortnightSheet({ allRecords, onOpenRecordDetail }: RHFortnight
   return (
     <div className="w-full space-y-4 animate-fade-in">
       {/* 1. Barra de Herramientas y Filtro Quincenal */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white dark:bg-[#0B111E] p-4 rounded-xl border border-slate-100 dark:border-slate-800 shadow-xs">
+      <div data-tour="rh-period-select" className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white dark:bg-[#0B111E] p-4 rounded-xl border border-slate-100 dark:border-slate-800 shadow-xs">
         <div className="flex items-center gap-2 flex-wrap">
           {/* Selector de Quincena */}
           <div className="flex items-center border border-slate-200 dark:border-slate-700 rounded-lg p-0.5 bg-slate-50 dark:bg-slate-800 text-xs">
@@ -551,6 +551,7 @@ export function RHFortnightSheet({ allRecords, onOpenRecordDetail }: RHFortnight
         {/* Botón de Exportación Excel */}
         <button
           type="button"
+          data-tour="rh-export-excel"
           onClick={handleExportExcel}
           className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-700 active:scale-95 rounded-lg shadow-xs transition-colors cursor-pointer"
         >
@@ -573,7 +574,7 @@ export function RHFortnightSheet({ allRecords, onOpenRecordDetail }: RHFortnight
       {/* 2. Tabla Sábana Quincenal Horizontal */}
       <div className="w-full bg-white dark:bg-[#0B111E] rounded-2xl border border-slate-100 dark:border-slate-800 shadow-xs overflow-hidden">
         <div className="w-full overflow-x-auto">
-          <table className="w-full min-w-[1160px] text-left border-collapse table-fixed text-xs">
+          <table data-tour="rh-timesheet-grid" className="w-full min-w-[1160px] text-left border-collapse table-fixed text-xs">
             {/* Definición estricta de anchos de columna para evitar desalineamiento de thead y tbody */}
             <colgroup>
               <col style={{ width: '240px' }} />

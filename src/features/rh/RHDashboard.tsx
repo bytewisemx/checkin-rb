@@ -246,6 +246,7 @@ export function RHDashboard() {
 
           <button
             type="button"
+            data-tour="rh-kardex-tab"
             onClick={() => setRhTab('individual_audit')}
             className={`px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer ${
               rhTab === 'individual_audit'
