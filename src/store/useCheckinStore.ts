@@ -21,6 +21,10 @@ import {
 import { useRayonerStore } from './useRayonerStore';
 import { doc, setDoc } from 'firebase/firestore';
 import { db, isFirebaseConfigured } from '../services/firebase';
+import {
+  saveAttendanceCheckInToFirestore,
+  saveAttendanceCheckOutToFirestore,
+} from '../services/attendanceService';
 
 export interface TaskTag {
   text: string;
@@ -1925,6 +1929,28 @@ export const useCheckinStore = create<CheckinState>()(
           history: [newRecord, ...history],
           mockEmployeesData: updatedMockData,
         });
+
+        // Persistir registro limpio en colección `attendance` de Firestore (sin imágenes faciales)
+        void saveAttendanceCheckInToFirestore({
+          id: newRecord.id,
+          userId: user.id,
+          userName: `${user.name} ${user.lastName || ''}`.trim() || user.email,
+          teamId: user.teamId || null,
+          date: dateIsoStr,
+          checkIn: {
+            timestamp: new Date(secureTimeMs).toISOString(),
+            timestampMs: secureTimeMs,
+            facialMatch: Boolean(matchScore && matchScore > 0),
+            confidenceScore: matchScore ?? 0,
+            lat,
+            lng,
+            locationLabel: address || 'Ubicación verificada',
+          },
+          checkOut: null,
+          totalMinutes: 0,
+          status: 'active',
+          updatedAt: new Date().toISOString(),
+        });
       },
 
       switchActiveTask: (taskData) => {
@@ -2141,6 +2167,17 @@ export const useCheckinStore = create<CheckinState>()(
           history: updatedHistory,
           mockEmployeesData: updatedMockData,
         });
+
+        // Persistir salida con total de minutos enteros en colección `attendance`
+        void saveAttendanceCheckOutToFirestore(
+          updatedRecord.id,
+          {
+            timestamp: new Date(secureTimeMs).toISOString(),
+            timestampMs: secureTimeMs,
+          },
+          Math.max(0, Math.round(durationMinutes)),
+          'completed'
+        );
       },
 
       // Límite de corte diario automático a las 23:59:00 hrs

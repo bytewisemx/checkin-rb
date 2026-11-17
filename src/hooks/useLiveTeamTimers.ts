@@ -1,6 +1,11 @@
 import { useEffect } from 'react';
 import { collection, onSnapshot } from 'firebase/firestore';
 import { db, isFirebaseConfigured } from '../services/firebase';
+import {
+  registerActiveListener,
+  unregisterActiveListener,
+  trackFirestoreRead,
+} from '../services/firestoreTelemetry';
 import { useRayonerStore } from '../store/useRayonerStore';
 import type { ActiveWorker } from '../types/rayoner';
 
@@ -42,10 +47,13 @@ export function useLiveTeamTimers() {
       };
     }
 
+    const listenerId = 'live-team-timers-active-timers';
+    registerActiveListener(listenerId, 'active_timers');
     const timersCol = collection(db, 'active_timers');
     const unsubscribe = onSnapshot(
       timersCol,
       (snapshot) => {
+        trackFirestoreRead(Math.max(1, snapshot.size));
         const remoteWorkers: ActiveWorker[] = [];
 
         snapshot.forEach((docSnap) => {
@@ -92,6 +100,7 @@ export function useLiveTeamTimers() {
 
     return () => {
       unsubscribe();
+      unregisterActiveListener(listenerId);
       channel?.removeEventListener('message', handleBroadcastMessage);
       channel?.close();
     };

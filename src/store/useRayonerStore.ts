@@ -2,6 +2,9 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { doc, setDoc } from 'firebase/firestore';
 import { db, isFirebaseConfigured } from '../services/firebase';
+import { saveCompanyToFirestore, deleteCompanyFromFirestore } from '../services/companyService';
+import { saveTaskToFirestore, deleteTaskFromFirestore } from '../services/taskService';
+import { trackFirestoreWrite } from '../services/firestoreTelemetry';
 import { useNotificationStore } from './useNotificationStore';
 import type {
   ClientGroup,
@@ -244,6 +247,13 @@ export const useRayonerStore = create<RayonerState>()(
         set((state) => ({
           clients: [...state.clients, { id, groupId, name, taxId, isActive: true }],
         }));
+        void saveCompanyToFirestore({
+          id,
+          name,
+          code: taxId || id.toUpperCase(),
+          status: 'active',
+          createdBy: 'system',
+        });
         broadcastRayonerSync('CLIENT_ADDED');
         return id;
       },
@@ -252,6 +262,15 @@ export const useRayonerStore = create<RayonerState>()(
         set((state) => ({
           clients: state.clients.map((c) => (c.id === id ? { ...c, ...data } : c)),
         }));
+        if (data.name) {
+          void saveCompanyToFirestore({
+            id,
+            name: data.name,
+            code: data.taxId || id.toUpperCase(),
+            status: data.isActive === false ? 'inactive' : 'active',
+            createdBy: 'system',
+          });
+        }
         broadcastRayonerSync('CLIENT_UPDATED');
       },
 
@@ -260,6 +279,7 @@ export const useRayonerStore = create<RayonerState>()(
           clients: state.clients.filter((c) => c.id !== id),
           projects: state.projects.filter((p) => p.clientId !== id),
         }));
+        void deleteCompanyFromFirestore(id);
         broadcastRayonerSync('CLIENT_DELETED');
       },
 
@@ -314,6 +334,21 @@ export const useRayonerStore = create<RayonerState>()(
         set((state) => ({
           tasks: [...state.tasks, newTask],
         }));
+
+        const projForCompany = get().projects.find((p) => p.id === newTask.projectId);
+        void saveTaskToFirestore({
+          id,
+          title: titleStr,
+          companyId: projForCompany?.clientId || '',
+          projectId: newTask.projectId || '',
+          assignedTo: newTask.assigned_to || '',
+          supervisorId: newTask.created_by || '',
+          status: newTask.status || 'pending',
+          priority: (newTask.priority as 'low' | 'medium' | 'high') || 'medium',
+          plannedMinutes: Math.round((newTask.plannedHours || 0) * 60),
+          loggedMinutes: 0,
+          createdAt: nowIso,
+        });
 
         if (notifyAssignee && newTask.assigned_to) {
           const proj = get().projects.find((p) => p.id === newTask.projectId);
@@ -398,6 +433,7 @@ export const useRayonerStore = create<RayonerState>()(
           tasks: state.tasks.filter((t) => t.id !== id && t.parentTaskId !== id),
           assignments: state.assignments.filter((a) => a.taskId !== id),
         }));
+        void deleteTaskFromFirestore(id);
         broadcastRayonerSync('TASK_DELETED', { taskId: id });
       },
 
@@ -558,7 +594,9 @@ export const useRayonerStore = create<RayonerState>()(
               updatedAt: new Date().toISOString(),
             },
             { merge: true }
-          ).catch(console.warn);
+          )
+            .then(() => trackFirestoreWrite(1))
+            .catch(console.warn);
         }
       },
 
@@ -578,7 +616,9 @@ export const useRayonerStore = create<RayonerState>()(
               updatedAt: new Date().toISOString(),
             },
             { merge: true }
-          ).catch(console.warn);
+          )
+            .then(() => trackFirestoreWrite(1))
+            .catch(console.warn);
         }
       },
 

@@ -4,6 +4,7 @@ import { useCheckinStore } from '../store/useCheckinStore';
 import { useInvitationStore, buildInviteUrl } from '../store/useInvitationStore';
 import type { Invitation } from '../types/invitation';
 import { normalizeRole, type UserRole } from './rbac';
+import { trackFirestoreWrite } from './firestoreTelemetry';
 
 export interface UserProfileDocument {
   uid: string;
@@ -18,6 +19,8 @@ export interface UserProfileDocument {
   team?: string;
   teamName?: string;
   assignedTeams?: string[];
+  modules?: Record<string, boolean>;
+  faceDescriptor?: number[]; // Vector numérico de 128 floats (nunca imágenes)
   status?: 'active' | 'inactive';
   isActive?: boolean;
   supervisorId?: string | null;
@@ -26,6 +29,47 @@ export interface UserProfileDocument {
   isProfileComplete: boolean;
   createdAt?: string;
   updatedAt?: string;
+}
+
+/**
+ * Actualiza exclusivamente el vector biométrico facial (128 floats) del usuario en Firestore.
+ * Rechaza cualquier intento de almacenar imágenes o vectores con longitud inválida.
+ */
+export async function updateUserFaceDescriptorInFirestore(
+  uid: string,
+  faceDescriptor: number[]
+): Promise<{ success: boolean; error?: string }> {
+  if (
+    !uid ||
+    !Array.isArray(faceDescriptor) ||
+    faceDescriptor.length !== 128 ||
+    !faceDescriptor.every((v) => typeof v === 'number' && Number.isFinite(v))
+  ) {
+    return {
+      success: false,
+      error: 'Vector biométrico inválido: debe ser un arreglo numérico exacto de 128 flotantes.',
+    };
+  }
+
+  if (!isFirebaseConfigured() || !db) {
+    return { success: true };
+  }
+
+  try {
+    await setDoc(
+      doc(db, 'users', uid),
+      {
+        faceDescriptor,
+        updatedAt: new Date().toISOString(),
+      },
+      { merge: true }
+    );
+    trackFirestoreWrite(1);
+    return { success: true };
+  } catch (err: any) {
+    console.warn('[userService] Error al guardar faceDescriptor:', err);
+    return { success: false, error: err?.message || 'Error al guardar vector facial.' };
+  }
 }
 
 let isFirestoreDatabaseAvailable: boolean | null = null;

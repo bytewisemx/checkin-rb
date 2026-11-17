@@ -175,6 +175,7 @@ export async function executeCleanSlateAdministrativeReset(): Promise<CleanSlate
     if (isRemote && firestore) {
       // 1. Vaciar colecciones operativas
       const operationalCollections = [
+        'companies',
         'clients',
         'projects',
         'tasks',
