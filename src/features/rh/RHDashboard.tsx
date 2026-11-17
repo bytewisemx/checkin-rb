@@ -10,6 +10,7 @@ import {
   subscribeAttendanceFromFirestore,
   type AttendanceDocument,
 } from '../../services/attendanceService';
+import { syncUsersDirectoryFromFirestore } from '../../services/userService';
 import { FacialEnrollmentModal } from '../checkin/FacialEnrollmentModal';
 import { CheckinPanel } from '../checkin/CheckinPanel';
 import { UserAttendanceDrawer } from './UserAttendanceDrawer';
@@ -41,6 +42,7 @@ export function RHDashboard() {
   const [firestoreAttendance, setFirestoreAttendance] = useState<AttendanceDocument[]>([]);
 
   useEffect(() => {
+    void syncUsersDirectoryFromFirestore();
     const unsubscribe = subscribeAttendanceFromFirestore(
       (records) => {
         setFirestoreAttendance(records);

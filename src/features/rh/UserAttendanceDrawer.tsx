@@ -103,33 +103,52 @@ export function UserAttendanceDrawer({
   const activePinData = useMemo(() => {
     if (!activeRecord) {
       return {
-        latitude: 0,
-        longitude: 0,
+        latitude: null as number | null,
+        longitude: null as number | null,
         label: 'Sin registros de asistencia',
         timestamp: null as string | null,
       };
     }
     if (pinType === 'checkOut' && activeRecord.checkOut) {
+      const lat = activeRecord.checkOut.location.latitude;
+      const lng = activeRecord.checkOut.location.longitude;
+      const valid = typeof lat === 'number' && typeof lng === 'number' && (lat !== 0 || lng !== 0);
       return {
-        latitude: activeRecord.checkOut.location.latitude,
-        longitude: activeRecord.checkOut.location.longitude,
+        latitude: valid ? lat : null,
+        longitude: valid ? lng : null,
         label: activeRecord.checkOut.location.label,
         timestamp: activeRecord.checkOut.timestamp,
       };
     }
+    const lat = activeRecord.checkIn.location.latitude;
+    const lng = activeRecord.checkIn.location.longitude;
+    const valid = typeof lat === 'number' && typeof lng === 'number' && (lat !== 0 || lng !== 0);
     return {
-      latitude: activeRecord.checkIn.location.latitude,
-      longitude: activeRecord.checkIn.location.longitude,
+      latitude: valid ? lat : null,
+      longitude: valid ? lng : null,
       label: activeRecord.checkIn.location.label,
       timestamp: activeRecord.checkIn.timestamp,
     };
   }, [activeRecord, pinType]);
 
-  // Inicializar y actualizar el mapa Leaflet con estilo oscuro minimalista
-  useEffect(() => {
-    if (!isOpen || !mapContainerRef.current) return;
+  const hasValidCoordinates =
+    activePinData.latitude !== null && activePinData.longitude !== null;
 
-    const { latitude, longitude, label } = activePinData;
+  // Inicializar y actualizar el mapa Leaflet SOLO cuando existe una coordenada real (lat, lng)
+  useEffect(() => {
+    if (!isOpen || !mapContainerRef.current || !hasValidCoordinates) {
+      if (mapInstanceRef.current) {
+        mapInstanceRef.current.remove();
+        mapInstanceRef.current = null;
+        markerRef.current = null;
+        circleRef.current = null;
+      }
+      return;
+    }
+
+    const latitude = activePinData.latitude as number;
+    const longitude = activePinData.longitude as number;
+    const label = activePinData.label;
 
     const customPinIcon = L.divIcon({
       className: 'custom-corporate-map-pin',
@@ -202,7 +221,7 @@ export function UserAttendanceDrawer({
         circleRef.current.setLatLng([latitude, longitude]);
       }
     }
-  }, [isOpen, activePinData]);
+  }, [isOpen, activePinData, hasValidCoordinates]);
 
   // Limpiar instancia de Leaflet al cerrar el Drawer o actualizar módulo
   useEffect(() => {
@@ -239,7 +258,7 @@ export function UserAttendanceDrawer({
             filteredUserRecords.length) *
             100
         )
-      : 100;
+      : null;
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end">
@@ -302,7 +321,7 @@ export function UserAttendanceDrawer({
                 Tasa Biométrica
               </span>
               <span className="text-xl font-bold font-heading text-[#1D4ED8] dark:text-sky-400 mt-0.5 block">
-                {facialVerifiedRate}% OK
+                {facialVerifiedRate !== null ? `${facialVerifiedRate}% OK` : '—'}
               </span>
             </div>
           </div>
@@ -346,16 +365,32 @@ export function UserAttendanceDrawer({
 
             <div
               id="attendanceMapContainer"
-              className="w-full h-56 bg-[#090E17] border border-slate-300 dark:border-slate-800 rounded overflow-hidden relative"
+              className="w-full h-56 bg-slate-100 dark:bg-[#090E17] border border-slate-300 dark:border-slate-800 rounded overflow-hidden relative flex items-center justify-center"
             >
-              {/* Contenedor de Leaflet */}
-              <div ref={mapContainerRef} className="w-full h-full z-10" />
+              {hasValidCoordinates ? (
+                <>
+                  {/* Contenedor de Leaflet */}
+                  <div ref={mapContainerRef} className="w-full h-full z-10" />
 
-              {/* Etiqueta sobria de coordenadas, precisión y geocerca */}
-              <div className="absolute bottom-2 left-2 z-20 bg-[#101726]/95 border border-slate-700 px-2.5 py-1 text-xs font-mono text-sky-400 rounded-xs">
-                {formatCoordinateString(activePinData.latitude, activePinData.longitude)} •{' '}
-                {activePinData.label.split(',')[0]} (Precisión ±8m • Geocerca Validada)
-              </div>
+                  {/* Etiqueta sobria de coordenadas reales */}
+                  <div className="absolute bottom-2 left-2 z-20 bg-[#101726]/95 border border-slate-700 px-2.5 py-1 text-xs font-mono text-sky-400 rounded-xs">
+                    {formatCoordinateString(
+                      activePinData.latitude as number,
+                      activePinData.longitude as number
+                    )}{' '}
+                    • {activePinData.label.split(',')[0]}
+                  </div>
+                </>
+              ) : (
+                <div className="text-center px-6 space-y-1">
+                  <p className="text-xs font-semibold text-slate-600 dark:text-slate-300">
+                    Mapa en estado neutro · Sin pines registrados
+                  </p>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                    Las coordenadas reales aparecerán cuando exista un check-in o check-out en Firestore.
+                  </p>
+                </div>
+              )}
             </div>
           </div>
 
@@ -389,7 +424,17 @@ export function UserAttendanceDrawer({
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200 dark:divide-slate-800/60 font-mono">
-                {filteredUserRecords.map((rec) => {
+                {filteredUserRecords.length === 0 ? (
+                  <tr>
+                    <td
+                      colSpan={5}
+                      className="py-8 px-2 text-center font-sans text-xs text-slate-500 dark:text-slate-400"
+                    >
+                      Sin marcaciones registradas para este colaborador
+                    </td>
+                  </tr>
+                ) : (
+                  filteredUserRecords.map((rec) => {
                   const isSelected = activeRecord?.id === rec.id;
                   const scorePct = rec.checkIn.confidenceScore
                     ? Math.round(
@@ -397,7 +442,7 @@ export function UserAttendanceDrawer({
                           ? rec.checkIn.confidenceScore * 100
                           : rec.checkIn.confidenceScore
                       )
-                    : 96;
+                    : 0;
 
                   return (
                     <tr
@@ -435,7 +480,7 @@ export function UserAttendanceDrawer({
                       </td>
                     </tr>
                   );
-                })}
+                }))}
               </tbody>
             </table>
           </div>

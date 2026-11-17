@@ -59,12 +59,22 @@ export function RHIndividualAudit({ allRecords, onOpenRecordDetail }: RHIndividu
     return teamMembers.filter((m) => m.role !== 'TI');
   }, [teamMembers]);
 
-  // Estados de Filtros
+  // Estados de Filtros (fechas dinámicas basadas en el periodo actual)
   const [selectedUserEmail, setSelectedUserEmail] = useState<string>(
     availableCollaborators[0]?.email || ''
   );
-  const [startDate, setStartDate] = useState<string>('2026-11-01');
-  const [endDate, setEndDate] = useState<string>('2026-11-15');
+  const getInitialPeriodDates = () => {
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = String(now.getMonth() + 1).padStart(2, '0');
+    const lastDay = String(new Date(y, now.getMonth() + 1, 0).getDate()).padStart(2, '0');
+    if (now.getDate() <= 15) {
+      return { start: `${y}-${m}-01`, end: `${y}-${m}-15` };
+    }
+    return { start: `${y}-${m}-16`, end: `${y}-${m}-${lastDay}` };
+  };
+  const [startDate, setStartDate] = useState<string>(() => getInitialPeriodDates().start);
+  const [endDate, setEndDate] = useState<string>(() => getInitialPeriodDates().end);
   const [incidentFilter, setIncidentFilter] = useState<'all' | 'lates' | 'absences'>('all');
 
   // Estado del modal de constancia laboral formal para impresión
@@ -80,15 +90,20 @@ export function RHIndividualAudit({ allRecords, onOpenRecordDetail }: RHIndividu
 
   // Accesos directos de rango de fecha
   const setQuickRange = (range: 'current_fortnight' | 'current_month' | 'year_2026') => {
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = String(now.getMonth() + 1).padStart(2, '0');
+    const lastDay = String(new Date(y, now.getMonth() + 1, 0).getDate()).padStart(2, '0');
     if (range === 'current_fortnight') {
-      setStartDate('2026-11-01');
-      setEndDate('2026-11-15');
+      const p = getInitialPeriodDates();
+      setStartDate(p.start);
+      setEndDate(p.end);
     } else if (range === 'current_month') {
-      setStartDate('2026-11-01');
-      setEndDate('2026-11-30');
+      setStartDate(`${y}-${m}-01`);
+      setEndDate(`${y}-${m}-${lastDay}`);
     } else if (range === 'year_2026') {
-      setStartDate('2026-01-01');
-      setEndDate('2026-12-31');
+      setStartDate(`${y}-01-01`);
+      setEndDate(`${y}-12-31`);
     }
   };
 
@@ -129,8 +144,8 @@ export function RHIndividualAudit({ allRecords, onOpenRecordDetail }: RHIndividu
       userFilteredRecords.reduce((acc, r) => acc + (r.totalHours || 0), 0).toFixed(1)
     );
 
-    // Horas esperadas (estimación de jornadas hábiles x 8 hrs)
-    const expectedHours = Math.max(userFilteredRecords.length * 8.0, 8.0);
+    // Horas esperadas basadas estrictamente en jornadas registradas (0 si no hay registros)
+    const expectedHours = userFilteredRecords.length * 8.0;
 
     let lateCount = 0;
     let lateMinutesSum = 0;
@@ -216,7 +231,7 @@ export function RHIndividualAudit({ allRecords, onOpenRecordDetail }: RHIndividu
               ? r.checkIn.confidenceScore * 100
               : r.checkIn.confidenceScore
           )
-        : 96;
+        : 0;
 
       const row = [
         `"${dateInfo.dateFormatted}"`,
@@ -412,7 +427,9 @@ export function RHIndividualAudit({ allRecords, onOpenRecordDetail }: RHIndividu
           </span>
           <div className="text-2xl font-bold text-slate-900 dark:text-white mt-1 flex items-center gap-1.5">
             <ShieldCheck className="w-5 h-5 text-blue-600 dark:text-sky-400" />
-            <span>{metrics.averageBiometricScore}%</span>
+            <span>
+              {metrics.averageBiometricScore === '—' ? '—' : `${metrics.averageBiometricScore}%`}
+            </span>
           </div>
           <span className="text-[11px] text-slate-500">
             similitud en validaciones
@@ -439,7 +456,7 @@ export function RHIndividualAudit({ allRecords, onOpenRecordDetail }: RHIndividu
               {userFilteredRecords.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="p-10 text-center text-slate-400">
-                    No se encontraron registros de asistencias con los filtros seleccionados.
+                    Sin marcaciones registradas para este colaborador
                   </td>
                 </tr>
               ) : (

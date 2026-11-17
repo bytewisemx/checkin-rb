@@ -10,6 +10,7 @@ import type { RHAttendanceRecord } from '../../services/rbac';
 import { useRayonerStore } from '../../store/useRayonerStore';
 import { useCheckinStore, type AbsenceJustification } from '../../store/useCheckinStore';
 import { useAuditStore } from '../../store/useAuditStore';
+import { formatMinutesSexagesimal } from '../../services/attendanceService';
 
 export interface RHFortnightSheetProps {
   allRecords: RHAttendanceRecord[];
@@ -23,7 +24,7 @@ interface DayCellData {
   isWeekend: boolean;
   isToday: boolean;
   isFuture: boolean;
-  status: 'present' | 'late' | 'absence' | 'justified' | 'weekend' | 'future';
+  status: 'present' | 'late' | 'absence' | 'justified' | 'weekend' | 'future' | 'empty';
   lateMinutes?: number;
   hoursWorked?: number;
   recordId?: string;
@@ -115,10 +116,13 @@ export function RHFortnightSheet({ allRecords, onOpenRecordDetail }: RHFortnight
     addToast,
   } = useCheckinStore();
 
-  // Estados de control de periodo
-  const [selectedFortnight, setSelectedFortnight] = useState<1 | 2>(1);
-  const [selectedMonth, setSelectedMonth] = useState<number>(10); // Noviembre (0-indexed: 10)
-  const [selectedYear, setSelectedYear] = useState<number>(2026);
+  // Estados de control de periodo (inicializados con la fecha real actual)
+  const nowDate = useMemo(() => new Date(), []);
+  const [selectedFortnight, setSelectedFortnight] = useState<1 | 2>(() =>
+    new Date().getDate() <= 15 ? 1 : 2
+  );
+  const [selectedMonth, setSelectedMonth] = useState<number>(() => new Date().getMonth());
+  const [selectedYear, setSelectedYear] = useState<number>(() => new Date().getFullYear());
   const [selectedTeamFilter, setSelectedTeamFilter] = useState<string>('ALL');
   const [collapsedTeams, setCollapsedTeams] = useState<Record<string, boolean>>({});
 
@@ -214,8 +218,8 @@ export function RHFortnightSheet({ allRecords, onOpenRecordDetail }: RHFortnight
         } else if (isFuture) {
           status = 'future';
         } else if (existingRecord) {
-          // Asistencia real registrada
-          hoursWorked = existingRecord.totalHours || 8.5;
+          // Asistencia real registrada en Firestore (`attendance`)
+          hoursWorked = Number((existingRecord.totalHours || 0).toFixed(2));
           totalHours += hoursWorked;
 
           // Detección de retardo: entrada posterior a las 09:15
@@ -227,47 +231,25 @@ export function RHFortnightSheet({ allRecords, onOpenRecordDetail }: RHFortnight
 
           if (totalInMinutes > standardStartMinutes + 15) {
             status = 'late';
-            lateMinutes = Math.min(totalInMinutes - standardStartMinutes, 90);
+            lateMinutes = Math.max(1, totalInMinutes - standardStartMinutes);
             latesCount++;
           } else {
             status = 'present';
           }
-        } else {
-          // Día entre semana SIN checada registrada
-          if (existingJustification) {
-            if (existingJustification.status === 'justified') {
-              status = 'justified';
-              hoursWorked = existingJustification.hoursCredit ?? 8.0;
-              totalHours += hoursWorked;
-              justifiedCount++;
-            } else {
-              status = 'absence';
-              absencesCount++;
-            }
-          } else if (isToday) {
-            // Hoy aún sin checada cerrada: asistencia activa simulada
-            status = 'present';
-            hoursWorked = 7.5;
+        } else if (existingJustification) {
+          // Resolución administrativa registrada manualmente por RH
+          if (existingJustification.status === 'justified') {
+            status = 'justified';
+            hoursWorked = existingJustification.hoursCredit ?? 0;
             totalHours += hoursWorked;
+            justifiedCount++;
           } else {
-            // Día pasado sin checada:
-            // Por defecto en demo simulamos asistencia general con algunas faltas/retardos
-            const pseudoRandom = (member.id.charCodeAt(0) + dayNum) % 8;
-            if (pseudoRandom === 1) {
-              status = 'late';
-              lateMinutes = 15 + ((dayNum * 5) % 25);
-              hoursWorked = 8.0;
-              totalHours += hoursWorked;
-              latesCount++;
-            } else if (pseudoRandom === 6 && dayNum < 5) {
-              status = 'absence';
-              absencesCount++;
-            } else {
-              status = 'present';
-              hoursWorked = 8.5;
-              totalHours += hoursWorked;
-            }
+            status = 'absence';
+            absencesCount++;
           }
+        } else {
+          // Sin registro real en Firestore: celda vacía limpia (cero simulaciones)
+          status = 'empty';
         }
 
         daysMap[dayNum] = {
@@ -487,8 +469,74 @@ export function RHFortnightSheet({ allRecords, onOpenRecordDetail }: RHFortnight
     URL.revokeObjectURL(url);
   };
 
+  const hasAnyCapturedAttendance =
+    allRecords.length > 0 || Object.keys(absenceJustifications || {}).length > 0;
+
+  const summaryMetrics = useMemo(() => {
+    if (!hasAnyCapturedAttendance) {
+      return {
+        recordsCount: 0,
+        totalMinutes: 0,
+        latesCount: 0,
+        absencesCount: 0,
+      };
+    }
+    let totalHoursSum = 0;
+    let lates = 0;
+    let absences = 0;
+    groupedData.forEach((g) => {
+      g.collaborators.forEach((c) => {
+        totalHoursSum += c.totalHours;
+        lates += c.latesCount;
+        absences += c.absencesCount;
+      });
+    });
+    return {
+      recordsCount: allRecords.length,
+      totalMinutes: Math.round(totalHoursSum * 60),
+      latesCount: lates,
+      absencesCount: absences,
+    };
+  }, [hasAnyCapturedAttendance, groupedData, allRecords.length]);
+
   return (
     <div className="w-full space-y-4 animate-fade-in">
+      {/* 0. Contadores Consolidados de Asistencia (100% reales desde Firestore, inician en 0) */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="bg-white dark:bg-[#0B111E] border border-slate-200 dark:border-slate-800 px-4 py-3">
+          <div className="text-[10px] font-mono uppercase tracking-wider text-slate-500 dark:text-slate-400">
+            Registros Capturados
+          </div>
+          <div className="text-xl font-bold font-mono text-slate-900 dark:text-white mt-1">
+            {summaryMetrics.recordsCount}
+          </div>
+        </div>
+        <div className="bg-white dark:bg-[#0B111E] border border-slate-200 dark:border-slate-800 px-4 py-3">
+          <div className="text-[10px] font-mono uppercase tracking-wider text-slate-500 dark:text-slate-400">
+            Horas Registradas
+          </div>
+          <div className="text-xl font-bold font-mono text-slate-900 dark:text-white mt-1">
+            {formatMinutesSexagesimal(summaryMetrics.totalMinutes)}
+          </div>
+        </div>
+        <div className="bg-white dark:bg-[#0B111E] border border-slate-200 dark:border-slate-800 px-4 py-3">
+          <div className="text-[10px] font-mono uppercase tracking-wider text-slate-500 dark:text-slate-400">
+            Retardos
+          </div>
+          <div className="text-xl font-bold font-mono text-slate-900 dark:text-white mt-1">
+            {summaryMetrics.latesCount}
+          </div>
+        </div>
+        <div className="bg-white dark:bg-[#0B111E] border border-slate-200 dark:border-slate-800 px-4 py-3">
+          <div className="text-[10px] font-mono uppercase tracking-wider text-slate-500 dark:text-slate-400">
+            Faltas
+          </div>
+          <div className="text-xl font-bold font-mono text-slate-900 dark:text-white mt-1">
+            {summaryMetrics.absencesCount}
+          </div>
+        </div>
+      </div>
+
       {/* 1. Barra de Herramientas y Filtro Quincenal */}
       <div data-tour="rh-period-select" className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white dark:bg-[#0B111E] p-4 rounded-xl border border-slate-100 dark:border-slate-800 shadow-xs">
         <div className="flex items-center gap-2 flex-wrap">
@@ -518,7 +566,7 @@ export function RHFortnightSheet({ allRecords, onOpenRecordDetail }: RHFortnight
             </button>
           </div>
 
-          {/* Selector Mes/Año */}
+          {/* Selector Mes/Año (dinámico últimos 6 meses) */}
           <select
             value={`${selectedMonth}-${selectedYear}`}
             onChange={(e) => {
@@ -528,9 +576,17 @@ export function RHFortnightSheet({ allRecords, onOpenRecordDetail }: RHFortnight
             }}
             className="text-xs font-medium py-1.5 px-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 outline-none focus:border-blue-600"
           >
-            <option value="10-2026">Noviembre 2026</option>
-            <option value="9-2026">Octubre 2026</option>
-            <option value="8-2026">Septiembre 2026</option>
+            {[0, 1, 2, 3, 4, 5].map((offset) => {
+              const d = new Date(nowDate.getFullYear(), nowDate.getMonth() - offset, 1);
+              const m = d.getMonth();
+              const y = d.getFullYear();
+              const label = d.toLocaleDateString('es-MX', { month: 'long', year: 'numeric' });
+              return (
+                <option key={`${m}-${y}`} value={`${m}-${y}`}>
+                  {label.charAt(0).toUpperCase() + label.slice(1)}
+                </option>
+              );
+            })}
           </select>
 
           {/* Selector de Equipo */}
@@ -607,7 +663,9 @@ export function RHFortnightSheet({ allRecords, onOpenRecordDetail }: RHFortnight
                   const dayName = DAY_NAMES[dayOfWeek];
                   const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
                   const isToday =
-                    dayNum === 10 && selectedMonth === 10 && selectedYear === 2026;
+                    dayNum === nowDate.getDate() &&
+                    selectedMonth === nowDate.getMonth() &&
+                    selectedYear === nowDate.getFullYear();
 
                   return (
                     <th
@@ -619,7 +677,7 @@ export function RHFortnightSheet({ allRecords, onOpenRecordDetail }: RHFortnight
                           ? 'bg-slate-100/70 dark:bg-slate-800/50 text-slate-400'
                           : ''
                       }`}
-                      title={`${dayName} ${dayNum} de Noviembre`}
+                      title={`${dayName} ${dayNum}`}
                     >
                       <div className="text-[9px] font-semibold uppercase tracking-tighter opacity-75">
                         {dayName}
@@ -634,10 +692,10 @@ export function RHFortnightSheet({ allRecords, onOpenRecordDetail }: RHFortnight
             </thead>
 
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60">
-              {groupedData.length === 0 ? (
+              {!hasAnyCapturedAttendance || groupedData.length === 0 ? (
                 <tr>
-                  <td colSpan={daysInPeriod.length + 3} className="py-10 text-center text-slate-400">
-                    No se encontraron colaboradores en el periodo seleccionado.
+                  <td colSpan={daysInPeriod.length + 3} className="py-14 text-center text-slate-500 dark:text-slate-400 text-xs">
+                    No hay registros de asistencia capturados.
                   </td>
                 </tr>
               ) : (
@@ -725,15 +783,21 @@ export function RHFortnightSheet({ allRecords, onOpenRecordDetail }: RHFortnight
                             {daysInPeriod.map((d) => {
                               const dayData = c.days[d];
                               const isTodayCol =
-                                d === 10 && selectedMonth === 10 && selectedYear === 2026;
+                                d === nowDate.getDate() &&
+                                selectedMonth === nowDate.getMonth() &&
+                                selectedYear === nowDate.getFullYear();
                               const borderColClass = isTodayCol
                                 ? 'border-x-2 border-x-blue-400 dark:border-x-blue-600 bg-blue-50/30 dark:bg-blue-950/20'
                                 : 'border-r border-slate-100 dark:border-slate-800/60';
 
-                              if (!dayData) {
+                              if (!dayData || dayData.status === 'empty') {
                                 return (
-                                  <td key={d} className={`p-1 text-center w-[48px] ${borderColClass}`}>
-                                    <span className="text-slate-300">·</span>
+                                  <td
+                                    key={d}
+                                    className={`p-1 text-center w-[48px] ${borderColClass}`}
+                                    title={`${dayData?.dayName || ''} ${d} — Sin registro`}
+                                  >
+                                    <span className="text-slate-300 dark:text-slate-600">—</span>
                                   </td>
                                 );
                               }
