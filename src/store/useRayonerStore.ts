@@ -948,6 +948,21 @@ export const useRayonerStore = create<RayonerState>()(
           assignments: [...state.assignments, newAssignment],
         }));
 
+        // Persistir tarea extraordinaria en colección `tasks` de Firestore (en minutos enteros)
+        void saveTaskToFirestore({
+          id: newTaskId,
+          title: taskData.name,
+          companyId: '',
+          projectId: 'prj-extraordinario',
+          assignedTo: taskData.userId,
+          supervisorId,
+          status: 'pending',
+          priority: 'medium',
+          plannedMinutes: Math.round((taskData.plannedHours || 1) * 60),
+          loggedMinutes: 0,
+          createdAt: nowIso,
+        });
+
         useNotificationStore.getState().addNotification({
           recipient_id: supervisorId,
           sender_id: taskData.userId,

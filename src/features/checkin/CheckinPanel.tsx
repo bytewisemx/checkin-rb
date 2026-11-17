@@ -18,7 +18,11 @@ import { StartTaskModal } from './StartTaskModal';
 import { EndDayAllocationModal } from './EndDayAllocationModal';
 import { FacialEnrollmentModal } from './FacialEnrollmentModal';
 import { FacialCheckinModal } from './FacialCheckinModal';
-import { RealCheckoutModal } from './RealCheckoutModal';
+import { SessionRegularizationModal } from './SessionRegularizationModal';
+import {
+  computeElapsedShiftMinutes,
+  MAX_CONTINUOUS_SHIFT_MINUTES,
+} from '../../services/attendanceService';
 import { loadFaceApiModels } from '../../services/facialBiometrics';
 import { DailyQuoteCard } from '../../components/common/DailyQuoteCard';
 
@@ -78,11 +82,21 @@ export function CheckinPanel() {
 
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
 
-  // Detección de jornada pendiente de regularización
+  // Detección de jornada pendiente de regularización (corte 12h o 23:59)
   const hasPendingRegularization = Boolean(
-    activeCheckin?.requiresRealCheckout ||
+    activeCheckin?.requiresRegularization ||
+      activeCheckin?.requiresRealCheckout ||
+      activeCheckin?.status === 'truncated_12h' ||
+      activeCheckin?.status === 'pending_regularization' ||
       activeCheckin?.status === 'pending_checkout_regularization'
   );
+
+  // Abrir automáticamente el modal obligatorio si existe una jornada truncada/pendiente
+  useEffect(() => {
+    if (hasPendingRegularization) {
+      setIsRegularizationModalOpen(true);
+    }
+  }, [hasPendingRegularization]);
 
   // Fecha legible de la jornada huérfana / pendiente para la alerta
   const formattedPendingDate = useMemo(() => {
@@ -95,9 +109,9 @@ export function CheckinPanel() {
     });
   }, [activeCheckin]);
 
-  // Vigía en Tiempo Real (Frontend) y Detección de Sesión Huérfana al Reabrir (Regla 1)
+  // Vigía en Tiempo Real (Frontend): Corte automático a las 12h 00m (720 min) y a las 23:59:00
   useEffect(() => {
-    // 1. Verificación inmediata de sesión huérfana al montar
+    // 1. Verificación inmediata de sesión huérfana / truncada al montar
     checkOrphanSession();
 
     // 2. Vigía en tiempo real mientras el cronómetro esté corriendo en el navegador
@@ -108,6 +122,12 @@ export function CheckinPanel() {
         !hasPendingRegularization &&
         activeCheckin.status !== 'completed'
       ) {
+        const elapsedMinutes = computeElapsedShiftMinutes(activeCheckin.checkInTimeMs);
+        if (elapsedMinutes >= MAX_CONTINUOUS_SHIFT_MINUTES) {
+          void triggerDailyCutoff(activeCheckin.id, '12h');
+          return;
+        }
+
         const startDate = new Date(activeCheckin.checkInTimeMs);
         const cutoffDate = new Date(
           startDate.getFullYear(),
@@ -119,7 +139,7 @@ export function CheckinPanel() {
           0
         );
         if (Date.now() >= cutoffDate.getTime()) {
-          void triggerDailyCutoff(activeCheckin.id);
+          void triggerDailyCutoff(activeCheckin.id, '23:59');
         }
       }
     }, 1000);
@@ -141,13 +161,11 @@ export function CheckinPanel() {
   }, [user?.id, activeWorkers]);
 
   const currentMember = useMemo(() => {
-    if (!user) return teamMembers[0] || null;
+    if (!user) return null;
     return (
       teamMembers.find(
         (m) => m.id === user.id || m.email.toLowerCase() === user.email.toLowerCase()
-      ) ||
-      teamMembers[0] ||
-      null
+      ) || null
     );
   }, [user, teamMembers]);
 
@@ -378,7 +396,7 @@ export function CheckinPanel() {
   // 6. Cambiar de tarea en jornada activa: Cierra lapso previo y abre nuevo lapso SIN alterar la jornada total
   const handleSwitchTask = (newTaskId: string | null) => {
     setIsStartTaskModalOpen(false);
-    const currentUserId = user?.id || currentMember?.id || 'usr-ana';
+    const currentUserId = user?.id || currentMember?.id || '';
 
     if (newTaskId === activeTaskId) return;
 
@@ -437,24 +455,30 @@ export function CheckinPanel() {
   };
 
   const handleConfirmCloseDay = async (allocations: Array<{ taskId: string; hours: number }>) => {
-    const userId = currentMember?.id || user?.id || 'usr-ana';
-    recordDayAllocations(userId, allocations);
-    stopWorkerTimer(userId);
+    const userId = user?.id || currentMember?.id || '';
+    if (userId && allocations.length > 0) {
+      recordDayAllocations(userId, allocations);
+    }
+    if (userId) {
+      stopWorkerTimer(userId);
+      localStorage.removeItem(`rb_active_task_id_${userId}`);
+    }
     await endCheckin();
 
     setActiveTaskId(null);
-    localStorage.removeItem(`rb_active_task_id_${userId}`);
     setIsEndDayModalOpen(false);
-    addToast('Jornada finalizada y horas imputadas correctamente al supervisor', 'success');
+    addToast('Jornada finalizada y tiempos registrados correctamente.', 'success');
   };
 
   const handleCloseAsGeneral = async () => {
-    const userId = currentMember?.id || user?.id || 'usr-ana';
-    stopWorkerTimer(userId);
+    const userId = user?.id || currentMember?.id || '';
+    if (userId) {
+      stopWorkerTimer(userId);
+      localStorage.removeItem(`rb_active_task_id_${userId}`);
+    }
     await endCheckin();
 
     setActiveTaskId(null);
-    localStorage.removeItem(`rb_active_task_id_${userId}`);
     setIsEndDayModalOpen(false);
     addToast('Salida de jornada registrada correctamente.', 'info');
   };
@@ -843,17 +867,24 @@ export function CheckinPanel() {
         onBypassContingency={handleFacialBypassContingency}
       />
 
-      <RealCheckoutModal
-        isOpen={isRegularizationModalOpen}
-        onClose={() => setIsRegularizationModalOpen(false)}
+      <SessionRegularizationModal
+        isOpen={hasPendingRegularization || isRegularizationModalOpen}
         pendingCheckin={activeCheckin}
-        onConfirm={async (realCheckoutTimeStr, note) => {
+        onConfirm={async ({
+          realCheckoutTimeStr,
+          note,
+          allocations,
+          exceeded12hAlert,
+        }) => {
           if (activeCheckin) {
             await regularizeCheckout({
               checkinId: activeCheckin.id,
               realCheckoutTimeStr,
               note,
+              allocations,
+              exceeded12hAlert,
             });
+            setIsRegularizationModalOpen(false);
           }
         }}
       />

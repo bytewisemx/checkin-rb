@@ -2,6 +2,9 @@ import { collection, doc, getDocs, query, setDoc, where } from 'firebase/firesto
 import { db, isFirebaseConfigured } from './firebase';
 import { trackFirestoreRead, trackFirestoreWrite } from './firestoreTelemetry';
 
+export const MAX_CONTINUOUS_SHIFT_MINUTES = 720; // 12h 00m exactas
+export const MAX_CONTINUOUS_SHIFT_MS = MAX_CONTINUOUS_SHIFT_MINUTES * 60 * 1000;
+
 export interface AttendanceCheckInNode {
   timestamp: string;
   timestampMs: number;
@@ -18,6 +21,14 @@ export interface AttendanceCheckOutNode {
   autoStoppedAt?: string;
 }
 
+export type AttendanceStatus =
+  | 'active'
+  | 'completed'
+  | 'pending_checkout_regularization'
+  | 'pending_regularization'
+  | 'truncated_12h'
+  | 'justified';
+
 export interface AttendanceDocument {
   id: string;
   userId: string;
@@ -27,8 +38,35 @@ export interface AttendanceDocument {
   checkIn: AttendanceCheckInNode;
   checkOut: AttendanceCheckOutNode | null;
   totalMinutes: number; // Entero estricto, sin decimales
-  status: 'active' | 'completed' | 'pending_checkout_regularization' | 'justified';
+  status: AttendanceStatus;
+  autoStoppedAt?: string | null;
+  requiresRegularization?: boolean;
+  regularized?: boolean;
+  regularizationNote?: string;
+  exceeded12hAlert?: boolean;
   updatedAt: string;
+}
+
+/**
+ * Formatea una cantidad de minutos enteros a formato sexagesimal estricto: "Xh Ym"
+ */
+export function formatMinutesSexagesimal(totalMinutes: number): string {
+  const safe = Math.max(0, Math.round(totalMinutes || 0));
+  const h = Math.floor(safe / 60);
+  const m = safe % 60;
+  return `${h}h ${String(m).padStart(2, '0')}m`;
+}
+
+/**
+ * Calcula los minutos enteros transcurridos desde checkIn.timestamp:
+ * elapsedMinutes = Math.floor((now - checkInTimestamp) / 60000)
+ */
+export function computeElapsedShiftMinutes(
+  checkInTimestampMs: number,
+  nowMs: number = Date.now()
+): number {
+  if (!checkInTimestampMs || nowMs <= checkInTimestampMs) return 0;
+  return Math.floor((nowMs - checkInTimestampMs) / 60000);
 }
 
 /**
@@ -64,6 +102,8 @@ export async function saveAttendanceCheckInToFirestore(
       : null,
     totalMinutes: Math.max(0, Math.round(record.totalMinutes || 0)),
     status: record.status || 'active',
+    requiresRegularization: Boolean(record.requiresRegularization),
+    regularized: Boolean(record.regularized),
     updatedAt: new Date().toISOString(),
   };
 
@@ -91,7 +131,7 @@ export async function saveAttendanceCheckOutToFirestore(
   attendanceId: string,
   checkOut: AttendanceCheckOutNode,
   totalMinutes: number,
-  status: AttendanceDocument['status'] = 'completed'
+  status: AttendanceStatus = 'completed'
 ): Promise<boolean> {
   if (!isFirebaseConfigured() || !db || !attendanceId) return true;
 
@@ -106,6 +146,7 @@ export async function saveAttendanceCheckOutToFirestore(
         },
         totalMinutes: Math.max(0, Math.round(totalMinutes || 0)),
         status,
+        requiresRegularization: false,
         updatedAt: new Date().toISOString(),
       },
       { merge: true }
@@ -115,6 +156,137 @@ export async function saveAttendanceCheckOutToFirestore(
   } catch (err) {
     console.warn('[attendanceService] Error al persistir check-out en Firestore:', err);
     return false;
+  }
+}
+
+/**
+ * Ejecuta el corte automático al alcanzar 12 horas continuas (720 minutos)
+ * Marca en Firestore: status: "truncated_12h", autoStoppedAt, requiresRegularization: true
+ */
+export async function truncateAttendanceAt12Hours(
+  attendanceId: string,
+  checkInTimestampMs: number
+): Promise<boolean> {
+  if (!isFirebaseConfigured() || !db || !attendanceId) return true;
+
+  const autoStoppedMs = checkInTimestampMs + MAX_CONTINUOUS_SHIFT_MS;
+  const autoStoppedIso = new Date(autoStoppedMs).toISOString();
+
+  try {
+    await setDoc(
+      doc(db, 'attendance', attendanceId),
+      {
+        status: 'truncated_12h',
+        autoStoppedAt: autoStoppedIso,
+        requiresRegularization: true,
+        regularized: false,
+        totalMinutes: MAX_CONTINUOUS_SHIFT_MINUTES,
+        checkOut: {
+          timestamp: autoStoppedIso,
+          timestampMs: Math.round(autoStoppedMs),
+          autoStoppedAt: autoStoppedIso,
+        },
+        updatedAt: new Date().toISOString(),
+      },
+      { merge: true }
+    );
+    trackFirestoreWrite(1);
+    return true;
+  } catch (err) {
+    console.warn('[attendanceService] Error al truncar asistencia a 12h:', err);
+    return false;
+  }
+}
+
+/**
+ * Guarda la regularización de salida real en Firestore y libera la sesión pendiente
+ */
+export async function regularizeAttendanceInFirestore(
+  attendanceId: string,
+  payload: {
+    checkOutMs: number;
+    totalMinutes: number;
+    note?: string;
+    exceeded12hAlert?: boolean;
+  }
+): Promise<boolean> {
+  if (!isFirebaseConfigured() || !db || !attendanceId) return true;
+
+  const checkOutIso = new Date(payload.checkOutMs).toISOString();
+
+  try {
+    await setDoc(
+      doc(db, 'attendance', attendanceId),
+      {
+        checkOut: {
+          timestamp: checkOutIso,
+          timestampMs: Math.round(payload.checkOutMs),
+        },
+        totalMinutes: Math.max(0, Math.round(payload.totalMinutes || 0)),
+        regularized: true,
+        requiresRegularization: false,
+        status: 'completed',
+        exceeded12hAlert: Boolean(payload.exceeded12hAlert),
+        regularizationNote: payload.note || '',
+        updatedAt: new Date().toISOString(),
+      },
+      { merge: true }
+    );
+    trackFirestoreWrite(1);
+    return true;
+  } catch (err) {
+    console.warn('[attendanceService] Error al regularizar asistencia en Firestore:', err);
+    return false;
+  }
+}
+
+/**
+ * Consulta si existe un registro en `attendance` con requiresRegularization === true para el usuario
+ */
+export async function fetchPendingRegularizationAttendance(
+  userId: string
+): Promise<AttendanceDocument | null> {
+  if (!isFirebaseConfigured() || !db || !userId) return null;
+
+  try {
+    const q = query(
+      collection(db, 'attendance'),
+      where('userId', '==', userId),
+      where('requiresRegularization', '==', true)
+    );
+    const snap = await getDocs(q);
+    trackFirestoreRead(Math.max(1, snap.size));
+
+    if (snap.empty) return null;
+
+    const first = snap.docs[0];
+    const d = first.data() as any;
+    return {
+      id: d.id || first.id,
+      userId: String(d.userId || userId),
+      userName: String(d.userName || 'Colaborador'),
+      teamId: d.teamId || null,
+      date: String(d.date || ''),
+      checkIn: d.checkIn || {
+        timestamp: '',
+        timestampMs: 0,
+        facialMatch: false,
+        confidenceScore: 0,
+        lat: null,
+        lng: null,
+        locationLabel: '',
+      },
+      checkOut: d.checkOut || null,
+      totalMinutes: Math.max(0, Math.round(d.totalMinutes || 0)),
+      status: d.status || 'truncated_12h',
+      autoStoppedAt: d.autoStoppedAt || null,
+      requiresRegularization: true,
+      regularized: Boolean(d.regularized),
+      updatedAt: String(d.updatedAt || ''),
+    };
+  } catch (err) {
+    console.warn('[attendanceService] Error al verificar asistencia pendiente de regularización:', err);
+    return null;
   }
 }
 
@@ -160,6 +332,9 @@ export async function fetchAttendanceRecordsFromFirestore(
         checkOut: d.checkOut || null,
         totalMinutes: Math.max(0, Math.round(d.totalMinutes || 0)),
         status: d.status || 'completed',
+        autoStoppedAt: d.autoStoppedAt || null,
+        requiresRegularization: Boolean(d.requiresRegularization),
+        regularized: Boolean(d.regularized),
         updatedAt: String(d.updatedAt || ''),
       });
     });

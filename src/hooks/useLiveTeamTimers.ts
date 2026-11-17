@@ -6,6 +6,10 @@ import {
   unregisterActiveListener,
   trackFirestoreRead,
 } from '../services/firestoreTelemetry';
+import {
+  computeElapsedShiftMinutes,
+  MAX_CONTINUOUS_SHIFT_MINUTES,
+} from '../services/attendanceService';
 import { useRayonerStore } from '../store/useRayonerStore';
 import type { ActiveWorker } from '../types/rayoner';
 
@@ -67,18 +71,25 @@ export function useLiveTeamTimers() {
                 ? (startedAtVal as any).toDate().getTime()
                 : new Date(startedAtVal).getTime();
 
+            const elapsedMinutes = computeElapsedShiftMinutes(startedAtMs);
+            const isTruncated12h = elapsedMinutes >= MAX_CONTINUOUS_SHIFT_MINUTES;
+
             remoteWorkers.push({
               userId: data.userId || docSnap.id,
               userName: data.userName || 'Colaborador',
               taskId: data.taskId || '',
-              taskName: data.taskName || 'Tarea activa',
+              taskName: isTruncated12h
+                ? `${data.taskName || 'Tarea activa'} (Corte 12h)`
+                : data.taskName || 'Tarea activa',
               projectName: data.projectName || 'Proyecto',
               clientName: data.clientName || 'Cliente',
               startedAtMs,
               startedAt: startedAtVal,
-              accumulatedSeconds: data.accumulatedSeconds || 0,
-              isRunning: true,
-              currentDurationStr: '00:00:00',
+              accumulatedSeconds: isTruncated12h
+                ? MAX_CONTINUOUS_SHIFT_MINUTES * 60
+                : data.accumulatedSeconds || 0,
+              isRunning: !isTruncated12h,
+              currentDurationStr: isTruncated12h ? '12:00:00' : '00:00:00',
             });
           }
         });

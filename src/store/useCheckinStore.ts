@@ -24,7 +24,15 @@ import { db, isFirebaseConfigured } from '../services/firebase';
 import {
   saveAttendanceCheckInToFirestore,
   saveAttendanceCheckOutToFirestore,
+  truncateAttendanceAt12Hours,
+  regularizeAttendanceInFirestore,
+  fetchPendingRegularizationAttendance,
+  computeElapsedShiftMinutes,
+  MAX_CONTINUOUS_SHIFT_MINUTES,
+  MAX_CONTINUOUS_SHIFT_MS,
+  formatMinutesSexagesimal,
 } from '../services/attendanceService';
+import { updateTaskProgressInFirestore } from '../services/taskService';
 
 export interface TaskTag {
   text: string;
@@ -149,15 +157,23 @@ export interface CheckinRecord {
   biometricMatchScore?: number | null;
   biometricDistance?: number | null;
   // Modelo de persistencia de jornada y subtramos por tarea
-  status?: 'active' | 'paused' | 'completed' | 'pending_checkout_regularization';
+  status?:
+    | 'active'
+    | 'paused'
+    | 'completed'
+    | 'pending_checkout_regularization'
+    | 'pending_regularization'
+    | 'truncated_12h';
   workdayTotalSeconds?: number;
   taskIntervals?: TaskInterval[];
-  // Límite de corte diario (23:59 hrs) y regularización de salida real
+  // Límite de corte automático (12h continuas / 23:59 hrs) y regularización de salida real
   autoStoppedAt?: string;
   requiresRealCheckout?: boolean;
+  requiresRegularization?: boolean;
   regularized?: boolean;
   regularizationNote?: string;
   regularizedCheckoutTime?: string;
+  exceeded12hAlert?: boolean;
   totalHours?: number;
   regularizedAt?: string;
 }
@@ -287,13 +303,15 @@ interface CheckinState {
   resumeCheckin: () => Promise<void>;
   endCheckin: () => Promise<void>;
 
-  // Límite de corte diario (23:59 hrs) y regularización de jornada huérfana
-  triggerDailyCutoff: (checkinId?: string) => Promise<void>;
+  // Límite de corte automático (12h continuas / 23:59 hrs) y regularización de jornada huérfana
+  triggerDailyCutoff: (checkinId?: string, reason?: '12h' | '23:59') => Promise<void>;
   checkOrphanSession: () => void;
   regularizeCheckout: (params: {
     checkinId: string;
     realCheckoutTimeStr: string;
     note?: string;
+    allocations?: Array<{ taskId: string; minutes: number }>;
+    exceeded12hAlert?: boolean;
   }) => Promise<void>;
 
   pendingEmail?: string;
@@ -2180,8 +2198,8 @@ export const useCheckinStore = create<CheckinState>()(
         );
       },
 
-      // Límite de corte diario automático a las 23:59:00 hrs
-      triggerDailyCutoff: async (checkinId?: string) => {
+      // Límite de corte automático al superar 12h continuas (720 min) o 23:59:00 hrs
+      triggerDailyCutoff: async (checkinId?: string, reason?: '12h' | '23:59') => {
         const { activeCheckin, user, history, mockEmployeesData, addToast } = get();
         const targetCheckin =
           (checkinId
@@ -2194,14 +2212,20 @@ export const useCheckinStore = create<CheckinState>()(
 
         // Si ya está congelado y pendiente de regularización, no volver a cortar
         if (
-          targetCheckin.requiresRealCheckout &&
-          targetCheckin.status === 'pending_checkout_regularization'
+          targetCheckin.requiresRegularization ||
+          targetCheckin.requiresRealCheckout ||
+          targetCheckin.status === 'truncated_12h' ||
+          targetCheckin.status === 'pending_checkout_regularization' ||
+          targetCheckin.status === 'pending_regularization'
         ) {
           return;
         }
 
         const startDate = new Date(targetCheckin.checkInTimeMs);
-        const cutoffDate = new Date(
+        const elapsedMinutes = computeElapsedShiftMinutes(targetCheckin.checkInTimeMs);
+        const is12hCutoff = reason === '12h' || elapsedMinutes >= MAX_CONTINUOUS_SHIFT_MINUTES;
+
+        const endOfDayDate = new Date(
           startDate.getFullYear(),
           startDate.getMonth(),
           startDate.getDate(),
@@ -2210,7 +2234,17 @@ export const useCheckinStore = create<CheckinState>()(
           0,
           0
         );
-        const cutoffMs = cutoffDate.getTime();
+        const limit12hMs = targetCheckin.checkInTimeMs + MAX_CONTINUOUS_SHIFT_MS;
+        const cutoffMs = is12hCutoff
+          ? limit12hMs
+          : Math.min(endOfDayDate.getTime(), limit12hMs);
+        const autoStoppedIso = new Date(cutoffMs).toISOString();
+        const autoStoppedTimeLabel = new Date(cutoffMs).toLocaleTimeString('es-MX', {
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit',
+          hour12: false,
+        });
 
         // 1. Cerrar pausas pendientes al corte
         const updatedPauses = [...targetCheckin.pauses];
@@ -2221,23 +2255,28 @@ export const useCheckinStore = create<CheckinState>()(
         let totalPauseMs = 0;
         updatedPauses.forEach((p) => {
           if (p.endMs) {
-            totalPauseMs += Math.max(0, p.endMs - p.startMs);
+            totalPauseMs += Math.max(0, Math.min(p.endMs, cutoffMs) - p.startMs);
           }
         });
 
-        // 2. Tiempo congelado exactamente a las 23:59:00
-        const effectiveMs = Math.max(0, cutoffMs - targetCheckin.checkInTimeMs - totalPauseMs);
+        // 2. Tiempo congelado exactamente en el corte (máximo 720 min / 12h 00m)
+        const effectiveMs = Math.min(
+          MAX_CONTINUOUS_SHIFT_MS,
+          Math.max(0, cutoffMs - targetCheckin.checkInTimeMs - totalPauseMs)
+        );
         const workdayTotalSeconds = Math.floor(effectiveMs / 1000);
-        const totalDurationMinutes = Math.floor(workdayTotalSeconds / 60);
+        const totalDurationMinutes = is12hCutoff
+          ? MAX_CONTINUOUS_SHIFT_MINUTES
+          : Math.min(MAX_CONTINUOUS_SHIFT_MINUTES, Math.floor(workdayTotalSeconds / 60));
 
-        // 3. Cerrar tareas abiertas a las 23:59:00
+        // 3. Cerrar intervalos de tareas abiertos al corte
         const closedIntervals = (targetCheckin.taskIntervals || []).map((interval) => {
           if (!interval.endMs || interval.endMs > cutoffMs) {
             const durationSecs = Math.max(0, Math.floor((cutoffMs - interval.startMs) / 1000));
             return {
               ...interval,
               endMs: cutoffMs,
-              endTime: '23:59:00',
+              endTime: autoStoppedTimeLabel,
               durationSeconds: durationSecs,
             };
           }
@@ -2260,9 +2299,11 @@ export const useCheckinStore = create<CheckinState>()(
           checkOutTimeMs: cutoffMs,
           totalDurationMinutes,
           workdayTotalSeconds,
-          status: 'pending_checkout_regularization',
-          autoStoppedAt: '23:59:00',
+          status: is12hCutoff ? 'truncated_12h' : 'pending_regularization',
+          autoStoppedAt: autoStoppedIso,
           requiresRealCheckout: true,
+          requiresRegularization: true,
+          regularized: false,
           taskIntervals: closedIntervals,
         };
 
@@ -2301,7 +2342,9 @@ export const useCheckinStore = create<CheckinState>()(
           mockEmployeesData: updatedMockData,
         });
 
-        // 5. Persistir estado de corte en Firestore
+        // 5. Persistir estado de corte en Firestore (`attendance` y `checkins`)
+        void truncateAttendanceAt12Hours(cutoffRecord.id, targetCheckin.checkInTimeMs);
+
         if (isFirebaseConfigured() && db) {
           const checkinRef = doc(db, 'checkins', cutoffRecord.id);
           setDoc(
@@ -2315,9 +2358,10 @@ export const useCheckinStore = create<CheckinState>()(
               date: cutoffRecord.date,
               checkInTimeMs: cutoffRecord.checkInTimeMs,
               checkOutTimeMs: cutoffMs,
-              autoStoppedAt: '23:59:00',
-              status: 'pending_checkout_regularization',
+              autoStoppedAt: autoStoppedIso,
+              status: cutoffRecord.status,
               requiresRealCheckout: true,
+              requiresRegularization: true,
               regularized: false,
               workdayTotalSeconds,
               totalDurationMinutes,
@@ -2329,62 +2373,117 @@ export const useCheckinStore = create<CheckinState>()(
         }
 
         addToast(
-          'Límite de jornada alcanzado: El cronómetro se detuvo automáticamente a las 23:59 hrs. Define tu hora de salida real.',
+          is12hCutoff
+            ? 'Límite de turno alcanzado (12h 00m): La sesión se detuvo automáticamente y quedó pendiente de regularización.'
+            : 'Límite de jornada alcanzado: El cronómetro se detuvo automáticamente. Indica tu hora de salida real.',
           'info'
         );
       },
 
-      // Detección al reabrir el sistema al día siguiente (Validación de Sesión Huérfana)
+      // Detección al reabrir el sistema al día siguiente o al superar 12 horas continuas
       checkOrphanSession: () => {
         const { activeCheckin, user, triggerDailyCutoff } = get();
         const currentTarget =
           activeCheckin || (user ? get().userActiveCheckins?.[user.id] : null);
 
-        if (!currentTarget || !currentTarget.checkInTimeMs) return;
+        if (currentTarget && currentTarget.checkInTimeMs) {
+          // Si ya está marcado para regularización
+          if (
+            currentTarget.requiresRegularization ||
+            currentTarget.requiresRealCheckout ||
+            currentTarget.status === 'truncated_12h' ||
+            currentTarget.status === 'pending_checkout_regularization' ||
+            currentTarget.status === 'pending_regularization'
+          ) {
+            if (activeCheckin !== currentTarget) {
+              set({ activeCheckin: currentTarget });
+            }
+            return;
+          }
 
-        // Si ya está marcado para regularización
-        if (
-          currentTarget.requiresRealCheckout ||
-          currentTarget.status === 'pending_checkout_regularization'
-        ) {
-          if (activeCheckin !== currentTarget) {
-            set({ activeCheckin: currentTarget });
+          // 1. Verificar tope de 12 horas continuas (720 minutos)
+          const elapsedMinutes = computeElapsedShiftMinutes(currentTarget.checkInTimeMs);
+          if (elapsedMinutes >= MAX_CONTINUOUS_SHIFT_MINUTES) {
+            void triggerDailyCutoff(currentTarget.id, '12h');
+            return;
+          }
+
+          // 2. Verificar cambio de día o corte a las 23:59:00
+          const startDate = new Date(currentTarget.checkInTimeMs);
+          const startedDateStr = `${startDate.getFullYear()}-${String(
+            startDate.getMonth() + 1
+          ).padStart(2, '0')}-${String(startDate.getDate()).padStart(2, '0')}`;
+
+          const now = new Date();
+          const todayDateStr = `${now.getFullYear()}-${String(
+            now.getMonth() + 1
+          ).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+
+          const cutoffDate = new Date(
+            startDate.getFullYear(),
+            startDate.getMonth(),
+            startDate.getDate(),
+            23,
+            59,
+            0,
+            0
+          );
+
+          if (startedDateStr < todayDateStr || now.getTime() >= cutoffDate.getTime()) {
+            void triggerDailyCutoff(currentTarget.id, '23:59');
           }
           return;
         }
 
-        // Evaluar fecha del check-in respecto a la fecha actual local
-        const startDate = new Date(currentTarget.checkInTimeMs);
-        const y = startDate.getFullYear();
-        const m = String(startDate.getMonth() + 1).padStart(2, '0');
-        const d = String(startDate.getDate()).padStart(2, '0');
-        const startedDateStr = `${y}-${m}-${d}`;
+        // 3. Si localmente no hay sesión abierta, consultar Firestore `attendance` por registros con requiresRegularization === true
+        if (user?.id) {
+          void fetchPendingRegularizationAttendance(user.id).then((remotePending) => {
+            if (!remotePending || !remotePending.checkIn?.timestampMs) return;
+            const currentNow = get().activeCheckin;
+            if (currentNow && currentNow.id === remotePending.id) return;
 
-        const now = new Date();
-        const nowY = now.getFullYear();
-        const nowM = String(now.getMonth() + 1).padStart(2, '0');
-        const nowD = String(now.getDate()).padStart(2, '0');
-        const todayDateStr = `${nowY}-${nowM}-${nowD}`;
+            const hydratedRecord: CheckinRecord = {
+              id: remotePending.id,
+              date: remotePending.date,
+              checkInTimeMs: remotePending.checkIn.timestampMs,
+              checkOutTimeMs: remotePending.checkOut?.timestampMs || null,
+              pauses: [],
+              location:
+                remotePending.checkIn.lat !== null && remotePending.checkIn.lng !== null
+                  ? { lat: remotePending.checkIn.lat, lng: remotePending.checkIn.lng }
+                  : null,
+              address: remotePending.checkIn.locationLabel || 'Ubicación registrada',
+              totalDurationMinutes: remotePending.totalMinutes,
+              clientIp: null,
+              isLate: false,
+              minutesLate: 0,
+              status: remotePending.status === 'truncated_12h' ? 'truncated_12h' : 'pending_regularization',
+              autoStoppedAt: remotePending.autoStoppedAt || undefined,
+              requiresRealCheckout: true,
+              requiresRegularization: true,
+              regularized: false,
+              taskIntervals: [],
+            };
 
-        const cutoffDate = new Date(
-          startDate.getFullYear(),
-          startDate.getMonth(),
-          startDate.getDate(),
-          23,
-          59,
-          0,
-          0
-        );
-        const cutoffMs = cutoffDate.getTime();
-
-        // Si la jornada inició antes de hoy o ya superó las 23:59:00
-        if (startedDateStr < todayDateStr || now.getTime() >= cutoffMs) {
-          void triggerDailyCutoff(currentTarget.id);
+            set((state) => ({
+              activeCheckin: hydratedRecord,
+              userActiveCheckins: {
+                ...state.userActiveCheckins,
+                [user.id]: hydratedRecord,
+              },
+            }));
+          });
         }
       },
 
       // Guardado, Auditoría y Liberación de Nueva Jornada
-      regularizeCheckout: async ({ checkinId, realCheckoutTimeStr, note }) => {
+      regularizeCheckout: async ({
+        checkinId,
+        realCheckoutTimeStr,
+        note,
+        allocations = [],
+        exceeded12hAlert = false,
+      }) => {
         const { activeCheckin, user, history, mockEmployeesData, addToast } = get();
         const target =
           (activeCheckin?.id === checkinId
@@ -2453,16 +2552,18 @@ export const useCheckinStore = create<CheckinState>()(
           }
         });
 
-        // 3. Recalcular tiempo neto de la jornada
+        // 3. Recalcular tiempo neto de la jornada (minutos enteros)
         const effectiveMs = Math.max(
           0,
           realCheckoutMs - target.checkInTimeMs - totalPauseMs
         );
         const recalculatedWorkdaySeconds = Math.floor(effectiveMs / 1000);
         const recalculatedDurationMinutes = Math.floor(recalculatedWorkdaySeconds / 60);
-        const totalHours = Number((recalculatedWorkdaySeconds / 3600).toFixed(2));
+        const totalHours = Number((recalculatedDurationMinutes / 60).toFixed(2));
+        const hasExceeded12h =
+          exceeded12hAlert || recalculatedDurationMinutes > MAX_CONTINUOUS_SHIFT_MINUTES;
 
-        // 4. Ajustar intervalos de tareas: la última tarea termina en realCheckoutMs
+        // 4. Ajustar intervalos de tareas
         const adjustedIntervals = (target.taskIntervals || [])
           .filter((interval) => interval.startMs < realCheckoutMs)
           .map((interval) => {
@@ -2483,14 +2584,36 @@ export const useCheckinStore = create<CheckinState>()(
             };
           });
 
-        // 5. Imputar horas a useRayonerStore si corresponde
-        if (user && adjustedIntervals.length > 0) {
+        // 5. Imputar minutos enteros a tareas seleccionadas en useRayonerStore y Firestore (`tasks`)
+        if (user) {
           try {
-            const allocations = adjustedIntervals.map((int) => ({
-              taskId: int.taskId,
-              hours: Number((int.durationSeconds / 3600).toFixed(2)),
-            }));
-            useRayonerStore.getState().recordDayAllocations(user.id, allocations);
+            const validManualAllocations = allocations.filter((a) => a.minutes > 0);
+            if (validManualAllocations.length > 0) {
+              const rayonerStore = useRayonerStore.getState();
+              rayonerStore.recordDayAllocations(
+                user.id,
+                validManualAllocations.map((a) => ({
+                  taskId: a.taskId,
+                  hours: Number((a.minutes / 60).toFixed(2)),
+                }))
+              );
+
+              validManualAllocations.forEach((a) => {
+                const prevHours = rayonerStore.taskActualHours[a.taskId] || 0;
+                const totalTaskMinutes = Math.max(0, Math.round(prevHours * 60));
+                void updateTaskProgressInFirestore(a.taskId, {
+                  loggedMinutes: totalTaskMinutes,
+                });
+              });
+            } else if (adjustedIntervals.length > 0) {
+              useRayonerStore.getState().recordDayAllocations(
+                user.id,
+                adjustedIntervals.map((int) => ({
+                  taskId: int.taskId,
+                  hours: Number((int.durationSeconds / 3600).toFixed(2)),
+                }))
+              );
+            }
             useRayonerStore.getState().stopWorkerTimer(user.id);
             localStorage.removeItem(`rb_active_task_id_${user.id}`);
           } catch (e) {
@@ -2508,7 +2631,9 @@ export const useCheckinStore = create<CheckinState>()(
           status: 'completed',
           regularized: true,
           requiresRealCheckout: false,
-          autoStoppedAt: target.autoStoppedAt || '23:59:00',
+          requiresRegularization: false,
+          exceeded12hAlert: hasExceeded12h,
+          autoStoppedAt: target.autoStoppedAt || '12h 00m',
           regularizationNote:
             note?.trim() || 'Salida regularizada por el colaborador',
           regularizedCheckoutTime: realCheckoutTimeStr,
@@ -2556,7 +2681,14 @@ export const useCheckinStore = create<CheckinState>()(
           mockEmployeesData: updatedMockData,
         });
 
-        // 7. Persistir en Firestore en checkins/{id}
+        // 7. Persistir regularización en Firestore (`attendance/{id}` y `checkins/{id}`)
+        void regularizeAttendanceInFirestore(regularizedRecord.id, {
+          checkOutMs: realCheckoutMs,
+          totalMinutes: recalculatedDurationMinutes,
+          note: regularizedRecord.regularizationNote,
+          exceeded12hAlert: hasExceeded12h,
+        });
+
         if (isFirebaseConfigured() && db) {
           try {
             const checkinRef = doc(db, 'checkins', regularizedRecord.id);
@@ -2578,6 +2710,8 @@ export const useCheckinStore = create<CheckinState>()(
                 status: 'completed',
                 regularized: true,
                 requiresRealCheckout: false,
+                requiresRegularization: false,
+                exceeded12hAlert: hasExceeded12h,
                 regularizationNote: regularizedRecord.regularizationNote,
                 regularizedCheckoutTime: realCheckoutTimeStr,
                 regularizedAt: regularizedRecord.regularizedAt,
@@ -2596,7 +2730,13 @@ export const useCheckinStore = create<CheckinState>()(
         }
 
         addToast(
-          `Jornada regularizada correctamente (${totalHours} hrs). Ya puedes iniciar tu nueva jornada.`,
+          hasExceeded12h
+            ? `Jornada regularizada (${formatMinutesSexagesimal(
+                recalculatedDurationMinutes
+              )}). Se registró alerta para supervisión por exceder 12h 00m.`
+            : `Jornada regularizada correctamente (${formatMinutesSexagesimal(
+                recalculatedDurationMinutes
+              )}). Ya puedes iniciar tu nueva jornada.`,
           'success'
         );
       },
