@@ -149,7 +149,7 @@ export async function validateInvitationToken(token: string): Promise<ValidateTo
           supervisorEmail: data.supervisorEmail,
           created_by_ti_id: data.created_by_ti_id,
           issuerRole: data.issuerRole || 'Supervisor',
-          team: data.team || 'Auditoría Fiscal',
+          team: data.team || 'Equipo Prueba',
           roleTitle: data.roleTitle || 'Colaborador',
           role: data.role || data.targetRole || 'Colaborador',
           targetRole: data.targetRole || data.role || 'Colaborador',

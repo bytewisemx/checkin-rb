@@ -69,10 +69,18 @@ export function RayonerClientModal({
 
     let finalGroupId = groupId;
 
-    // Si está creando un nuevo grupo
+    // Si está creando un nuevo grupo o no existe ninguno todavía (entorno en blanco)
     if (isCreatingNewGroup && newGroupName.trim()) {
       addGroup(newGroupName.trim(), false);
-      const createdGroup = groups[groups.length - 1];
+      const updatedGroups = useRayonerStore.getState().groups;
+      const createdGroup = updatedGroups[updatedGroups.length - 1];
+      if (createdGroup) {
+        finalGroupId = createdGroup.id;
+      }
+    } else if (!groups.some((g) => g.id === finalGroupId)) {
+      addGroup('Cartera Corporativa', false);
+      const updatedGroups = useRayonerStore.getState().groups;
+      const createdGroup = updatedGroups[updatedGroups.length - 1];
       if (createdGroup) {
         finalGroupId = createdGroup.id;
       }

@@ -137,7 +137,7 @@ export function TIDashboard({ initialTab = 'users_permissions' }: TIDashboardPro
       await fetchTeams();
       if (res.success) {
         addToast(
-          `Reinicio Limpio exitoso: Base de datos purgada. "Equipo Prueba" activo y 5 cuentas base configuradas.`,
+          `Reinicio Limpio exitoso: Colecciones operativas purgadas. 6 cuentas base enlazadas jerárquicamente y "Equipo Prueba" listo.`,
           'success'
         );
         setIsCleanSlateModalOpen(false);
@@ -876,16 +876,16 @@ export function TIDashboard({ initialTab = 'users_permissions' }: TIDashboardPro
               </p>
               <ul className="list-disc list-inside space-y-1 text-slate-500 dark:text-slate-400">
                 <li>
-                  <strong>Vaciar colecciones operativas:</strong> tasks, projects, clients, checkins, attendance, time_logs, invitations, audit_logs y active_timers.
+                  <strong>Vaciar colecciones operativas:</strong> tasks, companies, clients, projects, attendance, checkins, time_logs, active_timers, invitations, audit_logs y notifications.
                 </li>
                 <li>
                   <strong>Colección teams:</strong> Preservar exclusivamente el documento <code>team-prueba-01</code> ("Equipo Prueba").
                 </li>
                 <li>
-                  <strong>Colección users:</strong> Configurar únicamente las 5 cuentas oficiales (TI, Gerente, Supervisor, Colaborador y RH) eliminando cualquier usuario residual.
+                  <strong>Colección users:</strong> Configurar únicamente las 6 cuentas oficiales enlazadas jerárquicamente (TI → Socio → Gerente || RH → Supervisor → Colaborador), eliminando cualquier usuario residual.
                 </li>
                 <li>
-                  <strong>Almacenamiento local:</strong> Limpiar cachés y cronómetros de tareas en el navegador.
+                  <strong>Almacenamiento local:</strong> Limpiar cachés (localStorage / sessionStorage) y cronómetros en el navegador.
                 </li>
               </ul>
             </div>

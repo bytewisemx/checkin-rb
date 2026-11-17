@@ -188,7 +188,7 @@ export function UserProfileModal({ isOpen, onClose, initialTab = 'rank' }: UserP
                 {user?.name} {user?.lastName}
               </h2>
               <p className="text-xs text-slate-500 dark:text-slate-400 truncate">
-                {user?.email} • {user?.team || 'Auditoría Fiscal'}
+                {user?.email} • {user?.team || 'Sin equipo asignado'}
               </p>
 
               {/* Botones de Acción de Avatar */}
@@ -673,7 +673,7 @@ export function UserProfileModal({ isOpen, onClose, initialTab = 'rank' }: UserP
                       Área de Especialidad
                     </span>
                     <p className="text-xs font-heading font-semibold text-slate-900 dark:text-white mt-0.5">
-                      {user?.team || 'Auditoría Fiscal'}
+                      {user?.team || 'Sin equipo asignado'}
                     </p>
                     <span className="inline-block text-[10px] font-semibold text-blue-700 dark:text-sky-400 bg-blue-50 dark:bg-blue-950/30 px-2 py-0.5 rounded-md mt-1">
                       Activo en Russell Bedford

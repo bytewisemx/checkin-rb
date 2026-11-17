@@ -42,15 +42,7 @@ export function RayonerTree({ onOpenTaskModal, onSelectProjectForReport }: Rayon
 
   const [reportModalProject, setReportModalProject] = useState<Project | null>(null);
 
-  const [expandedNodes, setExpandedNodes] = useState<Record<string, boolean>>({
-    'grp-corp': true,
-    'grp-part': true,
-    'grp-int': true,
-    'cli-baluarte': true,
-    'prj-aud-2026': true,
-    'tsk-plan': true,
-    'tsk-sust': true,
-  });
+  const [expandedNodes, setExpandedNodes] = useState<Record<string, boolean>>({});
 
   const handleExpandAll = () => {
     const nextState: Record<string, boolean> = {};
@@ -457,9 +449,18 @@ export function RayonerTree({ onOpenTaskModal, onSelectProjectForReport }: Rayon
 
       {/* 2. Cuerpo del Árbol Jerárquico Abierto */}
       <div className="divide-y divide-slate-200 dark:divide-slate-800">
-        {filteredGroups.length === 0 ? (
+        {clients.length === 0 && filteredGroups.length === 0 ? (
+          <div className="py-14 text-center space-y-2 text-[#475569] dark:text-[#94A3B8]">
+            <p className="text-sm font-heading font-semibold text-slate-800 dark:text-slate-200">
+              Sin empresas registradas
+            </p>
+            <p className="text-xs max-w-md mx-auto">
+              El entorno está en blanco. No hay empresas, proyectos ni tareas creadas aún. Usa el botón superior para registrar tu primera empresa desde cero.
+            </p>
+          </div>
+        ) : filteredGroups.length === 0 ? (
           <div className="py-12 text-center text-[#475569] dark:text-[#94A3B8]">
-            <p className="text-sm font-heading font-semibold">No se encontraron carteras con los filtros actuales</p>
+            <p className="text-sm font-heading font-semibold">No se encontraron empresas con los filtros actuales</p>
           </div>
         ) : (
           filteredGroups.map((group) => {

@@ -81,11 +81,17 @@ export interface User {
   permissions?: UserGranularPermissions;
   customPermissions?: Partial<UserGranularPermissions>;
   modules?: UserModules;
-  // Referencias jerárquicas requeridas
+  // Referencias jerárquicas oficiales (TI > Socio > Gerente || RH > Supervisor > Colaborador)
+  hierarchyLevel?: 0 | 1 | 2 | 3 | 4;
+  reportsTo?: string | null;
   supervisor_id?: string | null;
-  supervisorId?: string;
+  supervisorId?: string | null;
   supervisorName?: string;
   supervisorCode?: string;
+  gerenteId?: string | null;
+  managerId?: string | null;
+  socioId?: string | null;
+  partnerId?: string | null;
   invitationToken?: string;
   created_by_ti_id?: string | null;
   createdByTiId?: string;
@@ -97,6 +103,8 @@ export interface ManagedUserPermissionEntry {
   name: string;
   email: string;
   role: UserRole | string;
+  hierarchyLevel?: 0 | 1 | 2 | 3 | 4;
+  reportsTo?: string | null;
   team?: string;
   teamId?: string;
   teamName?: string | null;
@@ -109,6 +117,11 @@ export interface ManagedUserPermissionEntry {
   accessRevoked?: boolean;
   allowedSupervisorIds?: string[];
   supervisor_id?: string | null;
+  supervisorId?: string | null;
+  gerenteId?: string | null;
+  managerId?: string | null;
+  socioId?: string | null;
+  partnerId?: string | null;
   created_by_ti_id?: string | null;
 }
 
@@ -352,6 +365,8 @@ const initialPermissionsDirectory: Record<string, ManagedUserPermissionEntry> = 
     name: 'TI Prueba',
     email: 'ti.root@russellbedford.mx',
     role: 'ti',
+    hierarchyLevel: 0,
+    reportsTo: null,
     team: 'Sin equipo (Acceso Global)',
     teamName: 'Sin equipo (Acceso Global)',
     permissions: getDefaultPermissionsForRole('ti'),
@@ -359,26 +374,13 @@ const initialPermissionsDirectory: Record<string, ManagedUserPermissionEntry> = 
     biometrics: null,
     accessRevoked: false,
   },
-  'gerente-01': {
-    id: 'gerente-01',
-    name: 'Gerente Prueba',
-    email: 'gerente.prueba@russellbedford.mx',
-    role: 'gerente',
-    team: 'Equipo Prueba',
-    teamName: 'Equipo Prueba',
-    teamId: 'team-prueba-01',
-    assignedTeams: ['team-prueba-01'],
-    permissions: getDefaultPermissionsForRole('gerente'),
-    modules: getDefaultModulesForRole('gerente'),
-    biometrics: null,
-    accessRevoked: false,
-    created_by_ti_id: 'ti-root-01',
-  },
   'socio-01': {
     id: 'socio-01',
     name: 'Socio Prueba',
     email: 'socio.prueba@russellbedford.mx',
     role: 'socio',
+    hierarchyLevel: 1,
+    reportsTo: 'ti-root-01',
     team: 'Equipo Prueba',
     teamName: 'Equipo Prueba',
     teamId: 'team-prueba-01',
@@ -389,11 +391,56 @@ const initialPermissionsDirectory: Record<string, ManagedUserPermissionEntry> = 
     accessRevoked: false,
     created_by_ti_id: 'ti-root-01',
   },
+  'gerente-01': {
+    id: 'gerente-01',
+    name: 'Gerente Prueba',
+    email: 'gerente.prueba@russellbedford.mx',
+    role: 'gerente',
+    hierarchyLevel: 2,
+    reportsTo: 'socio-01',
+    socioId: 'socio-01',
+    partnerId: 'socio-01',
+    team: 'Equipo Prueba',
+    teamName: 'Equipo Prueba',
+    teamId: 'team-prueba-01',
+    assignedTeams: ['team-prueba-01'],
+    permissions: getDefaultPermissionsForRole('gerente'),
+    modules: getDefaultModulesForRole('gerente'),
+    biometrics: null,
+    accessRevoked: false,
+    created_by_ti_id: 'ti-root-01',
+  },
+  'rh-01': {
+    id: 'rh-01',
+    name: 'RH Prueba',
+    email: 'rh.prueba@russellbedford.mx',
+    role: 'rh',
+    hierarchyLevel: 2,
+    reportsTo: 'socio-01',
+    socioId: 'socio-01',
+    partnerId: 'socio-01',
+    team: 'Equipo Prueba',
+    teamName: 'Equipo Prueba',
+    teamId: 'team-prueba-01',
+    assignedTeams: ['team-prueba-01'],
+    permissions: getDefaultPermissionsForRole('rh'),
+    modules: getDefaultModulesForRole('rh'),
+    biometrics: null,
+    accessRevoked: false,
+    allowedSupervisorIds: ['admin-99'],
+    created_by_ti_id: 'ti-root-01',
+  },
   'admin-99': {
     id: 'admin-99',
     name: 'Supervisor Prueba',
     email: 'supervisor.prueba@russellbedford.mx',
     role: 'supervisor',
+    hierarchyLevel: 3,
+    reportsTo: 'gerente-01',
+    gerenteId: 'gerente-01',
+    managerId: 'gerente-01',
+    socioId: 'socio-01',
+    partnerId: 'socio-01',
     team: 'Equipo Prueba',
     teamName: 'Equipo Prueba',
     teamId: 'team-prueba-01',
@@ -408,6 +455,14 @@ const initialPermissionsDirectory: Record<string, ManagedUserPermissionEntry> = 
     name: 'Colaborador Prueba',
     email: 'colaborador.prueba@russellbedford.mx',
     role: 'colaborador',
+    hierarchyLevel: 4,
+    reportsTo: 'admin-99',
+    supervisorId: 'admin-99',
+    supervisor_id: 'admin-99',
+    gerenteId: 'gerente-01',
+    managerId: 'gerente-01',
+    socioId: 'socio-01',
+    partnerId: 'socio-01',
     team: 'Equipo Prueba',
     teamName: 'Equipo Prueba',
     teamId: 'team-prueba-01',
@@ -415,23 +470,6 @@ const initialPermissionsDirectory: Record<string, ManagedUserPermissionEntry> = 
     modules: getDefaultModulesForRole('colaborador'),
     biometrics: null,
     accessRevoked: false,
-    supervisor_id: 'admin-99',
-  },
-  'rh-01': {
-    id: 'rh-01',
-    name: 'RH Prueba',
-    email: 'rh.prueba@russellbedford.mx',
-    role: 'rh',
-    team: 'Equipo Prueba',
-    teamName: 'Equipo Prueba',
-    teamId: 'team-prueba-01',
-    assignedTeams: ['team-prueba-01'],
-    permissions: getDefaultPermissionsForRole('rh'),
-    modules: getDefaultModulesForRole('rh'),
-    biometrics: null,
-    accessRevoked: false,
-    allowedSupervisorIds: ['admin-99'],
-    created_by_ti_id: 'ti-root-01',
   },
 };
 
@@ -1344,10 +1382,15 @@ export const useCheckinStore = create<CheckinState>()(
               lastName: 'Prueba',
               email: 'rh.prueba@russellbedford.mx',
               role: 'rh',
+              hierarchyLevel: 2,
+              reportsTo: 'socio-01',
+              socioId: 'socio-01',
+              partnerId: 'socio-01',
               verified: true,
               isProfileComplete: true,
-              team: 'Recursos Humanos',
-              assignedTeams: ['Equipo Prueba', 'Auditoría Fiscal'],
+              team: 'Equipo Prueba',
+              teamName: 'Equipo Prueba',
+              assignedTeams: ['team-prueba-01'],
               expectedEntryTime: '09:00',
               status: 'active',
               permissions: dir?.permissions || getDefaultPermissionsForRole('rh'),

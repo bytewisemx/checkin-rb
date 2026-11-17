@@ -15,6 +15,8 @@ export interface UserProfileDocument {
   photoURL?: string | null;
   profileImage?: string;
   role: UserRole | 'employee' | 'supervisor';
+  hierarchyLevel?: 0 | 1 | 2 | 3 | 4;
+  reportsTo?: string | null;
   teamId?: string | null;
   team?: string;
   teamName?: string;
@@ -26,6 +28,10 @@ export interface UserProfileDocument {
   supervisorId?: string | null;
   supervisorName?: string;
   supervisorCode?: string;
+  gerenteId?: string | null;
+  managerId?: string | null;
+  socioId?: string | null;
+  partnerId?: string | null;
   isProfileComplete: boolean;
   createdAt?: string;
   updatedAt?: string;
@@ -70,6 +76,81 @@ export async function updateUserFaceDescriptorInFirestore(
     console.warn('[userService] Error al guardar faceDescriptor:', err);
     return { success: false, error: err?.message || 'Error al guardar vector facial.' };
   }
+}
+
+/**
+ * Actualiza los enlaces de cadena de mando jerárquica de un usuario en Firestore (`users/{userId}`)
+ * y sincroniza inmediatamente los almacenes locales.
+ */
+export async function updateUserHierarchyInFirestore(
+  userId: string,
+  hierarchy: {
+    reportsTo?: string | null;
+    supervisorId?: string | null;
+    supervisorName?: string;
+    gerenteId?: string | null;
+    managerId?: string | null;
+    socioId?: string | null;
+    partnerId?: string | null;
+  }
+): Promise<{ success: boolean; error?: string }> {
+  if (!userId) return { success: false, error: 'userId requerido' };
+
+  const patch: Record<string, any> = {
+    updatedAt: new Date().toISOString(),
+  };
+
+  if (hierarchy.reportsTo !== undefined) patch.reportsTo = hierarchy.reportsTo;
+  if (hierarchy.supervisorId !== undefined) {
+    patch.supervisorId = hierarchy.supervisorId;
+    patch.supervisor_id = hierarchy.supervisorId;
+  }
+  if (hierarchy.supervisorName !== undefined) patch.supervisorName = hierarchy.supervisorName;
+  if (hierarchy.gerenteId !== undefined || hierarchy.managerId !== undefined) {
+    const gId = hierarchy.gerenteId ?? hierarchy.managerId ?? null;
+    patch.gerenteId = gId;
+    patch.managerId = gId;
+  }
+  if (hierarchy.socioId !== undefined || hierarchy.partnerId !== undefined) {
+    const sId = hierarchy.socioId ?? hierarchy.partnerId ?? null;
+    patch.socioId = sId;
+    patch.partnerId = sId;
+  }
+
+  // 1. Actualizar en useCheckinStore local inmediatamente
+  useCheckinStore.setState((state) => {
+    const nextDir = { ...state.userPermissionsDirectory };
+    if (nextDir[userId]) {
+      nextDir[userId] = {
+        ...nextDir[userId],
+        ...patch,
+      };
+    }
+    const nextMock = state.mockEmployeesData.map((emp) =>
+      emp.id === userId ? { ...emp, ...patch } : emp
+    );
+    return {
+      userPermissionsDirectory: nextDir,
+      mockEmployeesData: nextMock,
+      user:
+        state.user && state.user.id === userId
+          ? { ...state.user, ...patch }
+          : state.user,
+    };
+  });
+
+  // 2. Persistir en Firestore
+  if (isFirebaseConfigured() && db) {
+    try {
+      await setDoc(doc(db, 'users', userId), patch, { merge: true });
+      trackFirestoreWrite(1);
+    } catch (err: any) {
+      console.warn('[userService] Error al actualizar jerarquía en Firestore:', err);
+      return { success: false, error: err?.message || 'Error al persistir jerarquía.' };
+    }
+  }
+
+  return { success: true };
 }
 
 let isFirestoreDatabaseAvailable: boolean | null = null;
@@ -594,11 +675,13 @@ export async function processLoginAccess(
     };
   }
 
-  // Si es una cuenta base oficial de prueba o TI Root y aún no estaba en users, se auto-provisiona y autoriza
+  // Si es una cuenta base oficial de prueba o TI Root y aún no estaba en users, se auto-provisiona con enlaces jerárquicos
   const PRECONFIGURED_BASE_ACCOUNTS: Record<string, Partial<UserProfileDocument>> = {
     'ti.root@russellbedford.mx': {
       name: 'TI Prueba',
       role: 'TI',
+      hierarchyLevel: 0,
+      reportsTo: null,
       team: undefined,
       teamName: undefined,
       teamId: null,
@@ -610,6 +693,8 @@ export async function processLoginAccess(
     'socio.prueba@russellbedford.mx': {
       name: 'Socio Prueba',
       role: 'socio' as any,
+      hierarchyLevel: 1,
+      reportsTo: 'ti-root-01',
       team: 'Equipo Prueba',
       teamName: 'Equipo Prueba',
       teamId: 'team-prueba-01',
@@ -621,28 +706,10 @@ export async function processLoginAccess(
     'gerente.prueba@russellbedford.mx': {
       name: 'Gerente Prueba',
       role: 'gerente' as any,
-      team: 'Equipo Prueba',
-      teamName: 'Equipo Prueba',
-      teamId: 'team-prueba-01',
-      assignedTeams: ['team-prueba-01'],
-      status: 'active',
-      isActive: true,
-      isProfileComplete: true,
-    },
-    'supervisor.prueba@russellbedford.mx': {
-      name: 'Supervisor Prueba',
-      role: 'Supervisor',
-      team: 'Equipo Prueba',
-      teamName: 'Equipo Prueba',
-      teamId: 'team-prueba-01',
-      assignedTeams: ['team-prueba-01'],
-      status: 'active',
-      isActive: true,
-      isProfileComplete: true,
-    },
-    'colaborador.prueba@russellbedford.mx': {
-      name: 'Colaborador Prueba',
-      role: 'Empleado',
+      hierarchyLevel: 2,
+      reportsTo: 'socio-01',
+      socioId: 'socio-01',
+      partnerId: 'socio-01',
       team: 'Equipo Prueba',
       teamName: 'Equipo Prueba',
       teamId: 'team-prueba-01',
@@ -654,6 +721,46 @@ export async function processLoginAccess(
     'rh.prueba@russellbedford.mx': {
       name: 'RH Prueba',
       role: 'RH',
+      hierarchyLevel: 2,
+      reportsTo: 'socio-01',
+      socioId: 'socio-01',
+      partnerId: 'socio-01',
+      team: 'Equipo Prueba',
+      teamName: 'Equipo Prueba',
+      teamId: 'team-prueba-01',
+      assignedTeams: ['team-prueba-01'],
+      status: 'active',
+      isActive: true,
+      isProfileComplete: true,
+    },
+    'supervisor.prueba@russellbedford.mx': {
+      name: 'Supervisor Prueba',
+      role: 'Supervisor',
+      hierarchyLevel: 3,
+      reportsTo: 'gerente-01',
+      gerenteId: 'gerente-01',
+      managerId: 'gerente-01',
+      socioId: 'socio-01',
+      partnerId: 'socio-01',
+      team: 'Equipo Prueba',
+      teamName: 'Equipo Prueba',
+      teamId: 'team-prueba-01',
+      assignedTeams: ['team-prueba-01'],
+      status: 'active',
+      isActive: true,
+      isProfileComplete: true,
+    },
+    'colaborador.prueba@russellbedford.mx': {
+      name: 'Colaborador Prueba',
+      role: 'Empleado',
+      hierarchyLevel: 4,
+      reportsTo: 'supervisor-01',
+      supervisorId: 'supervisor-01',
+      supervisorName: 'Supervisor Prueba',
+      gerenteId: 'gerente-01',
+      managerId: 'gerente-01',
+      socioId: 'socio-01',
+      partnerId: 'socio-01',
       team: 'Equipo Prueba',
       teamName: 'Equipo Prueba',
       teamId: 'team-prueba-01',
@@ -672,6 +779,14 @@ export async function processLoginAccess(
       email: cleanEmail,
       name: demoProfile?.name || firebaseUser.displayName || 'TI Root',
       role: roleVal,
+      hierarchyLevel: demoProfile?.hierarchyLevel ?? 0,
+      reportsTo: demoProfile?.reportsTo ?? null,
+      supervisorId: demoProfile?.supervisorId ?? null,
+      supervisorName: demoProfile?.supervisorName,
+      gerenteId: demoProfile?.gerenteId ?? null,
+      managerId: demoProfile?.managerId ?? null,
+      socioId: demoProfile?.socioId ?? null,
+      partnerId: demoProfile?.partnerId ?? null,
       team: demoProfile?.team,
       teamName: demoProfile?.teamName,
       teamId: demoProfile?.teamId,

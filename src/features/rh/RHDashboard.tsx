@@ -80,7 +80,7 @@ export function RHDashboard() {
         id: `live-${rec.id}`,
         userName: user?.name || 'Colaborador Activo',
         userEmail: user?.email || 'colaborador.prueba@russellbedford.mx',
-        teamName: 'Equipo Prueba (Auditoría Fiscal)',
+        teamName: user?.team || 'Equipo Prueba',
         supervisorName: 'Supervisor Prueba',
         checkIn: {
           timestamp: checkInIso,

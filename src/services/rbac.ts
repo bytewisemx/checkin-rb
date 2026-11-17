@@ -85,6 +85,49 @@ export function normalizeRole(role?: LegacyOrCurrentRole): CanonicalRole {
 }
 
 /**
+ * Niveles Oficiales del Organigrama Corporativo:
+ * 0: TI (Root - Administración Total)
+ * 1: Socio (Máxima Autoridad Operativa)
+ * 2: Gerente (Línea Operativa) || RH (Lateral / Par de Gerencia, solo asistencias y tiempos)
+ * 3: Supervisor (Reporta a Gerente)
+ * 4: Colaborador (Base Operativa, reporta a Supervisor)
+ */
+export const ROLE_HIERARCHY_LEVEL: Record<CanonicalRole, 0 | 1 | 2 | 3 | 4> = {
+  TI: 0,
+  Socio: 1,
+  Gerente: 2,
+  RH: 2,
+  Supervisor: 3,
+  Colaborador: 4,
+};
+
+export function getRoleHierarchyLevel(role?: LegacyOrCurrentRole): 0 | 1 | 2 | 3 | 4 {
+  return ROLE_HIERARCHY_LEVEL[normalizeRole(role)];
+}
+
+/**
+ * Devuelve el rol superior directo esperado en la cadena de mando oficial
+ */
+export function getExpectedSuperiorRoles(role?: LegacyOrCurrentRole): CanonicalRole[] {
+  const norm = normalizeRole(role);
+  switch (norm) {
+    case 'TI':
+      return [];
+    case 'Socio':
+      return ['TI'];
+    case 'Gerente':
+      return ['Socio', 'TI'];
+    case 'RH':
+      return ['Socio', 'TI'];
+    case 'Supervisor':
+      return ['Gerente', 'Socio'];
+    case 'Colaborador':
+    default:
+      return ['Supervisor', 'Gerente', 'Socio'];
+  }
+}
+
+/**
  * Retorna el nombre visible y profesional del rol
  */
 export function getRoleDisplayName(role?: LegacyOrCurrentRole): string {

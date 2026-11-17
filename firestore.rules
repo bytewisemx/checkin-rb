@@ -3,34 +3,52 @@ service cloud.firestore {
   match /databases/{database}/documents {
 
     // =========================================================
-    // Funciones Auxiliares de Autenticación y Matriz RBAC
+    // Jerarquía Corporativa Oficial y Funciones Auxiliares RBAC:
+    // Nivel 0: TI (Root - Administración Total)
+    // Nivel 1: Socio (Máxima Autoridad Operativa)
+    // Nivel 2: Gerente (Línea Operativa) || RH (Lateral - Solo Asistencias/Tiempos)
+    // Nivel 3: Supervisor (Reporta a Gerente)
+    // Nivel 4: Colaborador (Base Operativa - Reporta a Supervisor)
     // =========================================================
     function isAuthenticated() {
       return request.auth != null;
     }
 
+    function hasAuthEmail() {
+      return isAuthenticated() && 'email' in request.auth.token && request.auth.token.email != null;
+    }
+
     function getUserRole() {
-      return request.auth.token.role != null
+      return ('role' in request.auth.token && request.auth.token.role != null)
         ? request.auth.token.role
         : (exists(/databases/$(database)/documents/users/$(request.auth.uid))
-            ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role
+            ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', 'colaborador')
             : 'colaborador');
     }
 
     function getUserTeamId() {
       return exists(/databases/$(database)/documents/users/$(request.auth.uid))
-        ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data.teamId
+        ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('teamId', null)
         : null;
     }
 
     function isTI() {
       let r = getUserRole();
-      return isAuthenticated() && (r == 'TI' || r == 'ti');
+      return isAuthenticated() && (
+        r == 'TI' ||
+        r == 'ti' ||
+        (hasAuthEmail() && request.auth.token.email == 'ti.root@russellbedford.mx')
+      );
+    }
+
+    function isSocio() {
+      let r = getUserRole();
+      return isAuthenticated() && (r == 'Socio' || r == 'socio' || isTI());
     }
 
     function isGerente() {
       let r = getUserRole();
-      return isAuthenticated() && (r == 'Gerente' || r == 'gerente' || r == 'Socio' || r == 'socio' || isTI());
+      return isAuthenticated() && (r == 'Gerente' || r == 'gerente' || isSocio());
     }
 
     function isSupervisor() {
@@ -53,13 +71,13 @@ service cloud.firestore {
     }
 
     function isDemoAccount() {
-      return request.auth.token.email != null && (
+      return hasAuthEmail() && (
         request.auth.token.email.matches('.*\\.prueba@russellbedford\\.mx') ||
         request.auth.token.email == 'ti.root@russellbedford.mx'
       );
     }
 
-    // Prohibición estricta de imágenes faciales base64/URLs; solo vector numérico 128-D
+    // Prohibición estricta de imágenes faciales; solo vector numérico 128-D
     function hasNoBiometricImages(data) {
       return !('enrolledFacePhoto' in data) &&
              !('facePhotoUrl' in data) &&
@@ -72,21 +90,33 @@ service cloud.firestore {
     }
 
     // =========================================================
-    // 1. Colección `users`
-    //    - Solo TI puede modificar `role` y `modules`
-    //    - Cada usuario lee su propio perfil y actualiza únicamente
-    //      su `faceDescriptor` (128 floats, nunca imágenes) o datos básicos
-    //    - RH tiene solo lectura básica de personal
+    // 1. Colección `users` (Cadena de Mando y Permisos)
+    //    - TI (0): Control total de roles, módulos y organigrama
+    //    - Socio (1): Visibilidad global sobre toda la estructura
+    //    - Gerente (2): Visibilidad sobre su línea (gerenteId/managerId == uid)
+    //    - RH (2 Lateral): Lectura global básica de personal
+    //    - Supervisor (3): Lectura de colaboradores bajo su mando (supervisorId == uid)
+    //    - Colaborador (4): Lee su propio perfil y actualiza únicamente su faceDescriptor
     // =========================================================
     match /users/{userId} {
       allow read: if isAuthenticated() && (
         isTI() ||
+        isSocio() ||
         isRH() ||
-        isSupervisor() ||
         isOwner(userId) ||
         isDemoAccount() ||
-        (resource.data.email != null && request.auth.token.email != null && resource.data.email == request.auth.token.email) ||
-        (resource.data.uid != null && resource.data.uid == request.auth.uid)
+        (isGerente() && (
+          resource.data.get('gerenteId', '') == request.auth.uid ||
+          resource.data.get('managerId', '') == request.auth.uid ||
+          (getUserTeamId() != null && resource.data.get('teamId', '') == getUserTeamId())
+        )) ||
+        (isSupervisor() && (
+          resource.data.get('supervisorId', '') == request.auth.uid ||
+          resource.data.get('supervisor_id', '') == request.auth.uid ||
+          (getUserTeamId() != null && resource.data.get('teamId', '') == getUserTeamId())
+        )) ||
+        (hasAuthEmail() && resource.data.get('email', '') == request.auth.token.email) ||
+        resource.data.get('uid', '') == request.auth.uid
       );
 
       allow create: if isAuthenticated() && hasNoBiometricImages(request.resource.data) && (
@@ -97,7 +127,7 @@ service cloud.firestore {
 
       allow update: if isAuthenticated() && hasNoBiometricImages(request.resource.data) && (
         isTI() ||
-        (isOwner(userId) && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'modules'])) ||
+        (isOwner(userId) && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'modules', 'hierarchyLevel'])) ||
         (isDemoAccount() && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'modules']))
       );
 
@@ -105,90 +135,96 @@ service cloud.firestore {
     }
 
     // =========================================================
-    // 2. Colección `companies` y `clients` (Empresas / Clientes)
-    //    - Lectura y creación: TI, Socio, Gerente y Supervisor
-    //    - Acceso estrictamente DENEGADO para RH
+    // 2. Colecciones `companies` y `clients` (Empresas / Clientes)
+    //    - TI, Socio, Gerente: creación y gestión de empresas/clientes
+    //    - Supervisor y Colaborador: lectura operativa
+    //    - RH (Nivel 2 Lateral): BLOQUEO ESTRICTO (403)
     // =========================================================
     match /companies/{companyId} {
-      allow read: if isAuthenticated() && !isRH() && (isTI() || isSupervisor() || isDemoAccount());
-      allow create, update: if isAuthenticated() && !isRH() && (isTI() || isSupervisor());
-      allow delete: if isAuthenticated() && !isRH() && (isTI() || isGerente());
+      allow read: if isAuthenticated() && !isRH();
+      allow create, update: if isAuthenticated() && !isRH() && isGerente();
+      allow delete: if isAuthenticated() && !isRH() && (isSocio() || isTI());
     }
 
     match /clients/{clientId} {
-      allow read: if isAuthenticated() && !isRH() && (isTI() || isSupervisor() || isDemoAccount());
-      allow create, update: if isAuthenticated() && !isRH() && (isTI() || isSupervisor());
-      allow delete: if isAuthenticated() && !isRH() && (isTI() || isGerente());
+      allow read: if isAuthenticated() && !isRH();
+      allow create, update: if isAuthenticated() && !isRH() && isGerente();
+      allow delete: if isAuthenticated() && !isRH() && (isSocio() || isTI());
     }
 
     // =========================================================
     // 3. Colección `tasks` (Tareas y Tiempos en minutos enteros)
-    //    - Lectura/escritura según asignación de equipo/supervisor
-    //    - Acceso estrictamente DENEGADO para RH
+    //    - Socio / TI: Global
+    //    - Gerente / Supervisor: Su línea jerárquica
+    //    - Colaborador: Sus tareas asignadas
+    //    - RH (Nivel 2 Lateral): BLOQUEO ESTRICTO (403)
     // =========================================================
     match /tasks/{taskId} {
       allow read: if isAuthenticated() && !isRH() && (
-        isTI() ||
+        isSocio() ||
         isGerente() ||
         (isSupervisor() && (
-          resource.data.supervisorId == request.auth.uid ||
-          resource.data.created_by == request.auth.uid ||
+          resource.data.get('supervisorId', '') == request.auth.uid ||
+          resource.data.get('created_by', '') == request.auth.uid ||
+          (getUserTeamId() != null && resource.data.get('teamId', '') == getUserTeamId()) ||
           isDemoAccount()
         )) ||
         (isEmpleado() && (
-          resource.data.assignedTo == request.auth.uid ||
-          resource.data.assigned_to == request.auth.uid
+          resource.data.get('assignedTo', '') == request.auth.uid ||
+          resource.data.get('assigned_to', '') == request.auth.uid
         ))
       );
 
       allow create: if isAuthenticated() && !isRH() && (
-        isTI() ||
         isSupervisor() ||
         (isEmpleado() && (
-          request.resource.data.assignedTo == request.auth.uid ||
-          request.resource.data.assigned_to == request.auth.uid
+          request.resource.data.get('assignedTo', '') == request.auth.uid ||
+          request.resource.data.get('assigned_to', '') == request.auth.uid
         ))
       );
 
       allow update: if isAuthenticated() && !isRH() && (
-        isTI() ||
         isSupervisor() ||
         (isEmpleado() && (
-          resource.data.assignedTo == request.auth.uid ||
-          resource.data.assigned_to == request.auth.uid
+          resource.data.get('assignedTo', '') == request.auth.uid ||
+          resource.data.get('assigned_to', '') == request.auth.uid
         ))
       );
 
-      allow delete: if isAuthenticated() && !isRH() && (isTI() || isSupervisor());
+      allow delete: if isAuthenticated() && !isRH() && isSupervisor();
     }
 
     // =========================================================
-    // 4. Colección `projects` - BLOQUEO TOTAL A RH
+    // 4. Colección `projects` - BLOQUEO ESTRICTO A RH (403)
     // =========================================================
     match /projects/{projectId} {
       allow read: if isAuthenticated() && !isRH();
-      allow write: if isAuthenticated() && !isRH() && (isTI() || isSupervisor());
+      allow write: if isAuthenticated() && !isRH() && isSupervisor();
     }
 
     // =========================================================
-    // 5. Colección `attendance` (Asistencias y Biometría)
-    //    - Colaborador crea/actualiza sus propios registros
-    //    - Supervisor lee su equipo
-    //    - RH y TI tienen lectura global consolidada
+    // 5. Colección `attendance` (Asistencias, Biometría y Tiempos)
+    //    - TI, Socio y RH (Nivel 2 Lateral): Lectura global consolidada
+    //    - Gerente / Supervisor: Su línea/equipo
+    //    - Colaborador: Crea y consulta sus propios registros
     // =========================================================
     match /attendance/{attendanceId} {
       allow read: if isAuthenticated() && (
         isTI() ||
+        isSocio() ||
         isRH() ||
         isGerente() ||
-        (isSupervisor() && (resource.data.teamId == getUserTeamId() || isDemoAccount())) ||
-        resource.data.userId == request.auth.uid
+        (isSupervisor() && (
+          (getUserTeamId() != null && resource.data.get('teamId', '') == getUserTeamId()) ||
+          isDemoAccount()
+        )) ||
+        resource.data.get('userId', '') == request.auth.uid
       );
 
       allow create: if isAuthenticated() && (
         isTI() ||
         isRH() ||
-        request.resource.data.userId == request.auth.uid ||
+        request.resource.data.get('userId', '') == request.auth.uid ||
         isDemoAccount()
       );
 
@@ -196,7 +232,7 @@ service cloud.firestore {
         isTI() ||
         isRH() ||
         isSupervisor() ||
-        resource.data.userId == request.auth.uid ||
+        resource.data.get('userId', '') == request.auth.uid ||
         isDemoAccount()
       );
 
@@ -204,74 +240,71 @@ service cloud.firestore {
     }
 
     // =========================================================
-    // 6. Registros de Tiempo Legacy (`checkins` y `time_logs`)
+    // 6. Colecciones Operativas Complementarias
     // =========================================================
     match /checkins/{checkinId} {
       allow read: if isAuthenticated() && (
-        isTI() || isRH() || isSupervisor() ||
-        resource.data.userId == request.auth.uid ||
+        isTI() || isSocio() || isRH() || isSupervisor() ||
+        resource.data.get('userId', '') == request.auth.uid ||
         isDemoAccount()
       );
       allow write: if isAuthenticated() && (
         isTI() || isSupervisor() ||
-        resource.data.userId == request.auth.uid ||
-        request.resource.data.userId == request.auth.uid ||
+        (resource != null && resource.data.get('userId', '') == request.auth.uid) ||
+        (request.resource != null && request.resource.data.get('userId', '') == request.auth.uid) ||
         isDemoAccount()
       );
     }
 
     match /time_logs/{logId} {
       allow read: if isAuthenticated() && (
-        isTI() || isRH() || isSupervisor() ||
-        resource.data.userId == request.auth.uid ||
+        isTI() || isSocio() || isRH() || isSupervisor() ||
+        resource.data.get('userId', '') == request.auth.uid ||
         isDemoAccount()
       );
       allow write: if isAuthenticated() && !isRH() && (
         isTI() || isSupervisor() ||
-        resource.data.userId == request.auth.uid ||
-        request.resource.data.userId == request.auth.uid ||
+        (resource != null && resource.data.get('userId', '') == request.auth.uid) ||
+        (request.resource != null && request.resource.data.get('userId', '') == request.auth.uid) ||
         isDemoAccount()
       );
     }
 
-    // =========================================================
-    // 7. Invitaciones, Equipos, Timers, Notificaciones y Auditoría
-    // =========================================================
     match /invitations/{invitationId} {
       allow get: if true;
       allow list: if isAuthenticated();
-      allow create: if isAuthenticated() && (isTI() || isSupervisor());
+      allow create: if isAuthenticated() && isSupervisor();
       allow update: if true;
-      allow delete: if isAuthenticated() && (isTI() || isSupervisor());
+      allow delete: if isAuthenticated() && isSupervisor();
     }
 
     match /teams/{teamId} {
       allow read: if isAuthenticated();
-      allow write: if isAuthenticated() && (isTI() || isSupervisor() || isDemoAccount());
+      allow write: if isAuthenticated() && (isSupervisor() || isDemoAccount());
     }
 
     match /active_timers/{userId} {
       allow read: if isAuthenticated();
       allow write: if isAuthenticated() && (
-        isOwner(userId) || isTI() || isSupervisor() || isDemoAccount()
+        isOwner(userId) || isSupervisor() || isDemoAccount()
       );
     }
 
     match /notifications/{notificationId} {
       allow read: if isAuthenticated() && !isRH() && (
         isTI() ||
-        resource.data.recipient_id == request.auth.uid ||
-        resource.data.sender_id == request.auth.uid ||
+        resource.data.get('recipient_id', '') == request.auth.uid ||
+        resource.data.get('sender_id', '') == request.auth.uid ||
         isDemoAccount()
       );
       allow create: if isAuthenticated() && !isRH();
       allow update, delete: if isAuthenticated() && (
-        resource.data.recipient_id == request.auth.uid || isTI()
+        isTI() || resource.data.get('recipient_id', '') == request.auth.uid
       );
     }
 
     match /audit_logs/{logId} {
-      allow read: if isAuthenticated() && (isTI() || isGerente() || isRH() || isDemoAccount());
+      allow read: if isAuthenticated() && (isTI() || isSocio() || isGerente() || isRH() || isDemoAccount());
       allow write: if isAuthenticated();
     }
   }
