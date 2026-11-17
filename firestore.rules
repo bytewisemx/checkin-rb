@@ -2,16 +2,20 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Función auxiliar para verificar autenticación
+    // =========================================================
+    // Funciones Auxiliares de Autenticación y Matriz RBAC
+    // =========================================================
     function isAuthenticated() {
       return request.auth != null;
     }
 
-    // Función auxiliar para obtener el rol del usuario autenticado
+    // Obtener rol del token o del documento en users
     function getUserRole() {
       return request.auth.token.role != null
         ? request.auth.token.role
-        : get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
+        : (exists(/databases/$(database)/documents/users/$(request.auth.uid))
+            ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role
+            : 'colaborador');
     }
 
     function isTI() {
@@ -21,7 +25,7 @@ service cloud.firestore {
 
     function isGerente() {
       let r = getUserRole();
-      return isAuthenticated() && (r == 'Gerente' || r == 'gerente' || r == 'Socio' || r == 'socio');
+      return isAuthenticated() && (r == 'Gerente' || r == 'gerente' || r == 'Socio' || r == 'socio' || isTI());
     }
 
     function isSupervisor() {
@@ -43,13 +47,15 @@ service cloud.firestore {
       return isAuthenticated() && request.auth.uid == userId;
     }
 
-    // Valida el objeto booleano modules del usuario autenticado
-    function hasModuleEnabled(moduleKey) {
-      let userDoc = get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
-      return isTI() || (userDoc.modules != null && userDoc.modules[moduleKey] == true);
+    // Permitir acceso prioritario y de inicialización a las cuentas base de prueba
+    function isDemoAccount() {
+      return request.auth.token.email != null && (
+        request.auth.token.email.matches('.*\\.prueba@russellbedford\\.mx') ||
+        request.auth.token.email == 'ti.root@russellbedford.mx'
+      );
     }
 
-    // Prohibición estricta de almacenar imágenes faciales base64 o URLs en biometría
+    // Prohibición estricta de almacenar imágenes faciales base64 o binarias en el documento
     function hasNoBiometricImages(data) {
       return !('enrolledFacePhoto' in data) &&
              !('facePhotoUrl' in data) &&
@@ -61,144 +67,182 @@ service cloud.firestore {
     }
 
     // =========================================================
-    // 1. Reglas para Usuarios (users) - Matriz RBAC
-    //    - TI: Lectura/Escritura Total
-    //    - Supervisor: Su equipo (supervisor_id == auth.uid)
-    //    - Empleado: Solo su propio perfil
-    //    - RH: Lectura de lista básica de personal
+    // 1. Reglas para Usuarios (users)
+    //    - TI / Cuentas demo: acceso total
+    //    - Socio / Gerente / Supervisor: lectura de colaboradores
+    //    - RH: lectura básica de personal para asistencias
+    //    - Colaborador: su propio documento
     // =========================================================
     match /users/{userId} {
       allow read: if isAuthenticated() && (
         isTI() ||
         isRH() ||
+        isSupervisor() ||
         isOwner(userId) ||
+        isDemoAccount() ||
         (resource.data.email != null && request.auth.token.email != null && resource.data.email == request.auth.token.email) ||
-        (resource.data.uid != null && resource.data.uid == request.auth.uid) ||
-        (isSupervisor() && resource.data.supervisor_id == request.auth.uid)
+        (resource.data.uid != null && resource.data.uid == request.auth.uid)
       );
 
-      allow create: if isOwner(userId) && (
+      allow create: if isAuthenticated() && (
+        isOwner(userId) ||
         isTI() ||
-        exists(/databases/$(database)/documents/invitations/$(request.resource.data.invitationId))
+        isSupervisor() ||
+        isDemoAccount()
       );
 
-      // Solo TI puede modificar el objeto modules de cualquier usuario; el propio usuario puede actualizar su vector biometrics (sin fotos)
-      allow update: if hasNoBiometricImages(request.resource.data) && (
+      allow update: if hasNoBiometricImages(request.resource.data) && isAuthenticated() && (
         isTI() ||
-        ((isOwner(userId) || (resource.data.email != null && request.auth.token.email != null && resource.data.email == request.auth.token.email)) &&
-         !request.resource.data.diff(resource.data).affectedKeys().hasAny(['modules', 'role'])) ||
-        (isSupervisor() && resource.data.supervisor_id == request.auth.uid && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['modules', 'role']))
+        isSupervisor() ||
+        isOwner(userId) ||
+        isDemoAccount()
       );
+
       allow delete: if isTI();
     }
 
     // =========================================================
     // 2. Reglas para Invitaciones Jerárquicas (invitations)
-    //    - Lectura pública puntual por token para validar antes del registro
-    //    - TI, Socio, Gerente y Supervisor pueden emitir invitaciones
-    //    - Invalidación permanente al aceptar (confirmed / accepted)
     // =========================================================
     match /invitations/{invitationId} {
+      allow get: if true; // Lectura puntual para validar token de activación previo a registro
       allow list: if isAuthenticated();
-      allow get: if true;
-      allow create: if isAuthenticated();
-      allow update: if true;
+      allow create: if isAuthenticated() && (isTI() || isSupervisor());
+      allow update: if true; // Consumo/invalidación del token
       allow delete: if isAuthenticated() && (isTI() || isSupervisor());
     }
 
     // =========================================================
-    // 3. Regla para Tareas (tasks): Bloqueo a RH y validación de modules.tasks
+    // 3. Regla para Tareas (tasks) - BLOQUEO TOTAL A RH
     // =========================================================
     match /tasks/{taskId} {
-      allow read: if isAuthenticated() && getUserRole() != 'RH' && hasModuleEnabled('tasks') && (
-        isTI() ||
-        (isSupervisor() && resource.data.created_by == request.auth.uid) ||
-        (isEmpleado() && resource.data.assigned_to == request.auth.uid)
-      );
-      allow write: if isAuthenticated() && getUserRole() != 'RH' && hasModuleEnabled('tasks') && (
+      allow read: if isAuthenticated() && !isRH() && (
         isTI() ||
         isSupervisor() ||
-        (isEmpleado() && resource.data.assigned_to == request.auth.uid)
+        (isEmpleado() && resource.data.assigned_to == request.auth.uid) ||
+        resource.data.created_by == request.auth.uid ||
+        isDemoAccount()
+      );
+
+      allow write: if isAuthenticated() && !isRH() && (
+        isTI() ||
+        isSupervisor() ||
+        (isEmpleado() && (resource.data.assigned_to == request.auth.uid || request.resource.data.assigned_to == request.auth.uid)) ||
+        isDemoAccount()
       );
     }
 
     // =========================================================
-    // 4. Regla para Clientes / Empresas (clients): Bloqueo a RH y validación de modules.clients
+    // 4. Regla para Clientes (clients) - BLOQUEO TOTAL A RH
     // =========================================================
     match /clients/{clientId} {
-      allow read: if isAuthenticated() && getUserRole() != 'RH' && hasModuleEnabled('clients');
-      allow write: if isAuthenticated() && getUserRole() in ['TI', 'Supervisor'] && hasModuleEnabled('clients');
+      allow read: if isAuthenticated() && !isRH();
+      allow write: if isAuthenticated() && !isRH() && (isTI() || isSupervisor());
     }
 
     // =========================================================
-    // 5. Regla para Proyectos (projects): Bloqueo explícito a RH (403)
+    // 5. Regla para Proyectos (projects) - BLOQUEO TOTAL A RH
     // =========================================================
     match /projects/{projectId} {
-      allow read: if isAuthenticated() && getUserRole() != 'RH';
-      allow write: if isAuthenticated() && getUserRole() in ['TI', 'Supervisor'];
+      allow read: if isAuthenticated() && !isRH();
+      allow write: if isAuthenticated() && !isRH() && (isTI() || isSupervisor());
     }
 
     // =========================================================
-    // 6. Regla para Registros de Tiempo (time_logs y checkins): RH puede leer
+    // 6. Regla para Registros de Tiempo (time_logs y checkins)
+    //    - RH puede leer para generar Kardex y nómina
+    //    - RH no puede escribir ni alterar tareas operativas
     // =========================================================
     match /time_logs/{logId} {
       allow read: if isAuthenticated() && (
-        getUserRole() in ['TI', 'Supervisor', 'RH'] ||
-        resource.data.userId == request.auth.uid
+        isTI() || isSupervisor() || isRH() ||
+        resource.data.userId == request.auth.uid ||
+        isDemoAccount()
       );
-      allow write: if isAuthenticated() && getUserRole() != 'RH';
+      allow write: if isAuthenticated() && !isRH() && (
+        isTI() || isSupervisor() ||
+        resource.data.userId == request.auth.uid ||
+        request.resource.data.userId == request.auth.uid ||
+        isDemoAccount()
+      );
     }
 
     match /checkins/{checkinId} {
       allow read: if isAuthenticated() && (
-        getUserRole() in ['TI', 'ti', 'Supervisor', 'supervisor', 'Gerente', 'gerente', 'RH', 'rh'] ||
-        resource.data.userId == request.auth.uid
+        isTI() || isSupervisor() || isRH() ||
+        resource.data.userId == request.auth.uid ||
+        isDemoAccount()
       );
-      allow write: if isAuthenticated() && getUserRole() != 'RH' && getUserRole() != 'rh';
+      allow write: if isAuthenticated() && (
+        isTI() || isSupervisor() ||
+        resource.data.userId == request.auth.uid ||
+        request.resource.data.userId == request.auth.uid ||
+        isDemoAccount()
+      );
     }
 
+    // =========================================================
+    // 7. Regla para Asistencia y Justificaciones (attendance)
+    //    - RH, TI y Supervisor pueden gestionar y justificar checadas
+    // =========================================================
     match /attendance/{attendanceId} {
       allow read: if isAuthenticated() && (
         isTI() || isSupervisor() || isRH() ||
-        resource.data.userId == request.auth.uid
+        resource.data.userId == request.auth.uid ||
+        isDemoAccount()
       );
-      allow write: if isAuthenticated();
+      allow write: if isAuthenticated() && (
+        isTI() || isSupervisor() || isRH() ||
+        resource.data.userId == request.auth.uid ||
+        request.resource.data.userId == request.auth.uid ||
+        isDemoAccount()
+      );
     }
 
+    // =========================================================
+    // 8. Bitácora Ejecutiva de Auditoría (audit_logs)
+    //    - Autorizado a TI, Socio, Gerente y RH
+    // =========================================================
     match /audit_logs/{logId} {
-      allow read: if isAuthenticated() && (isTI() || isGerente() || isRH());
+      allow read: if isAuthenticated() && (isTI() || isGerente() || isRH() || isDemoAccount());
       allow write: if isAuthenticated();
     }
 
     // =========================================================
-    // 7. Regla para Notificaciones Bidireccionales (notifications)
+    // 9. Notificaciones Internas (notifications) - BLOQUEO A RH
     // =========================================================
     match /notifications/{notificationId} {
-      allow read: if isAuthenticated() && getUserRole() != 'RH' && (
+      allow read: if isAuthenticated() && !isRH() && (
         isTI() ||
         resource.data.recipient_id == request.auth.uid ||
-        resource.data.sender_id == request.auth.uid
+        resource.data.sender_id == request.auth.uid ||
+        isDemoAccount()
       );
-      allow create: if isAuthenticated() && getUserRole() in ['TI', 'Supervisor', 'Empleado'];
-      allow update: if isAuthenticated() && resource.data.recipient_id == request.auth.uid;
-      allow delete: if isTI() || (isAuthenticated() && resource.data.recipient_id == request.auth.uid);
+      allow create: if isAuthenticated() && !isRH();
+      allow update: if isAuthenticated() && (
+        resource.data.recipient_id == request.auth.uid || isTI()
+      );
+      allow delete: if isAuthenticated() && (
+        resource.data.recipient_id == request.auth.uid || isTI()
+      );
     }
 
     // =========================================================
-    // 8. Regla para Equipos y Estructura Organizacional (teams)
+    // 10. Equipos y Estructura Organizacional (teams)
     // =========================================================
     match /teams/{teamId} {
       allow read: if isAuthenticated();
-      allow write: if isAuthenticated();
+      allow write: if isAuthenticated() && (isTI() || isSupervisor() || isDemoAccount());
     }
 
     // =========================================================
-    // 9. Regla para Cronómetros en Tiempo Vivo (active_timers)
+    // 11. Cronómetros en Tiempo Vivo (active_timers)
     // =========================================================
     match /active_timers/{userId} {
       allow read: if isAuthenticated();
-      allow write: if isAuthenticated();
+      allow write: if isAuthenticated() && (
+        isOwner(userId) || isTI() || isSupervisor() || isDemoAccount()
+      );
     }
   }
 }
-
