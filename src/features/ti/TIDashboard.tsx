@@ -13,7 +13,8 @@ import { SystemDiagnostics } from './SystemDiagnostics';
 import { ExecutiveAuditLogView } from '../audit/ExecutiveAuditLogView';
 import { AuditHierarchyView } from '../hierarchy/AuditHierarchyView';
 import { normalizeCorporateDatabase } from '../../services/dataNormalizationService';
-import { executeCleanSlateAdministrativeReset } from '../../services/adminResetService';
+import { resetCleanEnvironment } from '../../services/adminResetService';
+import { syncUsersDirectoryFromFirestore } from '../../services/userService';
 import { Send, Loader2, X, RefreshCw, Trash2, AlertTriangle } from 'lucide-react';
 
 export interface TIDashboardProps {
@@ -37,6 +38,7 @@ export function TIDashboard({ initialTab = 'users_permissions' }: TIDashboardPro
 
   useEffect(() => {
     fetchTeams();
+    void syncUsersDirectoryFromFirestore();
   }, [fetchTeams]);
 
   // Carga global de todos los equipos activos (TI no pertenece a un equipo operativo)
@@ -133,11 +135,12 @@ export function TIDashboard({ initialTab = 'users_permissions' }: TIDashboardPro
   const handleExecuteCleanSlate = async () => {
     setIsResetting(true);
     try {
-      const res = await executeCleanSlateAdministrativeReset();
+      const res = await resetCleanEnvironment();
       await fetchTeams();
+      await syncUsersDirectoryFromFirestore();
       if (res.success) {
         addToast(
-          `Reinicio Limpio exitoso: Colecciones operativas purgadas. 6 cuentas base enlazadas jerárquicamente y "Equipo Prueba" listo.`,
+          `Reinicio Limpio exitoso: ${res.usersDeleted} duplicados/extras purgados. 6 cuentas base determinísticas y "Equipo Prueba" listos.`,
           'success'
         );
         setIsCleanSlateModalOpen(false);

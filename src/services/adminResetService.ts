@@ -30,19 +30,43 @@ export interface CleanSlateResult {
 }
 
 /**
- * 6 Cuentas Oficiales de Prueba enlazadas bajo la jerarquía corporativa:
- * TI (Nivel 0) -> Socio (Nivel 1) -> [Gerente (Nivel 2) || RH (Nivel 2 Lateral)] -> Supervisor (Nivel 3) -> Colaborador (Nivel 4)
+ * Mapa determinístico de correos demo a IDs fijos en Firestore
+ * Evita duplicados al iniciar sesión desde distintos navegadores o sesiones Auth.
+ */
+export const DEMO_EMAIL_TO_FIXED_ID: Record<string, string> = {
+  'ti.root@russellbedford.mx': 'demo_ti',
+  'socio.prueba@russellbedford.mx': 'demo_socio',
+  'gerente.prueba@russellbedford.mx': 'demo_gerente',
+  'rh.prueba@russellbedford.mx': 'demo_rh',
+  'supervisor.prueba@russellbedford.mx': 'demo_supervisor',
+  'colaborador.prueba@russellbedford.mx': 'demo_colaborador',
+};
+
+export function getFixedDemoDocId(email?: string | null): string | null {
+  if (!email) return null;
+  const clean = email.trim().toLowerCase();
+  return DEMO_EMAIL_TO_FIXED_ID[clean] || null;
+}
+
+/**
+ * 6 Perfiles Oficiales Únicos con IDs determinísticos en Firestore:
+ * - demo_ti: TI (Nivel 0 — fuera de equipos operativos)
+ * - demo_socio: Socio (Nivel 1 — Nivel máximo operativo, reportsTo: null)
+ * - demo_gerente: Gerente (Nivel 2 — reportsTo: "demo_socio")
+ * - demo_rh: RH (Nivel 2 Lateral — reportsTo: "demo_socio")
+ * - demo_supervisor: Supervisor (Nivel 3 — reportsTo: "demo_gerente")
+ * - demo_colaborador: Colaborador (Nivel 4 — reportsTo: "demo_supervisor")
  */
 export const BASE_ACCOUNTS_CONFIG = [
   {
-    id: 'ti-root-01',
+    id: 'demo_ti',
     email: 'ti.root@russellbedford.mx',
     name: 'TI Prueba',
     firstName: 'TI',
     lastName: 'Prueba',
     role: 'ti' as UserRole,
     hierarchyLevel: 0 as const,
-    roleTitle: 'Administrador TI (Root)',
+    roleTitle: 'Administrador TI',
     teamId: null,
     team: null,
     teamName: null,
@@ -58,14 +82,14 @@ export const BASE_ACCOUNTS_CONFIG = [
     socioId: null as string | null,
   },
   {
-    id: 'socio-01',
+    id: 'demo_socio',
     email: 'socio.prueba@russellbedford.mx',
     name: 'Socio Prueba',
     firstName: 'Socio',
     lastName: 'Prueba',
     role: 'socio' as UserRole,
     hierarchyLevel: 1 as const,
-    roleTitle: 'Socio Director (Nivel 1)',
+    roleTitle: 'Socio (Nivel Máximo)',
     teamId: 'team-prueba-01',
     team: 'Equipo Prueba',
     teamName: 'Equipo Prueba',
@@ -74,21 +98,21 @@ export const BASE_ACCOUNTS_CONFIG = [
     isActive: true,
     isProfileComplete: true,
     verified: true,
-    reportsTo: 'ti-root-01',
+    reportsTo: null as string | null,
     supervisorId: null,
     supervisorName: null,
     gerenteId: null,
     socioId: null,
   },
   {
-    id: 'gerente-01',
+    id: 'demo_gerente',
     email: 'gerente.prueba@russellbedford.mx',
     name: 'Gerente Prueba',
     firstName: 'Gerente',
     lastName: 'Prueba',
     role: 'gerente' as UserRole,
     hierarchyLevel: 2 as const,
-    roleTitle: 'Gerente de Práctica (Nivel 2)',
+    roleTitle: 'Gerencia',
     teamId: 'team-prueba-01',
     team: 'Equipo Prueba',
     teamName: 'Equipo Prueba',
@@ -97,22 +121,22 @@ export const BASE_ACCOUNTS_CONFIG = [
     isActive: true,
     isProfileComplete: true,
     verified: true,
-    reportsTo: 'socio-01',
+    reportsTo: 'demo_socio',
     supervisorId: null,
     supervisorName: null,
     gerenteId: null,
-    socioId: 'socio-01',
+    socioId: 'demo_socio',
   },
   {
-    id: 'rh-01',
+    id: 'demo_rh',
     email: 'rh.prueba@russellbedford.mx',
     name: 'RH Prueba',
     firstName: 'RH',
     lastName: 'Prueba',
     role: 'rh' as UserRole,
     hierarchyLevel: 2 as const,
-    roleTitle: 'Recursos Humanos (Nivel 2 Lateral)',
-    teamId: null,
+    roleTitle: 'Recursos Humanos (Par de Gerencia)',
+    teamId: 'team-prueba-01',
     team: 'Equipo Prueba',
     teamName: 'Equipo Prueba',
     assignedTeams: ['team-prueba-01'],
@@ -120,21 +144,21 @@ export const BASE_ACCOUNTS_CONFIG = [
     isActive: true,
     isProfileComplete: true,
     verified: true,
-    reportsTo: 'socio-01',
+    reportsTo: 'demo_socio',
     supervisorId: null,
     supervisorName: null,
     gerenteId: null,
-    socioId: 'socio-01',
+    socioId: 'demo_socio',
   },
   {
-    id: 'supervisor-01',
+    id: 'demo_supervisor',
     email: 'supervisor.prueba@russellbedford.mx',
     name: 'Supervisor Prueba',
     firstName: 'Supervisor',
     lastName: 'Prueba',
     role: 'supervisor' as UserRole,
     hierarchyLevel: 3 as const,
-    roleTitle: 'Supervisor Líder (Nivel 3)',
+    roleTitle: 'Supervisión',
     teamId: 'team-prueba-01',
     team: 'Equipo Prueba',
     teamName: 'Equipo Prueba',
@@ -143,21 +167,21 @@ export const BASE_ACCOUNTS_CONFIG = [
     isActive: true,
     isProfileComplete: true,
     verified: true,
-    reportsTo: 'gerente-01',
+    reportsTo: 'demo_gerente',
     supervisorId: null,
     supervisorName: null,
-    gerenteId: 'gerente-01',
-    socioId: 'socio-01',
+    gerenteId: 'demo_gerente',
+    socioId: 'demo_socio',
   },
   {
-    id: 'colaborador-01',
+    id: 'demo_colaborador',
     email: 'colaborador.prueba@russellbedford.mx',
     name: 'Colaborador Prueba',
     firstName: 'Colaborador',
     lastName: 'Prueba',
     role: 'colaborador' as UserRole,
     hierarchyLevel: 4 as const,
-    roleTitle: 'Colaborador Operativo (Nivel 4)',
+    roleTitle: 'Operación',
     teamId: 'team-prueba-01',
     team: 'Equipo Prueba',
     teamName: 'Equipo Prueba',
@@ -166,24 +190,24 @@ export const BASE_ACCOUNTS_CONFIG = [
     isActive: true,
     isProfileComplete: true,
     verified: true,
-    reportsTo: 'supervisor-01',
-    supervisorId: 'supervisor-01',
+    reportsTo: 'demo_supervisor',
+    supervisorId: 'demo_supervisor',
     supervisorName: 'Supervisor Prueba',
-    gerenteId: 'gerente-01',
-    socioId: 'socio-01',
+    gerenteId: 'demo_gerente',
+    socioId: 'demo_socio',
   },
 ];
 
 /**
- * Ejecuta la Purga Total de Datos y Reinicio en Blanco (Clean Slate)
- * 1. Vacía todas las colecciones operativas en Firestore:
- *    tasks, companies, clients, projects, attendance, checkins, time_logs, active_timers, invitations, audit_logs, notifications
- * 2. Deja en `teams` únicamente `team-prueba-01` ("Equipo Prueba") enlazado a Supervisor Prueba y Gerente Prueba
- * 3. Configura exclusivamente las 6 cuentas base de prueba enlazadas jerárquicamente en `users`:
- *    TI (0) -> Socio (1) -> [Gerente (2) || RH (2 Lateral)] -> Supervisor (3) -> Colaborador (4)
- * 4. Purga cachés locales (Zustand, localStorage y sessionStorage)
+ * Ejecuta la Purga Total de Usuarios Extra, Duplicados y Datos Residuales (`resetCleanEnvironment`):
+ * 1. Vacía por completo todas las colecciones operativas en Firestore:
+ *    companies, clients, projects, tasks, attendance, checkins, time_logs, active_timers, invitations, audit_logs, notifications
+ * 2. Depura estrictamente `users` dejando únicamente los 6 perfiles con IDs determinísticos (`demo_*`),
+ *    eliminando duplicados y cuentas extra.
+ * 3. Deja en `teams` únicamente `team-prueba-01` ("Equipo Prueba", código EQ-PRU-01).
+ * 4. Purga cachés locales (Zustand, localStorage y sessionStorage).
  */
-export async function executeCleanSlateAdministrativeReset(): Promise<CleanSlateResult> {
+export async function resetCleanEnvironment(): Promise<CleanSlateResult> {
   const result: CleanSlateResult = {
     collectionsCleared: {},
     teamsPreserved: 0,
@@ -195,21 +219,16 @@ export async function executeCleanSlateAdministrativeReset(): Promise<CleanSlate
 
   const isRemote = Boolean(isFirebaseConfigured() && db);
   const firestore = db;
+  const nowIso = new Date().toISOString();
 
   try {
-    let activeTiUid = 'ti-root-01';
-    let activeSocioUid = 'socio-01';
-    let activeGerenteUid = 'gerente-01';
-    let activeSupervisorUid = 'supervisor-01';
-    let activeColaboradorUid = 'colaborador-01';
-
     if (isRemote && firestore) {
       // 1. Vaciar colecciones operativas en Firestore
       const operationalCollections = [
-        'tasks',
         'companies',
         'clients',
         'projects',
+        'tasks',
         'attendance',
         'checkins',
         'time_logs',
@@ -225,7 +244,6 @@ export async function executeCleanSlateAdministrativeReset(): Promise<CleanSlate
           result.collectionsCleared[colName] = snap.size;
 
           if (!snap.empty) {
-            // Procesar en lotes de hasta 450 docs para respetar el límite de writeBatch (500)
             const docsList = snap.docs;
             for (let i = 0; i < docsList.length; i += 450) {
               const batch = writeBatch(firestore);
@@ -236,76 +254,21 @@ export async function executeCleanSlateAdministrativeReset(): Promise<CleanSlate
             }
           }
         } catch (colErr) {
-          console.warn(`[CleanSlate] Error vaciando colección ${colName}:`, colErr);
+          console.warn(`[resetCleanEnvironment] Error vaciando colección ${colName}:`, colErr);
           result.collectionsCleared[colName] = 0;
         }
       }
 
-      // 2. Resolver UIDs reales de las 6 cuentas base en `users`
+      // 2. Depuración estricta de `users`: escribir exactamente los 6 IDs determinísticos `demo_*`
+      const fixedIds = new Set(BASE_ACCOUNTS_CONFIG.map((a) => a.id));
       const usersSnap = await getDocs(collection(firestore, 'users'));
-      const existingUsersByEmail = new Map<string, string>();
 
-      usersSnap.forEach((uDoc) => {
-        const u = uDoc.data();
-        const email = String(u.email || '').trim().toLowerCase();
-        if (email) {
-          existingUsersByEmail.set(email, uDoc.id);
-        }
-      });
-
-      const resolvedUidByRole = new Map<string, string>();
-      const baseAccountUids = new Set<string>();
-
+      // Primero escribir los 6 documentos oficiales con sus enlaces exactos
       for (const acc of BASE_ACCOUNTS_CONFIG) {
-        const lowerEmail = acc.email.toLowerCase();
-        const finalUid = existingUsersByEmail.get(lowerEmail) || acc.id;
-        resolvedUidByRole.set(acc.role, finalUid);
-        baseAccountUids.add(finalUid);
-      }
-
-      activeTiUid = resolvedUidByRole.get('ti') || 'ti-root-01';
-      activeSocioUid = resolvedUidByRole.get('socio') || 'socio-01';
-      activeGerenteUid = resolvedUidByRole.get('gerente') || 'gerente-01';
-      activeSupervisorUid = resolvedUidByRole.get('supervisor') || 'supervisor-01';
-      activeColaboradorUid = resolvedUidByRole.get('colaborador') || 'colaborador-01';
-
-      // 3. Escribir las 6 cuentas base explícitamente enlazadas en Firestore
-      const nowIso = new Date().toISOString();
-      for (const acc of BASE_ACCOUNTS_CONFIG) {
-        const finalUid = resolvedUidByRole.get(acc.role) || acc.id;
-
-        let reportsTo: string | null = null;
-        let supervisorId: string | null = null;
-        let supervisorName: string | null = null;
-        let gerenteId: string | null = null;
-        let socioId: string | null = null;
-
-        if (acc.role === 'ti') {
-          reportsTo = null;
-        } else if (acc.role === 'socio') {
-          reportsTo = activeTiUid;
-        } else if (acc.role === 'gerente') {
-          reportsTo = activeSocioUid;
-          socioId = activeSocioUid;
-        } else if (acc.role === 'rh') {
-          reportsTo = activeSocioUid;
-          socioId = activeSocioUid;
-        } else if (acc.role === 'supervisor') {
-          reportsTo = activeGerenteUid;
-          gerenteId = activeGerenteUid;
-          socioId = activeSocioUid;
-        } else if (acc.role === 'colaborador') {
-          reportsTo = activeSupervisorUid;
-          supervisorId = activeSupervisorUid;
-          supervisorName = 'Supervisor Prueba';
-          gerenteId = activeGerenteUid;
-          socioId = activeSocioUid;
-        }
-
-        const docRef = doc(firestore, 'users', finalUid);
+        const docRef = doc(firestore, 'users', acc.id);
         const payload = {
-          uid: finalUid,
-          id: finalUid,
+          uid: acc.id,
+          id: acc.id,
           email: acc.email,
           name: acc.name,
           firstName: acc.firstName,
@@ -317,14 +280,14 @@ export async function executeCleanSlateAdministrativeReset(): Promise<CleanSlate
           team: acc.team,
           teamName: acc.teamName,
           assignedTeams: acc.assignedTeams,
-          reportsTo,
-          supervisorId,
-          supervisor_id: supervisorId,
-          supervisorName,
-          gerenteId,
-          managerId: gerenteId,
-          socioId,
-          partnerId: socioId,
+          reportsTo: acc.reportsTo,
+          supervisorId: acc.supervisorId,
+          supervisor_id: acc.supervisorId,
+          supervisorName: acc.supervisorName,
+          gerenteId: acc.gerenteId,
+          managerId: acc.gerenteId,
+          socioId: acc.socioId,
+          partnerId: acc.socioId,
           status: 'active',
           isActive: true,
           isProfileComplete: true,
@@ -340,23 +303,18 @@ export async function executeCleanSlateAdministrativeReset(): Promise<CleanSlate
         result.usersNormalized++;
       }
 
-      // Eliminar cualquier usuario residual fuera de las 6 cuentas oficiales
-      const deleteUserBatch = writeBatch(firestore);
-      let usersToDeleteCount = 0;
-
-      usersSnap.forEach((uDoc) => {
-        if (!baseAccountUids.has(uDoc.id)) {
-          deleteUserBatch.delete(uDoc.ref);
-          usersToDeleteCount++;
-        }
-      });
-
-      if (usersToDeleteCount > 0) {
-        await deleteUserBatch.commit();
+      // Eliminar TODOS los documentos duplicados y cuentas extra cuyo ID no sea uno de los 6 `demo_*`
+      const docsToDelete = usersSnap.docs.filter((uDoc) => !fixedIds.has(uDoc.id));
+      for (let i = 0; i < docsToDelete.length; i += 450) {
+        const deleteBatch = writeBatch(firestore);
+        docsToDelete.slice(i, i + 450).forEach((uDoc) => {
+          deleteBatch.delete(uDoc.ref);
+        });
+        await deleteBatch.commit();
       }
-      result.usersDeleted = usersToDeleteCount;
+      result.usersDeleted = docsToDelete.length;
 
-      // 4. Normalizar colección `teams`
+      // 3. Normalizar colección `teams`: dejar únicamente `team-prueba-01` ("Equipo Prueba" / EQ-PRU-01)
       const teamsSnap = await getDocs(collection(firestore, 'teams'));
       const teamBatch = writeBatch(firestore);
 
@@ -371,11 +329,11 @@ export async function executeCleanSlateAdministrativeReset(): Promise<CleanSlate
         id: 'team-prueba-01',
         name: 'Equipo Prueba',
         code: 'EQ-PRU-01',
-        leaderId: activeSupervisorUid,
+        leaderId: 'demo_supervisor',
         leaderName: 'Supervisor Prueba',
         leaderRole: 'Supervisor',
-        parentLeaderId: activeGerenteUid,
-        memberIds: [activeColaboradorUid],
+        parentLeaderId: 'demo_gerente',
+        memberIds: ['demo_colaborador'],
         status: 'active',
         description: 'Equipo operativo base vinculado a Gerente Prueba y Socio Prueba',
         createdAt: nowIso,
@@ -387,7 +345,7 @@ export async function executeCleanSlateAdministrativeReset(): Promise<CleanSlate
       result.teamsPreserved = 1;
     }
 
-    // 5. Purga completa de stores locales (Zustand) -> 0 empresas, 0 tareas, 0 checadas
+    // 4. Purga completa de stores locales (Zustand) -> 0 empresas, 0 tareas, 0 checadas, 6 usuarios únicos
     useRayonerStore.setState({
       groups: [],
       tasks: [],
@@ -425,15 +383,15 @@ export async function executeCleanSlateAdministrativeReset(): Promise<CleanSlate
       id: 'team-prueba-01',
       name: 'Equipo Prueba',
       code: 'EQ-PRU-01',
-      leaderId: activeSupervisorUid,
+      leaderId: 'demo_supervisor',
       leaderName: 'Supervisor Prueba',
       leaderRole: 'Supervisor',
-      parentLeaderId: activeGerenteUid,
-      memberIds: [activeColaboradorUid],
+      parentLeaderId: 'demo_gerente',
+      memberIds: ['demo_colaborador'],
       status: 'active',
       description: 'Equipo operativo base vinculado a Gerente Prueba y Socio Prueba',
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+      createdAt: nowIso,
+      updatedAt: nowIso,
     };
 
     useTeamStore.setState({
@@ -450,8 +408,8 @@ export async function executeCleanSlateAdministrativeReset(): Promise<CleanSlate
         email: acc.email,
         role: acc.role,
         hierarchyLevel: acc.hierarchyLevel,
-        team: acc.team || 'Sin equipo',
-        teamName: acc.teamName || 'Sin equipo',
+        team: acc.team || undefined,
+        teamName: acc.teamName || undefined,
         teamId: acc.teamId || undefined,
         assignedTeams: acc.assignedTeams,
         reportsTo: acc.reportsTo,
@@ -468,7 +426,10 @@ export async function executeCleanSlateAdministrativeReset(): Promise<CleanSlate
       };
     });
 
-    useCheckinStore.setState({
+    const currentSessionEmail = useCheckinStore.getState().user?.email?.trim().toLowerCase();
+    const matchedCurrent = BASE_ACCOUNTS_CONFIG.find((a) => a.email === currentSessionEmail);
+
+    useCheckinStore.setState((prev) => ({
       history: [],
       userHistories: {},
       userActiveCheckins: {},
@@ -490,13 +451,35 @@ export async function executeCleanSlateAdministrativeReset(): Promise<CleanSlate
         modules: getDefaultModulesForRole(acc.role),
         history: [],
       })),
-    });
+      user:
+        prev.user && matchedCurrent
+          ? {
+              ...prev.user,
+              id: matchedCurrent.id,
+              name: matchedCurrent.firstName,
+              lastName: matchedCurrent.lastName,
+              role: matchedCurrent.role,
+              hierarchyLevel: matchedCurrent.hierarchyLevel,
+              reportsTo: matchedCurrent.reportsTo,
+              team: matchedCurrent.team || undefined,
+              teamName: matchedCurrent.teamName || undefined,
+              teamId: matchedCurrent.teamId || undefined,
+              assignedTeams: matchedCurrent.assignedTeams,
+              supervisorId: matchedCurrent.supervisorId,
+              supervisor_id: matchedCurrent.supervisorId,
+              gerenteId: matchedCurrent.gerenteId,
+              managerId: matchedCurrent.gerenteId,
+              socioId: matchedCurrent.socioId,
+              partnerId: matchedCurrent.socioId,
+            }
+          : prev.user,
+    }));
 
     useInvitationStore.setState({ invitations: [] });
     useAuditStore.setState({ logs: [] });
     useNotificationStore.setState({ notifications: [], unreadCount: 0 });
 
-    // 6. Limpiar claves operativas en localStorage y sessionStorage
+    // 5. Limpiar claves operativas en localStorage y sessionStorage
     if (typeof window !== 'undefined') {
       if (window.localStorage) {
         const keysToDelete: string[] = [];
@@ -508,7 +491,9 @@ export async function executeCleanSlateAdministrativeReset(): Promise<CleanSlate
               k.includes('audit-logs') ||
               k.includes('rayoner') ||
               k.includes('invitations') ||
-              k.includes('notifications'))
+              k.includes('notifications') ||
+              k.includes('checkin-storage') ||
+              k.includes('team-storage'))
           ) {
             keysToDelete.push(k);
           }
@@ -523,9 +508,11 @@ export async function executeCleanSlateAdministrativeReset(): Promise<CleanSlate
     result.success = true;
     return result;
   } catch (error: any) {
-    console.error('[CleanSlate] Error durante el reinicio administrativo:', error);
+    console.error('[resetCleanEnvironment] Error durante el reinicio limpio:', error);
     result.error = error?.message || 'Error desconocido';
     result.success = false;
     return result;
   }
 }
+
+export const executeCleanSlateAdministrativeReset = resetCleanEnvironment;

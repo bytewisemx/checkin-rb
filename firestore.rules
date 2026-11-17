@@ -18,18 +18,40 @@ service cloud.firestore {
       return isAuthenticated() && 'email' in request.auth.token && request.auth.token.email != null;
     }
 
+    function getDemoDocIdByEmail() {
+      let em = hasAuthEmail() ? request.auth.token.email : '';
+      return em == 'ti.root@russellbedford.mx' ? 'demo_ti'
+        : em == 'socio.prueba@russellbedford.mx' ? 'demo_socio'
+        : em == 'gerente.prueba@russellbedford.mx' ? 'demo_gerente'
+        : em == 'rh.prueba@russellbedford.mx' ? 'demo_rh'
+        : em == 'supervisor.prueba@russellbedford.mx' ? 'demo_supervisor'
+        : em == 'colaborador.prueba@russellbedford.mx' ? 'demo_colaborador'
+        : '';
+    }
+
+    function getEffectiveUid() {
+      let demoId = getDemoDocIdByEmail();
+      return demoId != '' ? demoId : request.auth.uid;
+    }
+
     function getUserRole() {
+      let effUid = getEffectiveUid();
       return ('role' in request.auth.token && request.auth.token.role != null)
         ? request.auth.token.role
-        : (exists(/databases/$(database)/documents/users/$(request.auth.uid))
-            ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', 'colaborador')
-            : 'colaborador');
+        : (exists(/databases/$(database)/documents/users/$(effUid))
+            ? get(/databases/$(database)/documents/users/$(effUid)).data.get('role', 'colaborador')
+            : (exists(/databases/$(database)/documents/users/$(request.auth.uid))
+                ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', 'colaborador')
+                : 'colaborador'));
     }
 
     function getUserTeamId() {
-      return exists(/databases/$(database)/documents/users/$(request.auth.uid))
-        ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('teamId', null)
-        : null;
+      let effUid = getEffectiveUid();
+      return exists(/databases/$(database)/documents/users/$(effUid))
+        ? get(/databases/$(database)/documents/users/$(effUid)).data.get('teamId', null)
+        : (exists(/databases/$(database)/documents/users/$(request.auth.uid))
+            ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('teamId', null)
+            : null);
     }
 
     function isTI() {
@@ -67,7 +89,10 @@ service cloud.firestore {
     }
 
     function isOwner(userId) {
-      return isAuthenticated() && request.auth.uid == userId;
+      return isAuthenticated() && (
+        request.auth.uid == userId ||
+        getEffectiveUid() == userId
+      );
     }
 
     function isDemoAccount() {

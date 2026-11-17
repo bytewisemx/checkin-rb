@@ -39,7 +39,7 @@ export async function normalizeCorporateDatabase(): Promise<NormalizationSummary
   const isRemoteAvailable = Boolean(isFirebaseConfigured() && firestore);
 
   // 1. Escanear 'users' en Firestore si está disponible, o en almacén local
-  let foundSupervisorUid = 'admin-99';
+  let foundSupervisorUid = 'demo_supervisor';
   const usersToUpdate: Array<{
     id: string;
     patch: Record<string, any>;

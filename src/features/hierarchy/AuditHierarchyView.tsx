@@ -2,9 +2,14 @@ import { useState, useMemo, useEffect } from 'react';
 import { useTeamStore, generateTeamCode } from '../../store/useTeamStore';
 import { useCheckinStore, type ManagedUserPermissionEntry } from '../../store/useCheckinStore';
 import { useRayonerStore } from '../../store/useRayonerStore';
-import { normalizeRole, getExpectedSuperiorRoles, type UserRole } from '../../services/rbac';
+import { normalizeRole, getExpectedSuperiorRoles } from '../../services/rbac';
 import { syncUserTeamAssignment } from '../../services/teamService';
-import { updateUserHierarchyInFirestore } from '../../services/userService';
+import {
+  updateUserHierarchyInFirestore,
+  syncUsersDirectoryFromFirestore,
+  resolveFixedDemoId,
+  buildCleanDisplayName,
+} from '../../services/userService';
 import type { Team } from '../../types/team';
 import { Search, X, Check, ChevronDown, ChevronRight } from 'lucide-react';
 
@@ -32,139 +37,131 @@ export function AuditHierarchyView({ onNavigateToInvitations }: AuditHierarchyVi
   const [memberSearchQuery, setMemberSearchQuery] = useState('');
   const [isAutoCode, setIsAutoCode] = useState(true);
 
-  // Carga remota al montar
+  // Carga remota al montar: equipos y usuarios reales desde Firestore
   useEffect(() => {
     fetchTeams();
+    void syncUsersDirectoryFromFirestore();
   }, [fetchTeams]);
 
-  // Consolidar todos los usuarios del sistema para el organigrama y asignaciones
+  // Consolidar usuarios deduplicados estrictamente por correo (priorizando IDs determinísticos `demo_*`)
   const allUsers = useMemo<ManagedUserPermissionEntry[]>(() => {
-    const map = new Map<string, ManagedUserPermissionEntry>();
+    const byEmail = new Map<string, ManagedUserPermissionEntry>();
 
-    Object.values(userPermissionsDirectory).forEach((entry) => {
+    const upsertUser = (entry: ManagedUserPermissionEntry) => {
+      const emailKey = (entry.email || '').trim().toLowerCase();
+      if (!emailKey) return;
+      const fixedId = resolveFixedDemoId(emailKey);
+      const existing = byEmail.get(emailKey);
       const role = normalizeRole(entry.role);
-      map.set(entry.id, {
+      const cleanName = buildCleanDisplayName(entry.name, (entry as any).lastName);
+
+      // Si ya existe el registro con ID determinístico, solo enriquecer sin reemplazar su ID
+      if (existing && fixedId && existing.id === fixedId && entry.id !== fixedId) {
+        return;
+      }
+
+      byEmail.set(emailKey, {
+        ...existing,
         ...entry,
+        id: fixedId || entry.id,
+        name: cleanName || existing?.name || entry.name,
+        email: emailKey,
         role,
-        photoURL: entry.photoURL || null,
+        reportsTo: entry.reportsTo !== undefined ? entry.reportsTo : existing?.reportsTo ?? null,
+        supervisorId: entry.supervisorId !== undefined ? entry.supervisorId : existing?.supervisorId ?? null,
+        supervisor_id: entry.supervisor_id !== undefined ? entry.supervisor_id : existing?.supervisor_id ?? null,
+        gerenteId: entry.gerenteId !== undefined ? entry.gerenteId : existing?.gerenteId ?? null,
+        managerId: entry.managerId !== undefined ? entry.managerId : existing?.managerId ?? null,
+        socioId: entry.socioId !== undefined ? entry.socioId : existing?.socioId ?? null,
+        partnerId: entry.partnerId !== undefined ? entry.partnerId : existing?.partnerId ?? null,
+        photoURL: entry.photoURL || existing?.photoURL || null,
+      });
+    };
+
+    Object.values(userPermissionsDirectory).forEach(upsertUser);
+
+    teamMembers.forEach((tm) => {
+      upsertUser({
+        id: tm.id,
+        name: tm.name,
+        email: tm.email,
+        role: normalizeRole(tm.role),
+        team: tm.team,
+        teamId: tm.teamId || undefined,
+        assignedTeams: tm.assignedTeams,
+        supervisorId: tm.supervisorId || tm.supervisor_id || null,
+        supervisor_id: tm.supervisor_id || tm.supervisorId || null,
+        permissions: {} as any,
+        modules: {} as any,
       });
     });
 
-    teamMembers.forEach((tm) => {
-      const existing = map.get(tm.id);
-      const role = normalizeRole(tm.role);
-      if (existing) {
-        map.set(tm.id, {
-          ...existing,
-          name: tm.name || existing.name,
-          email: tm.email || existing.email,
-          role,
-          team: tm.team || existing.team,
-        });
-      } else {
-        map.set(tm.id, {
-          id: tm.id,
-          name: tm.name,
-          email: tm.email,
-          role,
-          team: tm.team,
-          permissions: {} as any,
-          modules: {} as any,
-        });
-      }
-    });
-
     mockEmployeesData.forEach((emp) => {
-      const existing = map.get(emp.id);
-      const role = normalizeRole(emp.role);
-      if (!existing) {
-        map.set(emp.id, {
-          id: emp.id,
-          name: emp.name,
-          email: emp.email,
-          role,
-          team: emp.team,
-          permissions: {} as any,
-          modules: {} as any,
-        });
-      }
+      upsertUser({
+        id: emp.id,
+        name: emp.name,
+        email: emp.email,
+        role: normalizeRole(emp.role),
+        team: emp.team,
+        teamId: emp.teamId || undefined,
+        assignedTeams: emp.assignedTeams,
+        supervisor_id: emp.supervisor_id || null,
+        photoURL: emp.photoURL || null,
+        permissions: {} as any,
+        modules: {} as any,
+      });
     });
 
-    return Array.from(map.values());
+    return Array.from(byEmail.values());
   }, [userPermissionsDirectory, teamMembers, mockEmployeesData]);
+
+  // Línea operativa exclusiva del organigrama (TI queda excluido de equipos y del árbol operativo)
+  const operationalUsers = useMemo(
+    () => allUsers.filter((u) => normalizeRole(u.role) !== 'TI' && !u.accessRevoked),
+    [allUsers]
+  );
 
   // Líderes disponibles para dirigir equipos (Socio, Gerente, Supervisor)
   const eligibleLeaders = useMemo(() => {
-    return allUsers.filter((u) => {
+    return operationalUsers.filter((u) => {
       const r = normalizeRole(u.role);
-      return (r === 'Socio' || r === 'Gerente' || r === 'Supervisor') && !u.accessRevoked;
+      return r === 'Socio' || r === 'Gerente' || r === 'Supervisor';
     });
-  }, [allUsers]);
+  }, [operationalUsers]);
 
-  // Administrador TI Root (Nodo Raíz de Sistema, excluido de equipos operativos)
-  const tiRootUser = useMemo(() => {
-    return allUsers.find((u) => normalizeRole(u.role) === 'TI') || {
-      id: 'ti-root-01',
-      name: 'TI Root & Ciberseguridad',
-      email: 'ti.root@russellbedford.mx',
-      role: 'TI' as UserRole,
-      team: 'Dirección de TI',
-      photoURL: null,
-      permissions: {} as any,
-      modules: {} as any,
-    };
-  }, [allUsers]);
-
-  // Socios / Directores superiores (Nivel Superior)
+  // Socios / Directores superiores (Nivel 1 Operativo - sin TI)
   const topDirectors = useMemo<ManagedUserPermissionEntry[]>(() => {
-    const top = allUsers.filter((u) => {
-      const r = normalizeRole(u.role);
-      return (r === 'TI' || r === 'Socio') && !u.accessRevoked;
-    });
-
-    // Si no hay ninguno registrado aún, proveer el TI Root por defecto
-    if (top.length === 0) {
-      return [
-        {
-          id: 'ti-root-01',
-          name: 'TI Root & Ciberseguridad',
-          email: 'ti.root@russellbedford.mx',
-          role: 'TI' as UserRole,
-          team: 'Dirección de TI',
-          photoURL: null,
-          permissions: {} as any,
-          modules: {} as any,
-        },
-      ];
-    }
-    return top;
-  }, [allUsers]);
+    const socios = operationalUsers.filter((u) => normalizeRole(u.role) === 'Socio');
+    return socios.length > 0 ? socios : eligibleLeaders;
+  }, [operationalUsers, eligibleLeaders]);
 
   // Estados para reasignación directa de superior jerárquico
   const [reassigningUserId, setReassigningUserId] = useState<string | null>(null);
   const [selectedSuperiorId, setSelectedSuperiorId] = useState<string>('');
   const [isSavingHierarchy, setIsSavingHierarchy] = useState(false);
 
-  // Clasificación oficial de niveles del organigrama:
-  // Nivel 0: TI -> Nivel 1: Socio -> Nivel 2: [Gerente || RH Lateral] -> Nivel 3: Supervisor -> Nivel 4: Colaborador
+  // Clasificación oficial operativa (sin TI):
+  // Nivel 1: Socio -> Nivel 2: [Gerencia || Recursos Humanos] -> Nivel 3: Supervisión -> Nivel 4: Operación
   const hierarchyLevels = useMemo(() => {
-    const ti = allUsers.filter((u) => normalizeRole(u.role) === 'TI');
-    const socios = allUsers.filter((u) => normalizeRole(u.role) === 'Socio');
-    const gerentes = allUsers.filter((u) => normalizeRole(u.role) === 'Gerente');
-    const rh = allUsers.filter((u) => normalizeRole(u.role) === 'RH');
-    const supervisores = allUsers.filter((u) => normalizeRole(u.role) === 'Supervisor');
-    const colaboradores = allUsers.filter((u) => normalizeRole(u.role) === 'Colaborador');
-    return { ti, socios, gerentes, rh, supervisores, colaboradores };
-  }, [allUsers]);
+    const socios = operationalUsers.filter((u) => normalizeRole(u.role) === 'Socio');
+    const gerentes = operationalUsers.filter((u) => normalizeRole(u.role) === 'Gerente');
+    const rh = operationalUsers.filter((u) => normalizeRole(u.role) === 'RH');
+    const supervisores = operationalUsers.filter((u) => normalizeRole(u.role) === 'Supervisor');
+    const colaboradores = operationalUsers.filter((u) => normalizeRole(u.role) === 'Colaborador');
+    return { socios, gerentes, rh, supervisores, colaboradores };
+  }, [operationalUsers]);
 
   const getSuperiorCandidatesForUser = (target: ManagedUserPermissionEntry) => {
-    const allowedSuperiorRoles = getExpectedSuperiorRoles(target.role);
-    return allUsers.filter(
+    const allowedSuperiorRoles: string[] = getExpectedSuperiorRoles(target.role).filter((r) => r !== 'TI');
+    return operationalUsers.filter(
       (u) => u.id !== target.id && allowedSuperiorRoles.includes(normalizeRole(u.role))
     );
   };
 
   const resolveCurrentSuperiorName = (u: ManagedUserPermissionEntry): string => {
+    const role = normalizeRole(u.role);
+    if (role === 'Socio') return 'Nivel máximo operativo';
+
     const supId =
       u.reportsTo ||
       u.supervisorId ||
@@ -173,9 +170,23 @@ export function AuditHierarchyView({ onNavigateToInvitations }: AuditHierarchyVi
       u.managerId ||
       u.socioId ||
       u.partnerId;
-    if (!supId) return 'Sin superior asignado';
-    const found = allUsers.find((cand) => cand.id === supId);
-    return found ? `${found.name} (${normalizeRole(found.role)})` : supId;
+
+    if (supId) {
+      const found = operationalUsers.find((cand) => cand.id === supId);
+      if (found) return found.name;
+    }
+
+    // Fallback determinístico por cadena operativa oficial si el caché local aún sincroniza
+    if (role === 'Gerente' || role === 'RH') {
+      return hierarchyLevels.socios[0]?.name || 'Sin superior asignado';
+    }
+    if (role === 'Supervisor') {
+      return hierarchyLevels.gerentes[0]?.name || 'Sin superior asignado';
+    }
+    if (role === 'Colaborador') {
+      return hierarchyLevels.supervisores[0]?.name || 'Sin superior asignado';
+    }
+    return 'Sin superior asignado';
   };
 
   const handleOpenReassign = (target: ManagedUserPermissionEntry) => {
@@ -494,172 +505,105 @@ export function AuditHierarchyView({ onNavigateToInvitations }: AuditHierarchyVi
 
       {/* Contenedor del Árbol Jerárquico */}
       <div data-tour="hierarchy-tree-view" className="space-y-6">
-        {/* 1. Organigrama Oficial de Cadena de Mando: TI (0) -> Socio (1) -> [Gerente (2) || RH (2 Lateral)] -> Supervisor (3) -> Colaborador (4) */}
-        <div className="bg-white dark:bg-[#0B111E] border border-slate-200 dark:border-slate-800 p-5 space-y-5">
-          <div className="border-b border-slate-200 dark:border-slate-800 pb-3 flex flex-wrap items-center justify-between gap-2">
+        {/* 1. Diagrama Visual Jerárquico del Equipo Operativo (Sin TI): Socio -> [Gerencia || RH] -> Supervisión -> Operación */}
+        <div className="bg-white dark:bg-[#0B111E] border border-slate-200 dark:border-slate-800 p-6">
+          <div className="border-b border-slate-200 dark:border-slate-800 pb-4 mb-6 flex flex-wrap items-center justify-between gap-2">
             <div>
               <h3 className="text-sm font-bold font-['Space_Grotesk'] text-slate-900 dark:text-white">
-                Organigrama Oficial y Cadena de Mando
+                Organigrama Operativo · {teams[0]?.name || 'Equipo Prueba'}
               </h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                TI (Nivel 0) → Socio (Nivel 1) → Gerente || RH Lateral (Nivel 2) → Supervisor (Nivel 3) → Colaborador (Nivel 4)
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                Cadena de mando vinculada en Firestore (TI excluido del organigrama operativo)
               </p>
             </div>
             <span className="text-[11px] font-mono text-slate-500 dark:text-slate-400">
-              {allUsers.length} usuarios en estructura
+              {operationalUsers.length} integrantes operativos en cadena
             </span>
           </div>
 
-          {/* NIVEL 0: TI ROOT */}
-          <div className="space-y-2">
-            <div className="text-[10px] font-mono uppercase tracking-wider text-slate-500 dark:text-slate-400">
-              Nivel 0 · Administración Total (Root)
-            </div>
-            <div className="bg-slate-50 dark:bg-[#090E17] border-l-4 border-l-slate-700 dark:border-l-blue-600 border border-slate-200 dark:border-slate-800 p-3.5 flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-bold text-slate-900 dark:text-white">
-                    {tiRootUser.name}
-                  </span>
-                  <span className="text-[10px] font-mono uppercase px-1.5 py-0.5 bg-slate-200/70 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
-                    TI Root
-                  </span>
+          <div className="max-w-3xl mx-auto flex flex-col items-center">
+            {/* NIVEL 1 • SOCIO (MÁXIMO NIVEL) */}
+            <div className="w-full max-w-md space-y-2">
+              {hierarchyLevels.socios.length === 0 ? (
+                <div className="border border-dashed border-slate-300 dark:border-slate-800 p-4 text-center text-xs text-slate-400">
+                  Sin socio asignado en Nivel 1
                 </div>
-                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                  {tiRootUser.email} · Gobernanza de permisos, organigrama e infraestructura
-                </p>
-              </div>
-              <span className="text-[11px] font-mono text-slate-500">Sin superior</span>
-            </div>
-          </div>
-
-          {/* Conector vertical Nivel 0 -> Nivel 1 */}
-          <div className="flex justify-start pl-6 -my-3">
-            <div className="w-px h-5 bg-slate-300 dark:bg-slate-700" />
-          </div>
-
-          {/* NIVEL 1: SOCIO */}
-          <div className="pl-4 sm:pl-6 space-y-2">
-            <div className="text-[10px] font-mono uppercase tracking-wider text-blue-700 dark:text-sky-400">
-              Nivel 1 · Máxima Autoridad Operativa (Socio)
-            </div>
-            {hierarchyLevels.socios.length === 0 ? (
-              <div className="text-xs text-slate-400 italic border border-dashed border-slate-300 dark:border-slate-800 p-3">
-                Sin socios registrados.
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {hierarchyLevels.socios.map((u) => (
+              ) : (
+                hierarchyLevels.socios.map((u) => (
                   <div
                     key={u.id}
-                    className="bg-slate-50 dark:bg-[#090E17] border-l-4 border-l-blue-700 border border-slate-200 dark:border-slate-800 p-3.5 space-y-2"
+                    className="bg-slate-50 dark:bg-[#0E1626] border border-slate-300 dark:border-slate-700 border-t-2 border-t-blue-800 dark:border-t-sky-500 px-5 py-3.5 text-center"
                   >
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm font-bold text-slate-900 dark:text-white">
-                            {u.name}
-                          </span>
-                          <span className="text-[10px] font-mono uppercase px-1.5 py-0.5 bg-blue-100/80 dark:bg-blue-950 text-blue-800 dark:text-sky-300">
-                            Socio
-                          </span>
-                        </div>
-                        <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                          {u.email} · Visibilidad global sobre Gerencia, Supervisión, Colaboradores, Empresas y Tareas
-                        </p>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => handleOpenReassign(u)}
-                        className="text-[11px] font-medium text-blue-700 dark:text-sky-400 hover:underline cursor-pointer"
-                      >
-                        Reasignar superior
-                      </button>
+                    <div className="text-[10px] font-mono font-semibold uppercase tracking-widest text-blue-800 dark:text-sky-400">
+                      NIVEL 1 • SOCIO (MÁXIMO NIVEL)
                     </div>
-                    {reassigningUserId === u.id && (
-                      <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-200 dark:border-slate-800">
-                        <select
-                          value={selectedSuperiorId}
-                          onChange={(e) => setSelectedSuperiorId(e.target.value)}
-                          className="text-xs bg-white dark:bg-[#101726] border border-slate-300 dark:border-slate-700 px-2.5 py-1 text-slate-800 dark:text-slate-200"
-                        >
-                          <option value="">Seleccionar superior...</option>
-                          {getSuperiorCandidatesForUser(u).map((cand) => (
-                            <option key={cand.id} value={cand.id}>
-                              {cand.name} ({normalizeRole(cand.role)})
-                            </option>
-                          ))}
-                        </select>
-                        <button
-                          type="button"
-                          disabled={isSavingHierarchy}
-                          onClick={() => void handleSaveReassignSuperior(u)}
-                          className="px-2.5 py-1 text-xs font-semibold bg-blue-700 text-white hover:bg-blue-600 cursor-pointer"
-                        >
-                          Guardar
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setReassigningUserId(null)}
-                          className="px-2 py-1 text-xs text-slate-500 cursor-pointer"
-                        >
-                          Cancelar
-                        </button>
-                      </div>
-                    )}
+                    <div className="text-sm font-bold text-slate-900 dark:text-white mt-1">
+                      {u.name}
+                    </div>
+                    <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                      {u.email}
+                    </div>
                   </div>
-                ))}
-              </div>
-            )}
-          </div>
+                ))
+              )}
+            </div>
 
-          {/* Bifurcación Nivel 1 -> Nivel 2 (Gerente || RH Lateral) */}
-          <div className="pl-4 sm:pl-6 grid grid-cols-1 lg:grid-cols-12 gap-5 pt-2 border-t border-slate-200/70 dark:border-slate-800/70">
-            {/* RAMA OPERATIVA IZQUIERDA: Gerente (2) -> Supervisor (3) -> Colaborador (4) */}
-            <div className="lg:col-span-8 space-y-4">
-              {/* NIVEL 2: GERENTE */}
-              <div className="space-y-2">
-                <div className="text-[10px] font-mono uppercase tracking-wider text-slate-600 dark:text-slate-300">
-                  Nivel 2 · Línea Operativa (Gerente)
+            {/* Conector de Bifurcación: Socio -> [Gerencia | Recursos Humanos] */}
+            <div className="w-full flex flex-col items-center">
+              <div className="w-px h-6 bg-slate-300 dark:bg-slate-700" />
+              <div className="hidden md:block w-1/2 h-px bg-slate-300 dark:bg-slate-700" />
+              <div className="hidden md:grid grid-cols-2 w-full">
+                <div className="flex flex-col items-center">
+                  <div className="w-px h-5 bg-slate-300 dark:bg-slate-700" />
+                  <div className="w-0 h-0 border-l-[5px] border-l-transparent border-r-[5px] border-r-transparent border-t-[6px] border-t-slate-400 dark:border-t-slate-600" />
                 </div>
+                <div className="flex flex-col items-center">
+                  <div className="w-px h-5 bg-slate-300 dark:bg-slate-700" />
+                  <div className="w-0 h-0 border-l-[5px] border-l-transparent border-r-[5px] border-r-transparent border-t-[6px] border-t-slate-400 dark:border-t-slate-600" />
+                </div>
+              </div>
+            </div>
+
+            {/* NIVEL 2 • GERENCIA  ||  NIVEL 2 • RECURSOS HUMANOS (Lado a lado) */}
+            <div className="w-full grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
+              {/* Columna Izquierda: NIVEL 2 • GERENCIA */}
+              <div className="space-y-2">
                 {hierarchyLevels.gerentes.length === 0 ? (
-                  <div className="text-xs text-slate-400 italic border border-dashed border-slate-300 dark:border-slate-800 p-3">
-                    Sin gerentes registrados.
+                  <div className="border border-dashed border-slate-300 dark:border-slate-800 p-4 text-center text-xs text-slate-400">
+                    Sin gerente asignado
                   </div>
                 ) : (
                   hierarchyLevels.gerentes.map((g) => (
                     <div
                       key={g.id}
-                      className="bg-slate-50 dark:bg-[#090E17] border-l-4 border-l-sky-600 border border-slate-200 dark:border-slate-800 p-3.5 space-y-2"
+                      className="bg-slate-50 dark:bg-[#0E1626] border border-slate-200 dark:border-slate-800 border-t-2 border-t-slate-700 dark:border-t-blue-500 px-4 py-3.5"
                     >
-                      <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex items-start justify-between gap-2">
                         <div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs font-bold text-slate-900 dark:text-white">
-                              {g.name}
-                            </span>
-                            <span className="text-[10px] font-mono uppercase px-1.5 py-0.5 bg-sky-100/70 dark:bg-sky-950 text-sky-800 dark:text-sky-300">
-                              Gerente
-                            </span>
+                          <div className="text-[10px] font-mono font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-300">
+                            NIVEL 2 • GERENCIA
                           </div>
-                          <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-                            {g.email} · Reporta a: <span className="text-slate-700 dark:text-slate-300">{resolveCurrentSuperiorName(g)}</span>
-                          </p>
+                          <div className="text-sm font-bold text-slate-900 dark:text-white mt-1">
+                            {g.name}
+                          </div>
+                          <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                            Reporta a: <span className="font-medium text-slate-700 dark:text-slate-200">{resolveCurrentSuperiorName(g)}</span>
+                          </div>
                         </div>
                         <button
                           type="button"
                           onClick={() => handleOpenReassign(g)}
-                          className="text-[11px] font-medium text-blue-700 dark:text-sky-400 hover:underline cursor-pointer"
+                          className="text-[11px] text-blue-700 dark:text-sky-400 hover:underline shrink-0 cursor-pointer"
                         >
-                          Reasignar superior
+                          Reasignar
                         </button>
                       </div>
                       {reassigningUserId === g.id && (
-                        <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-200 dark:border-slate-800">
+                        <div className="flex flex-wrap items-center gap-2 pt-2.5 mt-2.5 border-t border-slate-200 dark:border-slate-800">
                           <select
                             value={selectedSuperiorId}
                             onChange={(e) => setSelectedSuperiorId(e.target.value)}
-                            className="text-xs bg-white dark:bg-[#101726] border border-slate-300 dark:border-slate-700 px-2.5 py-1 text-slate-800 dark:text-slate-200"
+                            className="flex-1 min-w-[140px] text-xs bg-white dark:bg-[#090E17] border border-slate-300 dark:border-slate-700 px-2 py-1 text-slate-800 dark:text-slate-200"
                           >
                             <option value="">Seleccionar superior...</option>
                             {getSuperiorCandidatesForUser(g).map((cand) => (
@@ -679,7 +623,7 @@ export function AuditHierarchyView({ onNavigateToInvitations }: AuditHierarchyVi
                           <button
                             type="button"
                             onClick={() => setReassigningUserId(null)}
-                            className="px-2 py-1 text-xs text-slate-500 cursor-pointer"
+                            className="px-1.5 py-1 text-xs text-slate-500 cursor-pointer"
                           >
                             Cancelar
                           </button>
@@ -690,52 +634,50 @@ export function AuditHierarchyView({ onNavigateToInvitations }: AuditHierarchyVi
                 )}
               </div>
 
-              {/* NIVEL 3: SUPERVISOR (debajo de Gerente) */}
-              <div className="pl-5 border-l border-slate-300 dark:border-slate-700 space-y-2">
-                <div className="text-[10px] font-mono uppercase tracking-wider text-slate-600 dark:text-slate-300">
-                  Nivel 3 · Supervisión Operativa (Reporta a Gerente)
-                </div>
-                {hierarchyLevels.supervisores.length === 0 ? (
-                  <div className="text-xs text-slate-400 italic border border-dashed border-slate-300 dark:border-slate-800 p-3">
-                    Sin supervisores registrados.
+              {/* Columna Derecha: NIVEL 2 • RECURSOS HUMANOS */}
+              <div className="space-y-2">
+                {hierarchyLevels.rh.length === 0 ? (
+                  <div className="border border-dashed border-slate-300 dark:border-slate-800 p-4 text-center text-xs text-slate-400">
+                    Sin responsable de RH asignado
                   </div>
                 ) : (
-                  hierarchyLevels.supervisores.map((sup) => (
+                  hierarchyLevels.rh.map((rhUser) => (
                     <div
-                      key={sup.id}
-                      className="bg-slate-50 dark:bg-[#090E17] border-l-4 border-l-indigo-600 border border-slate-200 dark:border-slate-800 p-3.5 space-y-2"
+                      key={rhUser.id}
+                      className="bg-slate-50 dark:bg-[#0E1626] border border-slate-200 dark:border-slate-800 border-t-2 border-t-slate-500 dark:border-t-slate-400 px-4 py-3.5"
                     >
-                      <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex items-start justify-between gap-2">
                         <div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs font-bold text-slate-900 dark:text-white">
-                              {sup.name}
-                            </span>
-                            <span className="text-[10px] font-mono uppercase px-1.5 py-0.5 bg-indigo-100/70 dark:bg-indigo-950 text-indigo-800 dark:text-indigo-300">
-                              Supervisor
+                          <div className="text-[10px] font-mono font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-300">
+                            NIVEL 2 • RECURSOS HUMANOS
+                          </div>
+                          <div className="text-sm font-bold text-slate-900 dark:text-white mt-1">
+                            {rhUser.name}{' '}
+                            <span className="text-xs font-normal text-slate-500 dark:text-slate-400">
+                              (Par de Gerencia)
                             </span>
                           </div>
-                          <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-                            {sup.email} · Reporta a: <span className="text-slate-700 dark:text-slate-300">{resolveCurrentSuperiorName(sup)}</span>
-                          </p>
+                          <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                            Reporta a: <span className="font-medium text-slate-700 dark:text-slate-200">{resolveCurrentSuperiorName(rhUser)}</span>
+                          </div>
                         </div>
                         <button
                           type="button"
-                          onClick={() => handleOpenReassign(sup)}
-                          className="text-[11px] font-medium text-blue-700 dark:text-sky-400 hover:underline cursor-pointer"
+                          onClick={() => handleOpenReassign(rhUser)}
+                          className="text-[11px] text-blue-700 dark:text-sky-400 hover:underline shrink-0 cursor-pointer"
                         >
-                          Reasignar superior
+                          Reasignar
                         </button>
                       </div>
-                      {reassigningUserId === sup.id && (
-                        <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-200 dark:border-slate-800">
+                      {reassigningUserId === rhUser.id && (
+                        <div className="flex flex-wrap items-center gap-2 pt-2.5 mt-2.5 border-t border-slate-200 dark:border-slate-800">
                           <select
                             value={selectedSuperiorId}
                             onChange={(e) => setSelectedSuperiorId(e.target.value)}
-                            className="text-xs bg-white dark:bg-[#101726] border border-slate-300 dark:border-slate-700 px-2.5 py-1 text-slate-800 dark:text-slate-200"
+                            className="flex-1 min-w-[140px] text-xs bg-white dark:bg-[#090E17] border border-slate-300 dark:border-slate-700 px-2 py-1 text-slate-800 dark:text-slate-200"
                           >
                             <option value="">Seleccionar superior...</option>
-                            {getSuperiorCandidatesForUser(sup).map((cand) => (
+                            {getSuperiorCandidatesForUser(rhUser).map((cand) => (
                               <option key={cand.id} value={cand.id}>
                                 {cand.name} ({normalizeRole(cand.role)})
                               </option>
@@ -744,7 +686,7 @@ export function AuditHierarchyView({ onNavigateToInvitations }: AuditHierarchyVi
                           <button
                             type="button"
                             disabled={isSavingHierarchy}
-                            onClick={() => void handleSaveReassignSuperior(sup)}
+                            onClick={() => void handleSaveReassignSuperior(rhUser)}
                             className="px-2.5 py-1 text-xs font-semibold bg-blue-700 text-white hover:bg-blue-600 cursor-pointer"
                           >
                             Guardar
@@ -752,7 +694,7 @@ export function AuditHierarchyView({ onNavigateToInvitations }: AuditHierarchyVi
                           <button
                             type="button"
                             onClick={() => setReassigningUserId(null)}
-                            className="px-2 py-1 text-xs text-slate-500 cursor-pointer"
+                            className="px-1.5 py-1 text-xs text-slate-500 cursor-pointer"
                           >
                             Cancelar
                           </button>
@@ -761,134 +703,65 @@ export function AuditHierarchyView({ onNavigateToInvitations }: AuditHierarchyVi
                     </div>
                   ))
                 )}
-
-                {/* NIVEL 4: COLABORADOR (debajo de Supervisor) */}
-                <div className="pl-5 pt-2 border-l border-slate-300 dark:border-slate-700 space-y-2">
-                  <div className="text-[10px] font-mono uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                    Nivel 4 · Base Operativa (Reporta a Supervisor)
-                  </div>
-                  {hierarchyLevels.colaboradores.length === 0 ? (
-                    <div className="text-xs text-slate-400 italic border border-dashed border-slate-300 dark:border-slate-800 p-3">
-                      Sin colaboradores registrados.
-                    </div>
-                  ) : (
-                    hierarchyLevels.colaboradores.map((col) => (
-                      <div
-                        key={col.id}
-                        className="bg-white dark:bg-[#101726] border border-slate-200 dark:border-slate-800 p-3 space-y-2"
-                      >
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                          <div>
-                            <div className="flex items-center gap-2">
-                              <span className="text-xs font-semibold text-slate-900 dark:text-slate-100">
-                                {col.name}
-                              </span>
-                              <span className="text-[10px] font-mono uppercase px-1.5 py-0.5 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
-                                Colaborador
-                              </span>
-                            </div>
-                            <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-                              {col.email} · Reporta a: <span className="text-slate-700 dark:text-slate-300">{resolveCurrentSuperiorName(col)}</span>
-                            </p>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => handleOpenReassign(col)}
-                            className="text-[11px] font-medium text-blue-700 dark:text-sky-400 hover:underline cursor-pointer"
-                          >
-                            Reasignar superior
-                          </button>
-                        </div>
-                        {reassigningUserId === col.id && (
-                          <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-200 dark:border-slate-800">
-                            <select
-                              value={selectedSuperiorId}
-                              onChange={(e) => setSelectedSuperiorId(e.target.value)}
-                              className="text-xs bg-white dark:bg-[#090E17] border border-slate-300 dark:border-slate-700 px-2.5 py-1 text-slate-800 dark:text-slate-200"
-                            >
-                              <option value="">Seleccionar superior...</option>
-                              {getSuperiorCandidatesForUser(col).map((cand) => (
-                                <option key={cand.id} value={cand.id}>
-                                  {cand.name} ({normalizeRole(cand.role)})
-                                </option>
-                              ))}
-                            </select>
-                            <button
-                              type="button"
-                              disabled={isSavingHierarchy}
-                              onClick={() => void handleSaveReassignSuperior(col)}
-                              className="px-2.5 py-1 text-xs font-semibold bg-blue-700 text-white hover:bg-blue-600 cursor-pointer"
-                            >
-                              Guardar
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setReassigningUserId(null)}
-                              className="px-2 py-1 text-xs text-slate-500 cursor-pointer"
-                            >
-                              Cancelar
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    ))
-                  )}
-                </div>
               </div>
             </div>
 
-            {/* RAMA LATERAL DERECHA: RH (Nivel 2 - Par de Gerencia, Aislado de Empresas/Tareas) */}
-            <div className="lg:col-span-4 space-y-2">
-              <div className="text-[10px] font-mono uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                Nivel 2 Lateral · Par de Gerencia (RH)
+            {/* Conector de Convergencia: [Gerencia | Recursos Humanos] -> Supervisión */}
+            <div className="w-full flex flex-col items-center">
+              <div className="hidden md:grid grid-cols-2 w-full">
+                <div className="flex justify-center">
+                  <div className="w-px h-5 bg-slate-300 dark:bg-slate-700" />
+                </div>
+                <div className="flex justify-center">
+                  <div className="w-px h-5 bg-slate-300 dark:bg-slate-700" />
+                </div>
               </div>
-              {hierarchyLevels.rh.length === 0 ? (
-                <div className="text-xs text-slate-400 italic border border-dashed border-slate-300 dark:border-slate-800 p-3">
-                  Sin personal de RH registrado.
+              <div className="hidden md:block w-1/2 h-px bg-slate-300 dark:bg-slate-700" />
+              <div className="w-px h-5 bg-slate-300 dark:bg-slate-700" />
+              <div className="w-0 h-0 border-l-[5px] border-l-transparent border-r-[5px] border-r-transparent border-t-[6px] border-t-slate-400 dark:border-t-slate-600" />
+            </div>
+
+            {/* NIVEL 3 • SUPERVISIÓN */}
+            <div className="w-full max-w-md space-y-2">
+              {hierarchyLevels.supervisores.length === 0 ? (
+                <div className="border border-dashed border-slate-300 dark:border-slate-800 p-4 text-center text-xs text-slate-400">
+                  Sin supervisor asignado en Nivel 3
                 </div>
               ) : (
-                hierarchyLevels.rh.map((rhUser) => (
+                hierarchyLevels.supervisores.map((sup) => (
                   <div
-                    key={rhUser.id}
-                    className="bg-slate-50 dark:bg-[#090E17] border-l-4 border-l-slate-500 border border-slate-200 dark:border-slate-800 p-3.5 space-y-2"
+                    key={sup.id}
+                    className="bg-slate-50 dark:bg-[#0E1626] border border-slate-200 dark:border-slate-800 border-t-2 border-t-indigo-700 dark:border-t-indigo-400 px-5 py-3.5"
                   >
-                    <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-start justify-between gap-2">
                       <div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs font-bold text-slate-900 dark:text-white">
-                            {rhUser.name}
-                          </span>
-                          <span className="text-[10px] font-mono uppercase px-1.5 py-0.5 bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
-                            RH Lateral
-                          </span>
+                        <div className="text-[10px] font-mono font-semibold uppercase tracking-widest text-indigo-800 dark:text-indigo-300">
+                          NIVEL 3 • SUPERVISIÓN
                         </div>
-                        <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-                          {rhUser.email}
-                        </p>
-                        <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
-                          Reporta a: <span className="text-slate-700 dark:text-slate-300">{resolveCurrentSuperiorName(rhUser)}</span>
-                        </p>
+                        <div className="text-sm font-bold text-slate-900 dark:text-white mt-1">
+                          {sup.name}
+                        </div>
+                        <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                          Reporta a: <span className="font-medium text-slate-700 dark:text-slate-200">{resolveCurrentSuperiorName(sup)}</span>
+                        </div>
                       </div>
                       <button
                         type="button"
-                        onClick={() => handleOpenReassign(rhUser)}
-                        className="text-[11px] font-medium text-blue-700 dark:text-sky-400 hover:underline cursor-pointer"
+                        onClick={() => handleOpenReassign(sup)}
+                        className="text-[11px] text-blue-700 dark:text-sky-400 hover:underline shrink-0 cursor-pointer"
                       >
-                        Reasignar superior
+                        Reasignar
                       </button>
                     </div>
-                    <div className="text-[11px] text-slate-500 dark:text-slate-400 pt-2 border-t border-slate-200 dark:border-slate-800 leading-relaxed">
-                      Solo auditoría global de asistencias, biometría y tiempos. Sin acceso a empresas, clientes ni tareas (403).
-                    </div>
-                    {reassigningUserId === rhUser.id && (
-                      <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-200 dark:border-slate-800">
+                    {reassigningUserId === sup.id && (
+                      <div className="flex flex-wrap items-center gap-2 pt-2.5 mt-2.5 border-t border-slate-200 dark:border-slate-800">
                         <select
                           value={selectedSuperiorId}
                           onChange={(e) => setSelectedSuperiorId(e.target.value)}
-                          className="text-xs bg-white dark:bg-[#101726] border border-slate-300 dark:border-slate-700 px-2.5 py-1 text-slate-800 dark:text-slate-200"
+                          className="flex-1 min-w-[140px] text-xs bg-white dark:bg-[#090E17] border border-slate-300 dark:border-slate-700 px-2 py-1 text-slate-800 dark:text-slate-200"
                         >
                           <option value="">Seleccionar superior...</option>
-                          {getSuperiorCandidatesForUser(rhUser).map((cand) => (
+                          {getSuperiorCandidatesForUser(sup).map((cand) => (
                             <option key={cand.id} value={cand.id}>
                               {cand.name} ({normalizeRole(cand.role)})
                             </option>
@@ -897,7 +770,7 @@ export function AuditHierarchyView({ onNavigateToInvitations }: AuditHierarchyVi
                         <button
                           type="button"
                           disabled={isSavingHierarchy}
-                          onClick={() => void handleSaveReassignSuperior(rhUser)}
+                          onClick={() => void handleSaveReassignSuperior(sup)}
                           className="px-2.5 py-1 text-xs font-semibold bg-blue-700 text-white hover:bg-blue-600 cursor-pointer"
                         >
                           Guardar
@@ -905,7 +778,81 @@ export function AuditHierarchyView({ onNavigateToInvitations }: AuditHierarchyVi
                         <button
                           type="button"
                           onClick={() => setReassigningUserId(null)}
-                          className="px-2 py-1 text-xs text-slate-500 cursor-pointer"
+                          className="px-1.5 py-1 text-xs text-slate-500 cursor-pointer"
+                        >
+                          Cancelar
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+
+            {/* Conector Vertical: Supervisión -> Operación */}
+            <div className="flex flex-col items-center">
+              <div className="w-px h-6 bg-slate-300 dark:bg-slate-700" />
+              <div className="w-0 h-0 border-l-[5px] border-l-transparent border-r-[5px] border-r-transparent border-t-[6px] border-t-slate-400 dark:border-t-slate-600" />
+            </div>
+
+            {/* NIVEL 4 • OPERACIÓN */}
+            <div className="w-full max-w-md space-y-2">
+              {hierarchyLevels.colaboradores.length === 0 ? (
+                <div className="border border-dashed border-slate-300 dark:border-slate-800 p-4 text-center text-xs text-slate-400">
+                  Sin colaboradores asignados en Nivel 4
+                </div>
+              ) : (
+                hierarchyLevels.colaboradores.map((col) => (
+                  <div
+                    key={col.id}
+                    className="bg-white dark:bg-[#090E17] border border-slate-200 dark:border-slate-800 px-5 py-3.5"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <div className="text-[10px] font-mono font-semibold uppercase tracking-widest text-slate-500 dark:text-slate-400">
+                          NIVEL 4 • OPERACIÓN
+                        </div>
+                        <div className="text-sm font-bold text-slate-900 dark:text-white mt-1">
+                          {col.name}
+                        </div>
+                        <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                          Reporta a: <span className="font-medium text-slate-700 dark:text-slate-200">{resolveCurrentSuperiorName(col)}</span>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleOpenReassign(col)}
+                        className="text-[11px] text-blue-700 dark:text-sky-400 hover:underline shrink-0 cursor-pointer"
+                      >
+                        Reasignar
+                      </button>
+                    </div>
+                    {reassigningUserId === col.id && (
+                      <div className="flex flex-wrap items-center gap-2 pt-2.5 mt-2.5 border-t border-slate-200 dark:border-slate-800">
+                        <select
+                          value={selectedSuperiorId}
+                          onChange={(e) => setSelectedSuperiorId(e.target.value)}
+                          className="flex-1 min-w-[140px] text-xs bg-white dark:bg-[#090E17] border border-slate-300 dark:border-slate-700 px-2 py-1 text-slate-800 dark:text-slate-200"
+                        >
+                          <option value="">Seleccionar superior...</option>
+                          {getSuperiorCandidatesForUser(col).map((cand) => (
+                            <option key={cand.id} value={cand.id}>
+                              {cand.name} ({normalizeRole(cand.role)})
+                            </option>
+                          ))}
+                        </select>
+                        <button
+                          type="button"
+                          disabled={isSavingHierarchy}
+                          onClick={() => void handleSaveReassignSuperior(col)}
+                          className="px-2.5 py-1 text-xs font-semibold bg-blue-700 text-white hover:bg-blue-600 cursor-pointer"
+                        >
+                          Guardar
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setReassigningUserId(null)}
+                          className="px-1.5 py-1 text-xs text-slate-500 cursor-pointer"
                         >
                           Cancelar
                         </button>
@@ -922,10 +869,8 @@ export function AuditHierarchyView({ onNavigateToInvitations }: AuditHierarchyVi
         {teams.map((team) => {
           const isTeamCollapsed = Boolean(collapsedNodes[team.id]);
 
-          // Cruce dinámico con la colección/directorio de 'users'
-          const memberUsers = allUsers.filter((u) => {
-            const norm = normalizeRole(u.role);
-            if (norm === 'TI') return false; // Excluido de equipos operativos
+          // Cruce dinámico con usuarios operativos (TI excluido)
+          const memberUsers = operationalUsers.filter((u) => {
             if (u.id === team.leaderId) return false; // El líder se destaca en su propia cabecera
 
             const isDirectTeam = u.teamId === team.id;
@@ -941,8 +886,9 @@ export function AuditHierarchyView({ onNavigateToInvitations }: AuditHierarchyVi
           });
 
           const leaderObj =
-            allUsers.find((u) => u.id === team.leaderId) || {
-              id: team.leaderId || 'admin-99',
+            operationalUsers.find((u) => u.id === team.leaderId) ||
+            hierarchyLevels.supervisores[0] || {
+              id: team.leaderId || 'demo_supervisor',
               name: team.leaderName || 'Supervisor Prueba',
               role: team.leaderRole || 'Supervisor',
               email: 'supervisor.prueba@russellbedford.mx',

@@ -11,6 +11,7 @@ import { useCheckinStore, type ManagedUserPermissionEntry } from '../../store/us
 import { useRayonerStore } from '../../store/useRayonerStore';
 import { useTeamStore } from '../../store/useTeamStore';
 import { syncUserTeamAssignment } from '../../services/teamService';
+import { resolveFixedDemoId, buildCleanDisplayName } from '../../services/userService';
 import type { Team } from '../../types/team';
 import { UserAvatar } from '../../components/common/UserAvatar';
 import {
@@ -189,89 +190,86 @@ export function UserPermissionsTable({ onNewUser }: UserPermissionsTableProps) {
   const [draftTeam, setDraftTeam] = useState<string>('');
   const [draftTeamId, setDraftTeamId] = useState<string>('');
 
-  // Unificación de usuarios (Priorizando siempre la verdad de userPermissionsDirectory sobre listas estáticas)
+  // Unificación de usuarios deduplicada estrictamente por correo electrónico (priorizando IDs `demo_*`)
   const mergedUsers = useMemo<ManagedUserPermissionEntry[]>(() => {
-    const map = new Map<string, ManagedUserPermissionEntry>();
+    const byEmail = new Map<string, ManagedUserPermissionEntry>();
 
-    Object.values(userPermissionsDirectory).forEach((entry) => {
+    const upsert = (entry: ManagedUserPermissionEntry) => {
+      const emailKey = (entry.email || '').trim().toLowerCase();
+      if (!emailKey) return;
+      const fixedId = resolveFixedDemoId(emailKey);
+      const existing = byEmail.get(emailKey);
+      if (existing && fixedId && existing.id === fixedId && entry.id !== fixedId) {
+        return;
+      }
       const role = normalizeRole(entry.role);
       const effectivePerms = getEffectivePermissions(entry);
-      map.set(entry.id, {
+      const cleanName = buildCleanDisplayName(entry.name, (entry as any).lastName);
+
+      byEmail.set(emailKey, {
+        ...existing,
         ...entry,
+        id: fixedId || entry.id,
+        name: cleanName || existing?.name || entry.name,
+        email: emailKey,
         role,
-        team: (entry.team || entry.teamName) ?? undefined,
-        teamName: (entry.teamName || entry.team) ?? undefined,
-        teamId: entry.teamId,
+        team: (entry.team || entry.teamName || existing?.team) ?? undefined,
+        teamName: (entry.teamName || entry.team || existing?.teamName) ?? undefined,
+        teamId: entry.teamId !== undefined ? entry.teamId : existing?.teamId,
         permissions: effectivePerms,
-        assignedTeams: entry.assignedTeams || (role === 'RH' ? availableTeamNames : undefined),
+        assignedTeams:
+          entry.assignedTeams || existing?.assignedTeams || (role === 'RH' ? availableTeamNames : undefined),
+      });
+    };
+
+    Object.values(userPermissionsDirectory).forEach(upsert);
+
+    teamMembers.forEach((tm) => {
+      const role = normalizeRole(tm.role);
+      const perms = getDefaultPermissionsForRole(role);
+      upsert({
+        id: tm.id,
+        name: tm.name,
+        email: tm.email,
+        role,
+        team: tm.team,
+        teamName: (tm as any).teamName || tm.team,
+        teamId: (tm as any).teamId || undefined,
+        permissions: perms,
+        modules: {
+          checkIn: perms.canCheckIn,
+          facialCheckIn: false,
+          tasks: perms.canCreateTasks,
+          reports: perms.canExportReports,
+          clients: perms.canManageClientsAndProjects,
+        },
       });
     });
 
-    teamMembers.forEach((tm) => {
-      const existing = map.get(tm.id);
-      const role = normalizeRole(tm.role);
-      if (existing) {
-        map.set(tm.id, {
-          ...existing,
-          name: tm.name || existing.name,
-          email: tm.email || existing.email,
-          role,
-          // Preservar la asignación dinámica de existing sobre el mock estático
-          team: existing.team !== undefined ? existing.team : tm.team,
-          teamName:
-            existing.teamName !== undefined
-              ? existing.teamName
-              : (existing.team !== undefined ? existing.team : (tm as any).teamName || tm.team),
-          teamId: existing.teamId !== undefined ? existing.teamId : (tm as any).teamId,
-        });
-      } else {
-        const perms = getDefaultPermissionsForRole(role);
-        map.set(tm.id, {
-          id: tm.id,
-          name: tm.name,
-          email: tm.email,
-          role,
-          team: tm.team,
-          teamName: (tm as any).teamName || tm.team,
-          teamId: (tm as any).teamId,
-          permissions: perms,
-          modules: {
-            checkIn: perms.canCheckIn,
-            facialCheckIn: false,
-            tasks: perms.canCreateTasks,
-            reports: perms.canExportReports,
-            clients: perms.canManageClientsAndProjects,
-          },
-        });
-      }
-    });
-
     mockEmployeesData.forEach((emp) => {
-      const existing = map.get(emp.id);
       const role = normalizeRole(emp.role);
-      if (!existing) {
-        const perms = getDefaultPermissionsForRole(role);
-        map.set(emp.id, {
-          id: emp.id,
-          name: emp.name,
-          email: emp.email,
-          role,
-          team: emp.team,
-          teamName: emp.team,
-          supervisor_id: emp.supervisor_id || 'admin-99',
-          permissions: perms,
-          modules: {
-            checkIn: perms.canCheckIn,
-            facialCheckIn: false,
-            tasks: perms.canCreateTasks,
-            reports: perms.canExportReports,
-            clients: perms.canManageClientsAndProjects,
-          },
-        });
-      }
+      const perms = getDefaultPermissionsForRole(role);
+      upsert({
+        id: emp.id,
+        name: emp.name,
+        email: emp.email,
+        role,
+        team: emp.team,
+        teamName: emp.team,
+        teamId: emp.teamId || undefined,
+        supervisor_id: emp.supervisor_id || 'demo_supervisor',
+        permissions: perms,
+        modules: {
+          checkIn: perms.canCheckIn,
+          facialCheckIn: false,
+          tasks: perms.canCreateTasks,
+          reports: perms.canExportReports,
+          clients: perms.canManageClientsAndProjects,
+        },
+      });
     });
 
-    return Array.from(map.values());
+    return Array.from(byEmail.values());
   }, [userPermissionsDirectory, teamMembers, mockEmployeesData, availableTeamNames]);
 
   // Filtro por rol y búsqueda en tiempo real

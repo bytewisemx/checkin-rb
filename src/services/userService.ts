@@ -3,8 +3,41 @@ import { db, isFirebaseConfigured } from './firebase';
 import { useCheckinStore } from '../store/useCheckinStore';
 import { useInvitationStore, buildInviteUrl } from '../store/useInvitationStore';
 import type { Invitation } from '../types/invitation';
-import { normalizeRole, type UserRole } from './rbac';
-import { trackFirestoreWrite } from './firestoreTelemetry';
+import { normalizeRole, getDefaultModulesForRole, getDefaultPermissionsForRole, type UserRole } from './rbac';
+import { trackFirestoreRead, trackFirestoreWrite } from './firestoreTelemetry';
+
+/**
+ * Mapa determinístico de correos demo a IDs fijos en Firestore
+ * Evita duplicados al iniciar sesión desde distintos navegadores o sesiones Auth.
+ */
+export const DEMO_EMAIL_TO_FIXED_ID: Record<string, string> = {
+  'ti.root@russellbedford.mx': 'demo_ti',
+  'socio.prueba@russellbedford.mx': 'demo_socio',
+  'gerente.prueba@russellbedford.mx': 'demo_gerente',
+  'rh.prueba@russellbedford.mx': 'demo_rh',
+  'supervisor.prueba@russellbedford.mx': 'demo_supervisor',
+  'colaborador.prueba@russellbedford.mx': 'demo_colaborador',
+};
+
+export function resolveFixedDemoId(email?: string | null): string | null {
+  if (!email) return null;
+  return DEMO_EMAIL_TO_FIXED_ID[email.trim().toLowerCase()] || null;
+}
+
+/**
+ * Construye un nombre completo limpio evitando duplicar apellidos
+ * (ej. corrige "Gerente Prueba" + "Prueba" -> "Gerente Prueba").
+ */
+export function buildCleanDisplayName(name?: string | null, lastName?: string | null): string {
+  const cleanName = (name || '').trim();
+  const cleanLast = (lastName || '').trim();
+  if (!cleanName) return cleanLast;
+  if (!cleanLast) return cleanName;
+  if (cleanName.toLowerCase().endsWith(cleanLast.toLowerCase())) {
+    return cleanName;
+  }
+  return `${cleanName} ${cleanLast}`.trim();
+}
 
 export interface UserProfileDocument {
   uid: string;
@@ -286,18 +319,41 @@ export async function findUserInUsersCollection(
 ): Promise<{ docId: string; data: UserProfileDocument } | null> {
   const cleanEmail = (email || '').trim().toLowerCase();
   const cleanUid = (uid || '').trim();
+  const fixedDemoId = resolveFixedDemoId(cleanEmail);
 
-  // 1. Acceso instantáneo para perfiles de prueba oficiales o perfiles ya en memoria
-  const isBaseDemoAccount =
-    cleanEmail.includes('.prueba@russellbedford.mx') ||
-    cleanEmail === 'ti.root@russellbedford.mx';
+  // 1. Para cuentas demo oficiales, priorizar SIEMPRE el documento con ID determinístico (`demo_*`)
+  if (fixedDemoId && isFirebaseConfigured() && db && isFirestoreDatabaseAvailable !== false) {
+    try {
+      const demoSnap = await withTimeout(getDoc(doc(db, 'users', fixedDemoId)), 1500, null);
+      if (demoSnap && demoSnap.exists()) {
+        trackFirestoreRead(1);
+        const d = demoSnap.data() as UserProfileDocument;
+        return {
+          docId: fixedDemoId,
+          data: {
+            ...d,
+            uid: fixedDemoId,
+            name: buildCleanDisplayName(d.name, d.lastName),
+            role: normalizeRole(d.role || 'Empleado'),
+            isProfileComplete: true,
+          },
+        };
+      }
+    } catch {
+      // Continuar con fallback local
+    }
+  }
 
-  if (isBaseDemoAccount) {
-    const localProfile = getLocalUserProfile(cleanUid || cleanEmail);
+  if (fixedDemoId) {
+    const localProfile = getLocalUserProfile(fixedDemoId) || getLocalUserProfile(cleanEmail);
     if (localProfile) {
       return {
-        docId: cleanUid || localProfile.uid || cleanEmail,
-        data: localProfile,
+        docId: fixedDemoId,
+        data: {
+          ...localProfile,
+          uid: fixedDemoId,
+          name: buildCleanDisplayName(localProfile.name, localProfile.lastName),
+        },
       };
     }
   }
@@ -599,16 +655,26 @@ export async function processLoginAccess(
     }
 
     // Usuario activo: Permitir acceso inmediato sin buscar ni exigir invitación
-    const updates: Partial<UserProfileDocument> = {
+    const fixedDemoId = resolveFixedDemoId(cleanEmail);
+    const canonicalDocId = fixedDemoId || docId;
+    const cleanFullName = buildCleanDisplayName(existingDoc.name, existingDoc.lastName);
+
+    const updates: Partial<UserProfileDocument> & { authUid?: string } = {
       updatedAt: new Date().toISOString(),
       isProfileComplete: true,
       status: 'active',
       isActive: true,
+      name: cleanFullName || existingDoc.name,
     };
     let needsFirestoreUpdate = false;
 
-    // Si entró por Google y su documento tenía otro UID, vincular firebaseUser.uid
-    if (cleanUid && existingDoc.uid !== cleanUid) {
+    // Para cuentas demo JAMÁS se duplica el documento en users/{cleanUid}; solo se guarda authUid
+    if (fixedDemoId) {
+      if (cleanUid) {
+        updates.authUid = cleanUid;
+      }
+      updates.uid = fixedDemoId;
+    } else if (cleanUid && existingDoc.uid !== cleanUid) {
       updates.uid = cleanUid;
       needsFirestoreUpdate = true;
     }
@@ -620,17 +686,11 @@ export async function processLoginAccess(
       needsFirestoreUpdate = true;
     }
 
-    // Persistir vinculación en Firestore
+    // Persistir vinculación en el mismo documento canónico sin duplicar
     if (needsFirestoreUpdate && isFirebaseConfigured() && db) {
       try {
-        await setDoc(doc(db, 'users', docId), updates, { merge: true });
-        if (cleanUid && docId !== cleanUid) {
-          await setDoc(
-            doc(db, 'users', cleanUid),
-            { ...existingDoc, ...updates, uid: cleanUid },
-            { merge: true }
-          );
-        }
+        await setDoc(doc(db, 'users', canonicalDocId), updates, { merge: true });
+        trackFirestoreWrite(1);
       } catch (err) {
         console.warn('[userService] Error al vincular UID/photoURL en Firestore:', err);
       }
@@ -640,17 +700,19 @@ export async function processLoginAccess(
     const finalUserDoc: UserProfileDocument = {
       ...existingDoc,
       ...updates,
+      uid: canonicalDocId,
+      name: cleanFullName || existingDoc.name,
       role: resolvedRole,
       isProfileComplete: true,
     };
 
-    // Actualizar sesión en el store de Zustand
+    // Actualizar sesión en el store de Zustand usando siempre el ID canónico
     useCheckinStore.getState().loginWithFirebaseUser(
       {
-        uid: cleanUid || existingDoc.uid,
+        uid: canonicalDocId,
         email: finalUserDoc.email,
         displayName:
-          `${finalUserDoc.name} ${finalUserDoc.lastName || ''}`.trim() ||
+          cleanFullName ||
           firebaseUser.displayName ||
           finalUserDoc.email,
         photoURL: finalUserDoc.photoURL || firebaseUser.photoURL || null,
@@ -675,10 +737,13 @@ export async function processLoginAccess(
     };
   }
 
-  // Si es una cuenta base oficial de prueba o TI Root y aún no estaba en users, se auto-provisiona con enlaces jerárquicos
-  const PRECONFIGURED_BASE_ACCOUNTS: Record<string, Partial<UserProfileDocument>> = {
+  // Si es una cuenta base oficial de prueba y aún no estaba en users, se auto-provisiona con ID determinístico `demo_*`
+  const PRECONFIGURED_BASE_ACCOUNTS: Record<string, Partial<UserProfileDocument> & { fixedId: string }> = {
     'ti.root@russellbedford.mx': {
+      fixedId: 'demo_ti',
       name: 'TI Prueba',
+      firstName: 'TI',
+      lastName: 'Prueba',
       role: 'TI',
       hierarchyLevel: 0,
       reportsTo: null,
@@ -691,10 +756,13 @@ export async function processLoginAccess(
       isProfileComplete: true,
     },
     'socio.prueba@russellbedford.mx': {
+      fixedId: 'demo_socio',
       name: 'Socio Prueba',
+      firstName: 'Socio',
+      lastName: 'Prueba',
       role: 'socio' as any,
       hierarchyLevel: 1,
-      reportsTo: 'ti-root-01',
+      reportsTo: null,
       team: 'Equipo Prueba',
       teamName: 'Equipo Prueba',
       teamId: 'team-prueba-01',
@@ -704,12 +772,15 @@ export async function processLoginAccess(
       isProfileComplete: true,
     },
     'gerente.prueba@russellbedford.mx': {
+      fixedId: 'demo_gerente',
       name: 'Gerente Prueba',
+      firstName: 'Gerente',
+      lastName: 'Prueba',
       role: 'gerente' as any,
       hierarchyLevel: 2,
-      reportsTo: 'socio-01',
-      socioId: 'socio-01',
-      partnerId: 'socio-01',
+      reportsTo: 'demo_socio',
+      socioId: 'demo_socio',
+      partnerId: 'demo_socio',
       team: 'Equipo Prueba',
       teamName: 'Equipo Prueba',
       teamId: 'team-prueba-01',
@@ -719,12 +790,15 @@ export async function processLoginAccess(
       isProfileComplete: true,
     },
     'rh.prueba@russellbedford.mx': {
+      fixedId: 'demo_rh',
       name: 'RH Prueba',
+      firstName: 'RH',
+      lastName: 'Prueba',
       role: 'RH',
       hierarchyLevel: 2,
-      reportsTo: 'socio-01',
-      socioId: 'socio-01',
-      partnerId: 'socio-01',
+      reportsTo: 'demo_socio',
+      socioId: 'demo_socio',
+      partnerId: 'demo_socio',
       team: 'Equipo Prueba',
       teamName: 'Equipo Prueba',
       teamId: 'team-prueba-01',
@@ -734,14 +808,17 @@ export async function processLoginAccess(
       isProfileComplete: true,
     },
     'supervisor.prueba@russellbedford.mx': {
+      fixedId: 'demo_supervisor',
       name: 'Supervisor Prueba',
+      firstName: 'Supervisor',
+      lastName: 'Prueba',
       role: 'Supervisor',
       hierarchyLevel: 3,
-      reportsTo: 'gerente-01',
-      gerenteId: 'gerente-01',
-      managerId: 'gerente-01',
-      socioId: 'socio-01',
-      partnerId: 'socio-01',
+      reportsTo: 'demo_gerente',
+      gerenteId: 'demo_gerente',
+      managerId: 'demo_gerente',
+      socioId: 'demo_socio',
+      partnerId: 'demo_socio',
       team: 'Equipo Prueba',
       teamName: 'Equipo Prueba',
       teamId: 'team-prueba-01',
@@ -751,16 +828,19 @@ export async function processLoginAccess(
       isProfileComplete: true,
     },
     'colaborador.prueba@russellbedford.mx': {
+      fixedId: 'demo_colaborador',
       name: 'Colaborador Prueba',
+      firstName: 'Colaborador',
+      lastName: 'Prueba',
       role: 'Empleado',
       hierarchyLevel: 4,
-      reportsTo: 'supervisor-01',
-      supervisorId: 'supervisor-01',
+      reportsTo: 'demo_supervisor',
+      supervisorId: 'demo_supervisor',
       supervisorName: 'Supervisor Prueba',
-      gerenteId: 'gerente-01',
-      managerId: 'gerente-01',
-      socioId: 'socio-01',
-      partnerId: 'socio-01',
+      gerenteId: 'demo_gerente',
+      managerId: 'demo_gerente',
+      socioId: 'demo_socio',
+      partnerId: 'demo_socio',
       team: 'Equipo Prueba',
       teamName: 'Equipo Prueba',
       teamId: 'team-prueba-01',
@@ -773,11 +853,15 @@ export async function processLoginAccess(
 
   const demoProfile = PRECONFIGURED_BASE_ACCOUNTS[cleanEmail];
   if (demoProfile || isTiRoot) {
+    const fixedDocId = demoProfile?.fixedId || 'demo_ti';
     const roleVal = demoProfile?.role || 'TI';
-    const finalDoc: UserProfileDocument = {
-      uid: cleanUid,
+    const finalDoc: UserProfileDocument & { authUid?: string } = {
+      uid: fixedDocId,
+      authUid: cleanUid || undefined,
       email: cleanEmail,
-      name: demoProfile?.name || firebaseUser.displayName || 'TI Root',
+      name: demoProfile?.name || firebaseUser.displayName || 'TI Prueba',
+      firstName: demoProfile?.firstName,
+      lastName: demoProfile?.lastName,
       role: roleVal,
       hierarchyLevel: demoProfile?.hierarchyLevel ?? 0,
       reportsTo: demoProfile?.reportsTo ?? null,
@@ -797,7 +881,7 @@ export async function processLoginAccess(
     };
     useCheckinStore.getState().loginWithFirebaseUser(
       {
-        uid: cleanUid,
+        uid: fixedDocId,
         email: cleanEmail,
         displayName: finalDoc.name,
         photoURL: firebaseUser.photoURL || null,
@@ -809,11 +893,13 @@ export async function processLoginAccess(
         assignedTeams: finalDoc.assignedTeams,
         status: 'active',
         isActive: true,
+        supervisorId: finalDoc.supervisorId || '',
+        supervisorName: finalDoc.supervisorName || '',
         isProfileComplete: true,
       }
     );
     if (isFirebaseConfigured() && db) {
-      setDoc(doc(db, 'users', cleanUid), finalDoc, { merge: true }).catch(console.warn);
+      setDoc(doc(db, 'users', fixedDocId), finalDoc, { merge: true }).catch(console.warn);
     }
     return {
       allowed: true,
@@ -996,4 +1082,124 @@ export async function handleUserSession(
 
   inFlightSessionPromises.set(firebaseUser.uid, sessionPromise);
   return sessionPromise;
+}
+
+/**
+ * Sincroniza el directorio local de usuarios con la colección real `users` de Firestore.
+ * Deduplica estrictamente por correo electrónico (priorizando los IDs determinísticos `demo_*`)
+ * para garantizar que el organigrama y los paneles muestren exactamente los usuarios vigentes.
+ */
+export async function syncUsersDirectoryFromFirestore(): Promise<UserProfileDocument[]> {
+  if (!isFirebaseConfigured() || !db) return [];
+
+  try {
+    const snap = await withTimeout(getDocs(collection(db, 'users')), 3000, null);
+    if (!snap || snap.empty) return [];
+    trackFirestoreRead(snap.size);
+
+    const byEmail = new Map<string, UserProfileDocument>();
+    const rawDocs = snap.docs.map((d) => ({
+      docId: d.id,
+      data: d.data() as Record<string, any>,
+    }));
+
+    for (const item of rawDocs) {
+      const email = String(item.data.email || '').trim().toLowerCase();
+      if (!email) continue;
+      const fixedId = resolveFixedDemoId(email);
+      const isPreferredDoc = fixedId ? item.docId === fixedId : true;
+
+      const existing = byEmail.get(email);
+      // Si ya guardamos el documento determinístico preferido, ignorar duplicados residuales
+      if (existing && fixedId && existing.uid === fixedId && !isPreferredDoc) {
+        continue;
+      }
+
+      const role = normalizeRole(item.data.role || 'colaborador');
+      const cleanName = buildCleanDisplayName(item.data.name, item.data.lastName);
+
+      byEmail.set(email, {
+        uid: item.docId,
+        email,
+        name: cleanName || item.data.name || email.split('@')[0],
+        firstName: item.data.firstName,
+        lastName: item.data.lastName,
+        photoURL: item.data.photoURL || null,
+        profileImage: item.data.profileImage || item.data.photoURL || undefined,
+        role,
+        hierarchyLevel: item.data.hierarchyLevel,
+        reportsTo: item.data.reportsTo ?? null,
+        teamId: item.data.teamId ?? null,
+        team: item.data.team ?? item.data.teamName ?? undefined,
+        teamName: item.data.teamName ?? item.data.team ?? undefined,
+        assignedTeams: Array.isArray(item.data.assignedTeams) ? item.data.assignedTeams : [],
+        modules: item.data.modules,
+        status: item.data.status || 'active',
+        isActive: item.data.isActive !== false,
+        supervisorId: item.data.supervisorId ?? item.data.supervisor_id ?? null,
+        supervisorName: item.data.supervisorName,
+        gerenteId: item.data.gerenteId ?? item.data.managerId ?? null,
+        managerId: item.data.managerId ?? item.data.gerenteId ?? null,
+        socioId: item.data.socioId ?? item.data.partnerId ?? null,
+        partnerId: item.data.partnerId ?? item.data.socioId ?? null,
+        isProfileComplete: item.data.isProfileComplete !== false,
+      });
+    }
+
+    const usersList = Array.from(byEmail.values());
+    if (usersList.length === 0) return [];
+
+    const nextDirectory: Record<string, any> = {};
+    usersList.forEach((u) => {
+      nextDirectory[u.uid] = {
+        id: u.uid,
+        name: u.name,
+        email: u.email,
+        role: u.role,
+        hierarchyLevel: u.hierarchyLevel,
+        reportsTo: u.reportsTo ?? null,
+        team: u.team,
+        teamName: u.teamName,
+        teamId: u.teamId || undefined,
+        assignedTeams: u.assignedTeams || [],
+        supervisorId: u.supervisorId ?? null,
+        supervisor_id: u.supervisorId ?? undefined,
+        gerenteId: u.gerenteId ?? null,
+        managerId: u.managerId ?? null,
+        socioId: u.socioId ?? null,
+        partnerId: u.partnerId ?? null,
+        photoURL: u.photoURL || null,
+        permissions: getDefaultPermissionsForRole(u.role),
+        modules: (u.modules as any) || getDefaultModulesForRole(u.role),
+        accessRevoked: u.isActive === false || u.status === 'inactive',
+      };
+    });
+
+    useCheckinStore.setState({
+      userPermissionsDirectory: nextDirectory,
+      mockEmployeesData: usersList.map((u) => ({
+        id: u.uid,
+        email: u.email,
+        name: u.name,
+        role: u.role,
+        team: u.team || 'Sin equipo asignado',
+        teamId: u.teamId || undefined,
+        assignedTeams: u.assignedTeams || [],
+        status: u.status || 'active',
+        isProfileComplete: true,
+        workedMinutesToday: 0,
+        expectedEntryTime: '09:00',
+        supervisor_id: u.supervisorId || undefined,
+        modules: (u.modules as any) || getDefaultModulesForRole(u.role),
+        photoURL: u.photoURL || null,
+        profileImage: u.profileImage,
+        history: [],
+      })),
+    });
+
+    return usersList;
+  } catch (err) {
+    console.warn('[userService] Error al sincronizar usuarios desde Firestore:', err);
+    return [];
+  }
 }
