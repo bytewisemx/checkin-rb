@@ -252,64 +252,49 @@ export function AuthPage() {
 
   /**
    * Autenticación Directa para Perfiles de Prueba Oficiales
-   * Autentica con credenciales predeterminadas (o crea la cuenta en Firebase Auth si no existe aún)
-   * y redirige directamente al dashboard del perfil correspondiente.
+   * Autentica de forma instantánea en el cliente y sincroniza transparentemente en segundo plano
    */
-  const handleQuickDemoLogin = async (demoEmail: string, roleLabel: string) => {
+  const handleQuickDemoLogin = (demoEmail: string, roleLabel: string) => {
     setErrorMsg('');
-    setIsLoading(true);
     setEmail(demoEmail);
     setPassword('admin123');
 
-    try {
-      if (firebaseReady) {
-        let authRes = await loginWithEmail(demoEmail, 'admin123');
+    // 1. Acceso ultra-rápido instantáneo (0ms de espera)
+    const localSuccess = login(demoEmail, 'admin123');
+    if (localSuccess) {
+      addToast(`Bienvenido: ${roleLabel}`, 'success');
+      navigate('/');
+    } else {
+      setErrorMsg('Error al conectar con la cuenta demo.');
+      return;
+    }
 
-        // Si aún no está dado de alta en Firebase Auth, crearlo automáticamente
-        if (!authRes.success) {
-          const errStr = String(authRes.error || '').toLowerCase();
-          if (
-            errStr.includes('no existe') ||
-            errStr.includes('user-not-found') ||
-            errStr.includes('invalid-credential') ||
-            errStr.includes('incorrectos')
-          ) {
-            const regRes = await registerWithEmail(demoEmail, 'admin123');
-            if (regRes.success) {
-              authRes = regRes;
+    // 2. Sincronización en segundo plano con Firebase (no bloqueante)
+    if (firebaseReady) {
+      setTimeout(async () => {
+        try {
+          let authRes = await loginWithEmail(demoEmail, 'admin123');
+          if (!authRes.success) {
+            const errStr = String(authRes.error || '').toLowerCase();
+            if (
+              errStr.includes('no existe') ||
+              errStr.includes('user-not-found') ||
+              errStr.includes('invalid-credential') ||
+              errStr.includes('incorrectos')
+            ) {
+              const regRes = await registerWithEmail(demoEmail, 'admin123');
+              if (regRes.success) {
+                authRes = regRes;
+              }
             }
           }
-        }
-
-        if (authRes.success && authRes.user) {
-          const access = await processLoginAccess(authRes.user);
-          if (access.allowed) {
-            addToast(`¡Bienvenido! Sesión iniciada como ${roleLabel}.`, 'success');
-            navigate('/');
-            return;
+          if (authRes.success && authRes.user) {
+            await processLoginAccess(authRes.user);
           }
+        } catch (bgErr) {
+          console.debug('[AuthPage] Sincronización background de cuenta demo omitida:', bgErr);
         }
-      }
-
-      // Fallback a demo local directo si Firebase no responde
-      const localSuccess = login(demoEmail, 'admin123');
-      if (localSuccess) {
-        addToast(`Bienvenido: ${roleLabel}`, 'success');
-        navigate('/');
-      } else {
-        setErrorMsg('Error al conectar con la cuenta demo.');
-      }
-    } catch (err: unknown) {
-      console.warn('[AuthPage] Error en acceso rápido demo, usando fallback local:', err);
-      const localSuccess = login(demoEmail, 'admin123');
-      if (localSuccess) {
-        addToast(`Bienvenido: ${roleLabel}`, 'success');
-        navigate('/');
-      } else {
-        setErrorMsg('No se pudo autenticar el perfil de prueba.');
-      }
-    } finally {
-      setIsLoading(false);
+      }, 0);
     }
   };
 

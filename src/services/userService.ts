@@ -28,11 +28,17 @@ export interface UserProfileDocument {
   updatedAt?: string;
 }
 
+let isFirestoreDatabaseAvailable: boolean | null = null;
+
 /**
  * Envoltorio con timeout ultra-rápido para operaciones de red con Firestore
- * Si Firestore no responde en el tiempo límite (ej. 1200ms), resuelve con fallback inmediato
+ * Si Firestore no responde en el tiempo límite (ej. 1500ms) o no existe la base de datos, resuelve con fallback inmediato
  */
-function withTimeout<T>(promise: Promise<T>, ms = 4000, fallback: T): Promise<T> {
+function withTimeout<T>(promise: Promise<T>, ms = 1500, fallback: T): Promise<T> {
+  if (isFirestoreDatabaseAvailable === false) {
+    return Promise.resolve(fallback);
+  }
+
   return new Promise((resolve) => {
     let resolved = false;
     const timer = setTimeout(() => {
@@ -47,10 +53,15 @@ function withTimeout<T>(promise: Promise<T>, ms = 4000, fallback: T): Promise<T>
         if (!resolved) {
           resolved = true;
           clearTimeout(timer);
+          isFirestoreDatabaseAvailable = true;
           resolve(val);
         }
       })
-      .catch(() => {
+      .catch((err: any) => {
+        const msg = String(err?.message || '').toLowerCase();
+        if (msg.includes('not-found') || msg.includes('not found') || msg.includes('database')) {
+          isFirestoreDatabaseAvailable = false;
+        }
         if (!resolved) {
           resolved = true;
           clearTimeout(timer);
@@ -151,13 +162,28 @@ export async function findUserInUsersCollection(
   const cleanEmail = (email || '').trim().toLowerCase();
   const cleanUid = (uid || '').trim();
 
-  // 1. Si Firebase está activo
-  if (isFirebaseConfigured() && db) {
+  // 1. Acceso instantáneo para perfiles de prueba oficiales o perfiles ya en memoria
+  const isBaseDemoAccount =
+    cleanEmail.includes('.prueba@russellbedford.mx') ||
+    cleanEmail === 'ti.root@russellbedford.mx';
+
+  if (isBaseDemoAccount) {
+    const localProfile = getLocalUserProfile(cleanUid || cleanEmail);
+    if (localProfile) {
+      return {
+        docId: cleanUid || localProfile.uid || cleanEmail,
+        data: localProfile,
+      };
+    }
+  }
+
+  // 2. Si Firestore está disponible y activo
+  if (isFirebaseConfigured() && db && isFirestoreDatabaseAvailable !== false) {
     try {
       // A. Buscar por Document ID == cleanUid
       if (cleanUid) {
         const userRef = doc(db, 'users', cleanUid);
-        const snap = await withTimeout(getDoc(userRef), 4000, null);
+        const snap = await withTimeout(getDoc(userRef), 1500, null);
         if (snap && snap.exists()) {
           const d = snap.data() as UserProfileDocument;
           return {
@@ -175,7 +201,7 @@ export async function findUserInUsersCollection(
       // B. Buscar por query where('uid', '==', cleanUid)
       if (cleanUid) {
         const qUid = query(collection(db, 'users'), where('uid', '==', cleanUid));
-        const snapUid = await withTimeout(getDocs(qUid), 4000, null);
+        const snapUid = await withTimeout(getDocs(qUid), 1500, null);
         if (snapUid && !snapUid.empty) {
           const first = snapUid.docs[0];
           const d = first.data() as UserProfileDocument;
@@ -194,7 +220,7 @@ export async function findUserInUsersCollection(
       // C. Buscar por Document ID == cleanEmail
       if (cleanEmail) {
         const userEmailDocRef = doc(db, 'users', cleanEmail);
-        const snapEmailDoc = await withTimeout(getDoc(userEmailDocRef), 3000, null);
+        const snapEmailDoc = await withTimeout(getDoc(userEmailDocRef), 1200, null);
         if (snapEmailDoc && snapEmailDoc.exists()) {
           const d = snapEmailDoc.data() as UserProfileDocument;
           return {
@@ -212,7 +238,7 @@ export async function findUserInUsersCollection(
       // D. Buscar por query where('email', '==', cleanEmail)
       if (cleanEmail) {
         const qEmail = query(collection(db, 'users'), where('email', '==', cleanEmail));
-        const snapEmail = await withTimeout(getDocs(qEmail), 4000, null);
+        const snapEmail = await withTimeout(getDocs(qEmail), 1500, null);
         if (snapEmail && !snapEmail.empty) {
           const first = snapEmail.docs[0];
           const d = first.data() as UserProfileDocument;
@@ -230,7 +256,7 @@ export async function findUserInUsersCollection(
 
       // E. Búsqueda exhaustiva case-insensitive en la colección users si las anteriores no encontraron
       if (cleanEmail) {
-        const allUsersSnap = await withTimeout(getDocs(collection(db, 'users')), 4000, null);
+        const allUsersSnap = await withTimeout(getDocs(collection(db, 'users')), 1500, null);
         if (allUsersSnap && !allUsersSnap.empty) {
           const matched = allUsersSnap.docs.find((d) => {
             const data = d.data();
@@ -252,7 +278,11 @@ export async function findUserInUsersCollection(
           }
         }
       }
-    } catch (err) {
+    } catch (err: any) {
+      const msg = String(err?.message || '').toLowerCase();
+      if (msg.includes('not-found') || msg.includes('not found') || msg.includes('database')) {
+        isFirestoreDatabaseAvailable = false;
+      }
       console.warn('[userService] Error al consultar colección users en Firestore:', err);
     }
   }
