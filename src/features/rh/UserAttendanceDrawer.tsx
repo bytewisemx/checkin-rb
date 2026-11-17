@@ -103,9 +103,9 @@ export function UserAttendanceDrawer({
   const activePinData = useMemo(() => {
     if (!activeRecord) {
       return {
-        latitude: 21.8853,
-        longitude: -102.2915,
-        label: 'Oficina Central',
+        latitude: 0,
+        longitude: 0,
+        label: 'Sin registros de asistencia',
         timestamp: null as string | null,
       };
     }

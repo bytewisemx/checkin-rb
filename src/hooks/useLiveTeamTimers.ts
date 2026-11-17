@@ -13,47 +13,22 @@ import {
 import { useRayonerStore } from '../store/useRayonerStore';
 import type { ActiveWorker } from '../types/rayoner';
 
+/**
+ * Suscripción 100% Real-Time a la colección `active_timers` en Cloud Firestore.
+ * Cero mocks y cero fusión con relojes locales caducos:
+ * si Firestore no tiene documentos corriendo, `activeWorkers` es `[]` (muestra "—").
+ */
 export function useLiveTeamTimers() {
   useEffect(() => {
-    // 1. Suscripción en tiempo real a BroadcastChannel local (inter-pestañas instantáneo)
-    const channel =
-      typeof window !== 'undefined' && 'BroadcastChannel' in window
-        ? new BroadcastChannel('rb_rayoner_realtime_channel')
-        : null;
-
-    const handleBroadcastMessage = (event: MessageEvent) => {
-      const data = event.data;
-      if (!data) return;
-
-      if (data.type === 'TIMER_STARTED' && data.payload) {
-        const worker = data.payload as ActiveWorker;
-        useRayonerStore.setState((state) => ({
-          activeWorkers: [
-            ...state.activeWorkers.filter((w) => w.userId !== worker.userId),
-            worker,
-          ],
-        }));
-      } else if (data.type === 'TIMER_STOPPED' && data.payload?.userId) {
-        const stoppedUserId = data.payload.userId as string;
-        useRayonerStore.setState((state) => ({
-          activeWorkers: state.activeWorkers.filter((w) => w.userId !== stoppedUserId),
-        }));
-      }
-    };
-
-    channel?.addEventListener('message', handleBroadcastMessage);
-
-    // 2. Suscripción en tiempo real a Firestore (onSnapshot) para sincronización entre dispositivos/cuentas
     if (!isFirebaseConfigured() || !db) {
-      return () => {
-        channel?.removeEventListener('message', handleBroadcastMessage);
-        channel?.close();
-      };
+      useRayonerStore.setState({ activeWorkers: [] });
+      return;
     }
 
     const listenerId = 'live-team-timers-active-timers';
     registerActiveListener(listenerId, 'active_timers');
     const timersCol = collection(db, 'active_timers');
+
     const unsubscribe = onSnapshot(
       timersCol,
       (snapshot) => {
@@ -62,7 +37,7 @@ export function useLiveTeamTimers() {
 
         snapshot.forEach((docSnap) => {
           const data = docSnap.data();
-          if (data && data.isRunning) {
+          if (data && data.isRunning === true && data.startedAt) {
             const startedAtVal = data.startedAt;
             const startedAtMs =
               typeof startedAtVal === 'number'
@@ -71,50 +46,44 @@ export function useLiveTeamTimers() {
                 ? (startedAtVal as any).toDate().getTime()
                 : new Date(startedAtVal).getTime();
 
+            if (!Number.isFinite(startedAtMs) || startedAtMs <= 0) return;
+
             const elapsedMinutes = computeElapsedShiftMinutes(startedAtMs);
             const isTruncated12h = elapsedMinutes >= MAX_CONTINUOUS_SHIFT_MINUTES;
+
+            // Si el timer excedió las 12 horas continuas sin cierre, ya no cuenta como activo en vivo
+            if (isTruncated12h) return;
 
             remoteWorkers.push({
               userId: data.userId || docSnap.id,
               userName: data.userName || 'Colaborador',
               taskId: data.taskId || '',
-              taskName: isTruncated12h
-                ? `${data.taskName || 'Tarea activa'} (Corte 12h)`
-                : data.taskName || 'Tarea activa',
+              taskName: data.taskName || 'Tarea activa',
               projectName: data.projectName || 'Proyecto',
-              clientName: data.clientName || 'Cliente',
+              clientName: data.clientName || 'Empresa',
               startedAtMs,
               startedAt: startedAtVal,
-              accumulatedSeconds: isTruncated12h
-                ? MAX_CONTINUOUS_SHIFT_MINUTES * 60
-                : data.accumulatedSeconds || 0,
-              isRunning: !isTruncated12h,
-              currentDurationStr: isTruncated12h ? '12:00:00' : '00:00:00',
+              accumulatedSeconds: typeof data.accumulatedSeconds === 'number' ? data.accumulatedSeconds : 0,
+              isRunning: true,
+              currentDurationStr: '00:00:00',
             });
           }
         });
 
-        useRayonerStore.setState((state) => {
-          // Fusionar con trabajadores locales preservando estado activo
-          const nonOverlapped = state.activeWorkers.filter(
-            (w) => !remoteWorkers.some((r) => r.userId === w.userId)
-          );
-          return {
-            activeWorkers: [...nonOverlapped, ...remoteWorkers],
-          };
+        // Reemplazo estricto por la verdad en tiempo real de Firestore (cero residuos locales)
+        useRayonerStore.setState({
+          activeWorkers: remoteWorkers,
         });
       },
       (err) => {
         console.warn('[useLiveTeamTimers] Error en suscripción onSnapshot active_timers:', err);
+        useRayonerStore.setState({ activeWorkers: [] });
       }
     );
 
     return () => {
       unsubscribe();
       unregisterActiveListener(listenerId);
-      channel?.removeEventListener('message', handleBroadcastMessage);
-      channel?.close();
     };
   }, []);
 }
-

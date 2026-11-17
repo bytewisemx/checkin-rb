@@ -31,7 +31,7 @@ export function TaskModal({ isOpen, onClose, defaultColumn = 'pending' }: TaskMo
       completed: { text: 'Finalizado', colorClass: 'bg-slate-100 text-slate-700 border border-slate-200' }
     };
 
-    const dummyTags: TaskTag[] = [
+    const statusTags: TaskTag[] = [
       tagColors[status] || { text: 'En Espera', colorClass: 'bg-slate-100 text-slate-700 border border-slate-200' }
     ];
 
@@ -45,7 +45,7 @@ export function TaskModal({ isOpen, onClose, defaultColumn = 'pending' }: TaskMo
       estimatedTime: '60m',
       assignee: assigneeName,
       dueDate: dueDate || 'Sin fecha',
-      tags: dummyTags,
+      tags: statusTags,
       subtasksCount: 0
     });
 

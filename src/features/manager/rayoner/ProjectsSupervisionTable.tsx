@@ -374,7 +374,9 @@ export function ProjectsSupervisionTable({
               {filteredProjects.length === 0 && (
                 <tr>
                   <td colSpan={6} className="text-center py-12 text-slate-400 text-xs">
-                    No se encontraron proyectos con los criterios de búsqueda o filtro seleccionados.
+                    {projects.length === 0
+                      ? 'No hay proyectos registrados'
+                      : 'No se encontraron proyectos con los criterios de búsqueda o filtro seleccionados.'}
                   </td>
                 </tr>
               )}

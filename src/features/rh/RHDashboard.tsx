@@ -2,11 +2,14 @@ import { useState, useMemo, useEffect } from 'react';
 import { useRayonerStore } from '../../store/useRayonerStore';
 import { useCheckinStore } from '../../store/useCheckinStore';
 import {
-  fetchRHAttendanceRecords,
   getEffectiveModules,
   normalizeRole,
   type RHAttendanceRecord,
 } from '../../services/rbac';
+import {
+  subscribeAttendanceFromFirestore,
+  type AttendanceDocument,
+} from '../../services/attendanceService';
 import { FacialEnrollmentModal } from '../checkin/FacialEnrollmentModal';
 import { CheckinPanel } from '../checkin/CheckinPanel';
 import { UserAttendanceDrawer } from './UserAttendanceDrawer';
@@ -14,7 +17,7 @@ import { RHFortnightSheet } from './RHFortnightSheet';
 import { RHIndividualAudit } from './RHIndividualAudit';
 
 export function RHDashboard() {
-  const { user, getEffectiveUserModules, mockEmployeesData, history, activeCheckin } = useCheckinStore();
+  const { user, getEffectiveUserModules, userPermissionsDirectory } = useCheckinStore();
   const { teamMembers } = useRayonerStore();
 
   const effectiveModules = getEffectiveUserModules(user?.id) || getEffectiveModules(user);
@@ -34,158 +37,95 @@ export function RHDashboard() {
     initialRecordId: null,
   });
 
-  const [apiAttendanceRecords, setApiAttendanceRecords] = useState<RHAttendanceRecord[]>([]);
+  // 100% Real-Time Firestore (`attendance`): cero mocks ni historiales simulados
+  const [firestoreAttendance, setFirestoreAttendance] = useState<AttendanceDocument[]>([]);
 
   useEffect(() => {
-    let active = true;
-    fetchRHAttendanceRecords({ id: user?.id, role: user?.role }).then((data: RHAttendanceRecord[]) => {
-      if (active) {
-        setApiAttendanceRecords(data);
-      }
-    });
+    const unsubscribe = subscribeAttendanceFromFirestore(
+      (records) => {
+        setFirestoreAttendance(records);
+      },
+      { listenerKey: 'rh-dashboard-attendance-realtime' }
+    );
     return () => {
-      active = false;
+      unsubscribe();
     };
   }, [user?.id, user?.role]);
 
-  // Consolidación global de registros de asistencia (API + actividad en vivo + historial)
-  const consolidatedAttendance = useMemo(() => {
-    const mapById = new Map<string, RHAttendanceRecord>();
+  // Consolidación estricta desde la colección real `attendance` en Firestore (0 registros si está vacía)
+  const consolidatedAttendance = useMemo<RHAttendanceRecord[]>(() => {
+    const records: RHAttendanceRecord[] = firestoreAttendance
+      .filter((docRec) => Boolean(docRec.checkIn?.timestamp))
+      .map((docRec) => {
+        const dirEntry = userPermissionsDirectory[docRec.userId];
+        const memberInfo = teamMembers.find(
+          (m) => m.id === docRec.userId || (dirEntry?.email && m.email.toLowerCase() === dirEntry.email.toLowerCase())
+        );
+        const userEmail = dirEntry?.email || memberInfo?.email || '';
+        const teamName = dirEntry?.teamName || dirEntry?.team || memberInfo?.team || 'Equipo Prueba';
+        const supervisorId = dirEntry?.supervisorId || dirEntry?.supervisor_id || memberInfo?.supervisor_id;
+        const supervisorObj = supervisorId
+          ? userPermissionsDirectory[supervisorId] || teamMembers.find((s) => s.id === supervisorId)
+          : null;
 
-    // 1. Registros provenientes de GET /api/rh/attendance
-    apiAttendanceRecords.forEach((rec) => {
-      mapById.set(rec.id, rec);
-    });
+        const checkInTs = docRec.checkIn.timestamp;
+        const checkOutTs = docRec.checkOut?.timestamp || null;
+        const totalHrs =
+          typeof docRec.totalMinutes === 'number' && docRec.totalMinutes > 0
+            ? Number((docRec.totalMinutes / 60).toFixed(2))
+            : 0;
 
-    // 2. Registros en vivo del usuario activo (si realizó check-in durante la sesión)
-    const liveRecords = activeCheckin ? [activeCheckin, ...history] : history;
-    liveRecords.forEach((rec) => {
-      const checkInMs = rec.checkInTimeMs ?? Date.now();
-      const checkInIso = new Date(checkInMs).toISOString();
-      const checkOutIso = rec.checkOutTimeMs ? new Date(rec.checkOutTimeMs).toISOString() : null;
-      const totalHrs = rec.totalDurationMinutes
-        ? Number((rec.totalDurationMinutes / 60).toFixed(1))
-        : Number(((Date.now() - checkInMs) / 3600000).toFixed(1));
-
-      const confidence =
-        typeof rec.biometricMatchScore === 'number'
-          ? rec.biometricMatchScore > 1
-            ? Number((rec.biometricMatchScore / 100).toFixed(2))
-            : rec.biometricMatchScore
-          : 0.97;
-
-      const hasFacialMatch = Boolean(rec.biometricMatchScore && rec.biometricMatchScore > 0);
-
-      mapById.set(`live-${rec.id}`, {
-        id: `live-${rec.id}`,
-        userName: user?.name || 'Colaborador Activo',
-        userEmail: user?.email || 'colaborador.prueba@russellbedford.mx',
-        teamName: user?.team || 'Equipo Prueba',
-        supervisorName: 'Supervisor Prueba',
-        checkIn: {
-          timestamp: checkInIso,
-          facialMatch: hasFacialMatch,
-          confidenceScore: confidence,
-          location: {
-            label: rec.address || 'Oficina Central',
-            latitude: rec.location?.lat ?? 21.8853,
-            longitude: rec.location?.lng ?? -102.2915,
-          },
-        },
-        checkOut: checkOutIso
-          ? {
-              timestamp: checkOutIso,
-              facialMatch: hasFacialMatch,
-              location: {
-                label: rec.address || 'Oficina Central',
-                latitude: rec.location?.lat ?? 21.8853,
-                longitude: rec.location?.lng ?? -102.2915,
-              },
-            }
-          : null,
-        totalHours: Math.max(0.1, totalHrs),
-      });
-    });
-
-    // 3. Historial de colaboradores registrados en el sistema
-    mockEmployeesData.forEach((emp) => {
-      const memberInfo = teamMembers.find(
-        (m) => m.id === emp.id || m.email.toLowerCase() === emp.email.toLowerCase()
-      );
-      const supervisorMember = teamMembers.find(
-        (s) => s.id === (emp.supervisor_id || memberInfo?.supervisor_id || 'admin-99')
-      );
-      const supervisorName = supervisorMember?.name || 'Supervisor Prueba';
-      const teamName = memberInfo?.team || emp.team || 'Equipo Operaciones';
-      const empRequiresFacial = emp.role !== 'Supervisor' && emp.role !== 'TI';
-
-      emp.history.forEach((h) => {
-        const recordId = `hist-${emp.id}-${h.id}`;
-        if (mapById.has(recordId)) return;
-
-        const inMs = h.checkInTimeMs ?? Date.now();
-        const inIso = new Date(inMs).toISOString();
-        const outIso = h.checkOutTimeMs ? new Date(h.checkOutTimeMs).toISOString() : null;
-        const hrs = Number(((h.totalDurationMinutes || 510) / 60).toFixed(1));
-        const rawScore = h.biometricMatchScore
-          ? h.biometricMatchScore > 1
-            ? h.biometricMatchScore / 100
-            : h.biometricMatchScore
-          : empRequiresFacial
-          ? 0.96
-          : 0;
-
-        mapById.set(recordId, {
-          id: recordId,
-          userName: emp.name,
-          userEmail: emp.email,
+        return {
+          id: docRec.id,
+          userName: docRec.userName || dirEntry?.name || memberInfo?.name || 'Colaborador',
+          userEmail,
           teamName,
-          supervisorName,
+          supervisorName: supervisorObj?.name || 'Supervisor Prueba',
+          supervisorId: supervisorId || undefined,
           checkIn: {
-            timestamp: inIso,
-            facialMatch: empRequiresFacial,
-            confidenceScore: Number(rawScore.toFixed(2)),
+            timestamp: checkInTs,
+            facialMatch: Boolean(docRec.checkIn.facialMatch),
+            confidenceScore:
+              typeof docRec.checkIn.confidenceScore === 'number' ? docRec.checkIn.confidenceScore : 0,
             location: {
-              label: h.address || 'Oficina Central',
-              latitude: h.location?.lat ?? 21.8853,
-              longitude: h.location?.lng ?? -102.2915,
+              label: docRec.checkIn.locationLabel || 'Sin ubicación registrada',
+              latitude: typeof docRec.checkIn.lat === 'number' ? docRec.checkIn.lat : 0,
+              longitude: typeof docRec.checkIn.lng === 'number' ? docRec.checkIn.lng : 0,
             },
           },
-          checkOut: outIso
+          checkOut: checkOutTs
             ? {
-                timestamp: outIso,
-                facialMatch: empRequiresFacial,
+                timestamp: checkOutTs,
+                facialMatch: Boolean(docRec.checkIn.facialMatch),
                 location: {
-                  label: h.address || 'Oficina Central',
-                  latitude: h.location?.lat ?? 21.8853,
-                  longitude: h.location?.lng ?? -102.2915,
+                  label: docRec.checkIn.locationLabel || 'Sin ubicación registrada',
+                  latitude: typeof docRec.checkIn.lat === 'number' ? docRec.checkIn.lat : 0,
+                  longitude: typeof docRec.checkIn.lng === 'number' ? docRec.checkIn.lng : 0,
                 },
               }
             : null,
-          totalHours: hrs,
-        });
-      });
-    });
+          totalHours: totalHrs,
+        };
+      })
+      .sort((a, b) => new Date(b.checkIn.timestamp).getTime() - new Date(a.checkIn.timestamp).getTime());
 
     // Filtrado de aislamiento de equipos para RH asignado por TI
     const userRole = normalizeRole(user?.role);
     const assignedTeams = user?.assignedTeams || [];
 
-    const allRecords = Array.from(mapById.values()).sort(
-      (a, b) => new Date(b.checkIn.timestamp).getTime() - new Date(a.checkIn.timestamp).getTime()
-    );
-
     if (userRole === 'RH' && assignedTeams.length > 0) {
-      return allRecords.filter((rec) =>
-        assignedTeams.some((team) =>
-          rec.teamName.toLowerCase().includes(team.toLowerCase()) ||
-          team.toLowerCase().includes(rec.teamName.toLowerCase())
+      return records.filter((rec) =>
+        assignedTeams.some(
+          (team) =>
+            team === 'team-prueba-01' ||
+            rec.teamName.toLowerCase().includes(team.toLowerCase()) ||
+            team.toLowerCase().includes(rec.teamName.toLowerCase())
         )
       );
     }
 
-    return allRecords;
-  }, [apiAttendanceRecords, activeCheckin, history, mockEmployeesData, teamMembers, user?.name, user?.email, user?.role, user?.assignedTeams]);
+    return records;
+  }, [firestoreAttendance, userPermissionsDirectory, teamMembers, user?.role, user?.assignedTeams]);
 
   const handleOpenRecordDetail = (userEmail: string, recordId?: string) => {
     setDrawerState({

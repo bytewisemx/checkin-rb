@@ -194,14 +194,14 @@ export function RayonerTaskModal({
     existingGeo?.locationMode || 'client_site'
   );
   const [geoAddress, setGeoAddress] = useState(
-    existingGeo?.address || 'Av. Paseo de la Reforma 483, Cuauhtémoc, CDMX'
+    existingGeo?.address || ''
   );
   const [geoRadius, setGeoRadius] = useState(existingGeo?.radiusMeters || 250);
   const [geoEnforcement, setGeoEnforcement] = useState<'strict_block' | 'warning' | 'none'>(
     existingGeo?.enforcementMode || 'warning'
   );
-  const geoLat = existingGeo?.lat || 19.427;
-  const geoLng = existingGeo?.lng || -99.1677;
+  const geoLat = existingGeo?.lat || 0;
+  const geoLng = existingGeo?.lng || 0;
 
   if (!isOpen) return null;
 

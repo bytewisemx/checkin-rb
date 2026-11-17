@@ -156,9 +156,9 @@ export function RHIndividualAudit({ allRecords, onOpenRecordDetail }: RHIndividu
       }
     });
 
-    const totalDays = userFilteredRecords.length || 1;
-    const punctualityRate = Math.round(((totalDays - lateCount) / totalDays) * 100);
-    const averageBiometricScore = scoreCount > 0 ? (totalScoreSum / scoreCount).toFixed(1) : '96.5';
+    const totalDays = userFilteredRecords.length;
+    const punctualityRate = totalDays > 0 ? Math.round(((totalDays - lateCount) / totalDays) * 100) : 0;
+    const averageBiometricScore = scoreCount > 0 ? (totalScoreSum / scoreCount).toFixed(1) : '—';
 
     return {
       totalHours,

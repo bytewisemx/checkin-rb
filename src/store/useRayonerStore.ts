@@ -780,7 +780,7 @@ export const useRayonerStore = create<RayonerState>()(
         const memberName =
           userName ||
           get().teamMembers.find((m) => m.id === userId)?.name ||
-          'Empleado Prueba';
+          'Colaborador';
         const nowIso = new Date().toISOString();
 
         set((state) => {
@@ -1177,7 +1177,22 @@ export const useRayonerStore = create<RayonerState>()(
       },
     }),
     {
-      name: 'rayoner-supervisor-storage-v2',
+      name: 'rayoner-supervisor-storage-v3',
+      // Jamás persistir activeWorkers en localStorage: es estado efímero 100% Real-Time de Firestore `active_timers`
+      partialize: (state) => ({
+        groups: state.groups,
+        clients: state.clients,
+        projects: state.projects,
+        tasks: state.tasks,
+        assignments: state.assignments,
+        geofences: state.geofences,
+        taskActualHours: state.taskActualHours,
+        userTaskActualHours: state.userTaskActualHours,
+        teamMembers: state.teamMembers,
+        supervisorInviteCodes: state.supervisorInviteCodes,
+        supervisorsMetadata: state.supervisorsMetadata,
+        corporateMasterKeys: state.corporateMasterKeys,
+      }),
     }
   )
 );
@@ -1189,7 +1204,7 @@ if (typeof window !== 'undefined') {
   });
 
   window.addEventListener('storage', (e) => {
-    if (e.key === 'rayoner-supervisor-storage-v2') {
+    if (e.key === 'rayoner-supervisor-storage-v3') {
       useRayonerStore.persist.rehydrate();
     }
   });

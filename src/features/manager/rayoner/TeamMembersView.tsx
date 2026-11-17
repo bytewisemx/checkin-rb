@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { 
   Users, 
   Clock, 
@@ -14,6 +14,11 @@ import { useCheckinStore } from '../../../store/useCheckinStore';
 import { UserAvatar } from '../../../components/common/UserAvatar';
 import { LiveTimerCell } from '../../../components/common/LiveTimerCell';
 import { useLiveTeamTimers } from '../../../hooks/useLiveTeamTimers';
+import {
+  subscribeAttendanceFromFirestore,
+  formatMinutesSexagesimal,
+  type AttendanceDocument,
+} from '../../../services/attendanceService';
 
 interface TeamMembersViewProps {
   onNavigateToTree?: () => void;
@@ -43,11 +48,44 @@ export function TeamMembersView({ onNavigateToTree }: TeamMembersViewProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'pending'>('all');
   const [expandedUserId, setExpandedUserId] = useState<string | null>(null);
+  const [firestoreAttendance, setFirestoreAttendance] = useState<AttendanceDocument[]>([]);
+
+  // Suscripción 100% real-time a `attendance` de Firestore (cero asistencias simuladas)
+  useEffect(() => {
+    const unsubscribe = subscribeAttendanceFromFirestore(
+      (records) => setFirestoreAttendance(records),
+      { listenerKey: 'team-members-attendance-realtime' }
+    );
+    return () => unsubscribe();
+  }, []);
+
+  const todayIso = useMemo(() => new Date().toISOString().split('T')[0], []);
+
+  const todayAttendanceByUserId = useMemo(() => {
+    const map = new Map<string, AttendanceDocument>();
+    firestoreAttendance.forEach((rec) => {
+      if (rec.date === todayIso && rec.userId) {
+        const prev = map.get(rec.userId);
+        if (!prev || (rec.checkIn?.timestampMs || 0) > (prev.checkIn?.timestampMs || 0)) {
+          map.set(rec.userId, rec);
+        }
+      }
+    });
+    return map;
+  }, [firestoreAttendance, todayIso]);
+
+  const isMemberWorkingNow = (memberId: string) => {
+    const todayRec = todayAttendanceByUserId.get(memberId);
+    const hasOpenAttendance = Boolean(todayRec && todayRec.status === 'active' && !todayRec.checkOut);
+    const hasLiveTimer = activeWorkers.some((w) => w.userId === memberId && w.isRunning);
+    return hasOpenAttendance || hasLiveTimer;
+  };
 
   const filteredMembers = useMemo(() => {
     return teamMembers.filter((member) => {
-      if (statusFilter === 'active' && member.status !== 'active') return false;
-      if (statusFilter === 'pending' && member.status === 'active') return false;
+      const working = isMemberWorkingNow(member.id);
+      if (statusFilter === 'active' && !working) return false;
+      if (statusFilter === 'pending' && working) return false;
 
       if (searchTerm.trim()) {
         const q = searchTerm.toLowerCase().trim();
@@ -60,23 +98,31 @@ export function TeamMembersView({ onNavigateToTree }: TeamMembersViewProps) {
       }
       return true;
     });
-  }, [teamMembers, searchTerm, statusFilter]);
+  }, [teamMembers, searchTerm, statusFilter, todayAttendanceByUserId, activeWorkers]);
 
-  // Métricas consolidadas del equipo del supervisor
+  // Métricas consolidadas 100% reales desde Firestore (`attendance` hoy + `active_timers`)
   const activeCount = useMemo(
-    () => teamMembers.filter((m) => m.status === 'active').length,
-    [teamMembers]
+    () => teamMembers.filter((m) => isMemberWorkingNow(m.id)).length,
+    [teamMembers, todayAttendanceByUserId, activeWorkers]
+  );
+
+  const todayEntriesCount = useMemo(
+    () => teamMembers.filter((m) => todayAttendanceByUserId.has(m.id)).length,
+    [teamMembers, todayAttendanceByUserId]
   );
 
   const pendingCheckinCount = useMemo(
-    () => teamMembers.filter((m) => m.status !== 'active').length,
-    [teamMembers]
+    () => Math.max(0, teamMembers.length - todayEntriesCount),
+    [teamMembers.length, todayEntriesCount]
   );
 
-  const totalShiftHours = useMemo(() => {
-    const totalMinutes = teamMembers.reduce((acc, m) => acc + (m.workedMinutesToday || 0), 0);
-    return (totalMinutes / 60).toFixed(1);
-  }, [teamMembers]);
+  const totalShiftFormatted = useMemo(() => {
+    const totalMinutes = teamMembers.reduce((acc, m) => {
+      const rec = todayAttendanceByUserId.get(m.id);
+      return acc + (rec?.totalMinutes || 0);
+    }, 0);
+    return formatMinutesSexagesimal(totalMinutes);
+  }, [teamMembers, todayAttendanceByUserId]);
 
   const biometricIncidentsCount = 0;
 
@@ -116,7 +162,7 @@ export function TeamMembersView({ onNavigateToTree }: TeamMembersViewProps) {
           </div>
           <div>
             <div className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">
-              {activeCount}
+              {todayEntriesCount}
             </div>
             <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
               {pendingCheckinCount} pendientes de ingreso
@@ -134,7 +180,7 @@ export function TeamMembersView({ onNavigateToTree }: TeamMembersViewProps) {
           </div>
           <div>
             <div className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">
-              {totalShiftHours} hrs
+              {totalShiftFormatted}
             </div>
             <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
               Tiempo acumulado hoy en el equipo
@@ -211,11 +257,19 @@ export function TeamMembersView({ onNavigateToTree }: TeamMembersViewProps) {
               ) : (
                 filteredMembers.map((member) => {
                   const isExpanded = expandedUserId === member.id;
-                  const activeWorker = activeWorkers.find((w) => w.userId === member.id);
-                  const isWorking = member.status === 'active' || Boolean(activeWorker);
-                  const hoursToday = ((member.workedMinutesToday || 0) / 60).toFixed(1);
+                  const activeWorker = activeWorkers.find((w) => w.userId === member.id && w.isRunning);
+                  const todayRec = todayAttendanceByUserId.get(member.id) || null;
+                  const isWorking = isMemberWorkingNow(member.id);
+                  const hoursToday = formatMinutesSexagesimal(todayRec?.totalMinutes || 0);
                   const userAssignments = assignments.filter((a) => a.userId === member.id);
                   const isExemptFacial = member.role === 'Supervisor' || member.role === 'TI';
+
+                  const formatHHMM = (iso?: string | null) => {
+                    if (!iso) return null;
+                    const d = new Date(iso);
+                    if (Number.isNaN(d.getTime())) return null;
+                    return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+                  };
 
                   return (
                     <FragmentRow
@@ -227,6 +281,9 @@ export function TeamMembersView({ onNavigateToTree }: TeamMembersViewProps) {
                       }
                       isWorking={isWorking}
                       activeWorker={activeWorker || null}
+                      entryTimeStr={formatHHMM(todayRec?.checkIn?.timestamp)}
+                      exitTimeStr={formatHHMM(todayRec?.checkOut?.timestamp)}
+                      hasFacialVerifiedToday={Boolean(todayRec?.checkIn?.facialMatch)}
                       hoursToday={hoursToday}
                       isExemptFacial={isExemptFacial}
                       clients={clients}
@@ -255,6 +312,9 @@ interface FragmentRowProps {
   onToggleExpand: () => void;
   isWorking: boolean;
   activeWorker: ReturnType<typeof useRayonerStore.getState>['activeWorkers'][number] | null;
+  entryTimeStr: string | null;
+  exitTimeStr: string | null;
+  hasFacialVerifiedToday: boolean;
   hoursToday: string;
   isExemptFacial: boolean;
   clients: ReturnType<typeof useRayonerStore.getState>['clients'];
@@ -273,6 +333,9 @@ function FragmentRow({
   onToggleExpand,
   isWorking,
   activeWorker,
+  entryTimeStr,
+  exitTimeStr,
+  hasFacialVerifiedToday,
   hoursToday,
   isExemptFacial,
   clients,
@@ -341,13 +404,13 @@ function FragmentRow({
           )}
         </td>
 
-        {/* 3. Hora Entrada / Salida */}
+        {/* 3. Hora Entrada / Salida (100% Real-Time Firestore) */}
         <td className="p-4 text-xs font-medium text-slate-700 dark:text-slate-300">
-          {member.entryTime ? (
+          {entryTimeStr ? (
             <div className="flex items-center gap-1.5">
-              <span>{member.entryTime}</span>
+              <span>{entryTimeStr}</span>
               <span className="text-slate-400">→</span>
-              <span>{member.checkOutTime || (isWorking ? 'En curso' : '—')}</span>
+              <span>{exitTimeStr || (isWorking ? 'En curso' : '—')}</span>
             </div>
           ) : (
             <span className="text-slate-400">—</span>
@@ -360,18 +423,20 @@ function FragmentRow({
             <span className="inline-flex items-center gap-1 text-[11px] font-medium text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-full">
               Exento por Rol
             </span>
-          ) : (
+          ) : hasFacialVerifiedToday ? (
             <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-blue-700 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/40 border border-blue-100 dark:border-blue-900/50 px-2.5 py-0.5 rounded-full">
               <Check className="w-3 h-3 stroke-[2.5]" />
               Biometría OK
             </span>
+          ) : (
+            <span className="text-xs text-slate-400 dark:text-slate-600">—</span>
           )}
         </td>
 
         {/* 5. Horas Acumuladas */}
         <td className="p-4">
           <span className="text-xs font-bold font-mono text-slate-800 dark:text-slate-100">
-            {hoursToday} hrs
+            {hoursToday}
           </span>
         </td>
 

@@ -103,10 +103,13 @@ export function SupervisorDashboard({ initialTab }: SupervisorDashboardProps = {
   }, [tasks, taskActualHours]);
 
   const totalBudgetedAllProjects = useMemo(() => {
-    return projects.reduce((acc, p) => acc + (p.totalBudgetHours || 0), 0) || 1;
+    return projects.reduce((acc, p) => acc + (p.totalBudgetHours || 0), 0);
   }, [projects]);
 
-  const globalEfficiency = Math.round((totalActualAllTasks / totalBudgetedAllProjects) * 100);
+  const globalEfficiency =
+    totalBudgetedAllProjects > 0
+      ? Math.round((totalActualAllTasks / totalBudgetedAllProjects) * 100)
+      : 0;
 
   const handleOpenReportForProject = (projectId: string) => {
     if (!canSeeReports) {
@@ -262,7 +265,7 @@ export function SupervisorDashboard({ initialTab }: SupervisorDashboardProps = {
                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 truncate">
                   {activeWorkers.length > 0
                     ? `${activeWorkers[0].userName} cronometrando`
-                    : 'Sin cronómetros activos'}
+                    : 'Sin actividad en vivo'}
                 </p>
               </div>
             </div>

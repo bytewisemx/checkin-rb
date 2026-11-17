@@ -45,20 +45,9 @@ export const useGamificationStore = create<GamificationState>()(
   persist(
     (set, get) => ({
       currentSeasonKey: getCurrentMonthKey(),
-      previousSeason: {
-        month: '2026-09',
-        monthName: 'Septiembre 2026',
-        tier: 'oro',
-        points: 1450,
-      },
-      manualEditsByDate: {
-        // Datos iniciales de demostración
-        [getTodayDateStr()]: 0,
-      },
-      taskSwitchesByDate: {
-        // Tareas conmutadas en vivo hoy
-        [getTodayDateStr()]: 3,
-      },
+      previousSeason: null,
+      manualEditsByDate: {},
+      taskSwitchesByDate: {},
 
       recordManualEdit: (dateStr) => {
         const date = dateStr || getTodayDateStr();

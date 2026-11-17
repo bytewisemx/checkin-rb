@@ -108,7 +108,7 @@ export function StripCardCalendar() {
         isLate: Boolean(activeCheckin.isLate || activeCheckin.minutesLate > 0),
         minutesLate: activeCheckin.minutesLate || 0,
         isWeekend,
-        address: activeCheckin.address || 'Oficina Corporativa Central, CDMX',
+        address: activeCheckin.address || 'Ubicación no disponible',
         isToday: true,
         isActiveNow: true,
       };
@@ -117,22 +117,6 @@ export function StripCardCalendar() {
     const records = history.filter((r) => r.date === isoStr);
 
     if (records.length === 0) {
-      // Mock específico histórico si aplica
-      if (dateObj.getDate() === 16 && dateObj.getMonth() === 9 && dateObj.getFullYear() === 2026) {
-        return {
-          date: dateObj,
-          hasRecord: true,
-          entryTimeStr: '09:58 AM',
-          exitTimeStr: '07:30 PM',
-          isLate: true,
-          minutesLate: 58,
-          isWeekend: false,
-          address: 'Av. Insurgentes Sur 1602, Benito Juárez, CDMX',
-          isToday,
-          isActiveNow: false,
-        };
-      }
-
       return {
         date: dateObj,
         hasRecord: false,

@@ -1,6 +1,11 @@
-import { collection, doc, getDocs, query, setDoc, where } from 'firebase/firestore';
+import { collection, doc, getDocs, onSnapshot, query, setDoc, where } from 'firebase/firestore';
 import { db, isFirebaseConfigured } from './firebase';
-import { trackFirestoreRead, trackFirestoreWrite } from './firestoreTelemetry';
+import {
+  registerActiveListener,
+  trackFirestoreRead,
+  trackFirestoreWrite,
+  unregisterActiveListener,
+} from './firestoreTelemetry';
 
 export const MAX_CONTINUOUS_SHIFT_MINUTES = 720; // 12h 00m exactas
 export const MAX_CONTINUOUS_SHIFT_MS = MAX_CONTINUOUS_SHIFT_MINUTES * 60 * 1000;
@@ -402,4 +407,73 @@ export async function fetchAttendanceRecordsFromFirestore(
     console.warn('[attendanceService] Error al consultar asistencias en Firestore:', err);
     return [];
   }
+}
+
+/**
+ * Suscripción en tiempo real (`onSnapshot`) a la colección `attendance` en Cloud Firestore.
+ * Fuente única de verdad (cero mocks): si Firestore está vacío, emite `[]`.
+ */
+export function subscribeAttendanceFromFirestore(
+  onData: (records: AttendanceDocument[]) => void,
+  filter?: { userId?: string; teamId?: string; listenerKey?: string }
+): () => void {
+  if (!isFirebaseConfigured() || !db) {
+    onData([]);
+    return () => {};
+  }
+
+  const listenerId = filter?.listenerKey || `attendance-realtime-${filter?.userId || filter?.teamId || 'global'}`;
+  registerActiveListener(listenerId, 'attendance');
+
+  const colRef = collection(db, 'attendance');
+  let q: any = colRef;
+  if (filter?.userId) {
+    q = query(colRef, where('userId', '==', filter.userId));
+  } else if (filter?.teamId) {
+    q = query(colRef, where('teamId', '==', filter.teamId));
+  }
+
+  const unsubscribe = onSnapshot(
+    q,
+    (snap: any) => {
+      trackFirestoreRead(Math.max(1, snap.size));
+      const results: AttendanceDocument[] = [];
+      snap.forEach((docSnap: any) => {
+        const d = docSnap.data() as any;
+        results.push({
+          id: d.id || docSnap.id,
+          userId: String(d.userId || ''),
+          userName: String(d.userName || 'Colaborador'),
+          teamId: d.teamId || null,
+          date: String(d.date || ''),
+          checkIn: d.checkIn || {
+            timestamp: '',
+            timestampMs: 0,
+            facialMatch: false,
+            confidenceScore: 0,
+            lat: null,
+            lng: null,
+            locationLabel: '',
+          },
+          checkOut: d.checkOut || null,
+          totalMinutes: Math.max(0, Math.round(d.totalMinutes || 0)),
+          status: d.status || 'completed',
+          autoStoppedAt: d.autoStoppedAt || null,
+          requiresRegularization: Boolean(d.requiresRegularization),
+          regularized: Boolean(d.regularized),
+          updatedAt: String(d.updatedAt || ''),
+        });
+      });
+      onData(results);
+    },
+    (err: any) => {
+      console.warn('[attendanceService] Error en suscripción real-time attendance:', err);
+      onData([]);
+    }
+  );
+
+  return () => {
+    unsubscribe();
+    unregisterActiveListener(listenerId);
+  };
 }

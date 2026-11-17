@@ -376,7 +376,7 @@ export function CheckinPanel() {
     };
 
     if (!navigator.geolocation) {
-      await onLocationSuccess(19.4326, -99.1332, 'Oficina Russell Bedford');
+      await onLocationSuccess(0, 0, 'Sin ubicación GPS disponible');
       return;
     }
 
@@ -388,7 +388,7 @@ export function CheckinPanel() {
         await onLocationSuccess(lat, lng, address);
       },
       async () => {
-        await onLocationSuccess(19.4326, -99.1332, 'Ubicación de Registro');
+        await onLocationSuccess(0, 0, 'Sin ubicación GPS disponible');
       }
     );
   };

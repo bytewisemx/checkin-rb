@@ -397,31 +397,10 @@ export function GlobalSearchBar({
 
     const dateMap = new Map<string, CheckinRecord>();
 
-    // Registros del historial personal
+    // Registros del historial personal (100% datos reales, cero mocks)
     history.forEach((rec) => {
       dateMap.set(rec.date, rec);
     });
-
-    // Entrada especial fija de demo si es 16 de octubre de 2026
-    if (!dateMap.has('2026-10-16')) {
-      const demoCheckinTime = new Date(2026, 9, 16, 9, 58).getTime();
-      const demoCheckOutTime = new Date(2026, 9, 16, 18, 0).getTime();
-      dateMap.set('2026-10-16', {
-        id: 'mock-oct-16',
-        date: '2026-10-16',
-        checkInTimeMs: demoCheckinTime,
-        checkOutTimeMs: demoCheckOutTime,
-        pauses: [],
-        location: { lat: 19.4326, lng: -99.1332 },
-        address: 'Russell Bedford CDMX',
-        totalDurationMinutes: 482,
-        clientIp: '189.200.10.15',
-        isLate: true,
-        minutesLate: 58,
-        biometricMatchScore: 98,
-        biometricDistance: 0.28,
-      });
-    }
 
     // Si hay check-in activo hoy
     if (activeCheckin) {

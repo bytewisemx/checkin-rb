@@ -2882,7 +2882,7 @@ export const useCheckinStore = create<CheckinState>()(
       },
     }),
     {
-      name: 'checkin-rb-storage-v2',
+      name: 'checkin-rb-storage-v3',
       partialize: (state) => {
         // Garantizar en persistencia que jamás se guarde ninguna imagen biométrica base64 heredada
         const cleanUser = state.user
@@ -2956,7 +2956,7 @@ if (typeof window !== 'undefined') {
   });
 
   window.addEventListener('storage', (e) => {
-    if (e.key === 'checkin-rb-storage-v2') {
+    if (e.key === 'checkin-rb-storage-v3') {
       syncFromStorage();
     }
   });
