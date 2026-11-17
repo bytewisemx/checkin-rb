@@ -31,8 +31,9 @@ import {
   MAX_CONTINUOUS_SHIFT_MINUTES,
   MAX_CONTINUOUS_SHIFT_MS,
   formatMinutesSexagesimal,
+  validateShiftTimeDistribution,
 } from '../services/attendanceService';
-import { updateTaskProgressInFirestore } from '../services/taskService';
+import { commitShiftTaskAllocationsToFirestore } from '../services/taskService';
 
 export interface TaskTag {
   text: string;
@@ -2563,6 +2564,23 @@ export const useCheckinStore = create<CheckinState>()(
         const hasExceeded12h =
           exceeded12hAlert || recalculatedDurationMinutes > MAX_CONTINUOUS_SHIFT_MINUTES;
 
+        // Validación estricta de capacidad (Hard Cap): assignedMinutes <= totalShiftMinutes
+        const validManualAllocations = allocations.filter((a) => a.minutes > 0);
+        if (validManualAllocations.length > 0) {
+          const capCheck = validateShiftTimeDistribution(
+            validManualAllocations,
+            recalculatedDurationMinutes
+          );
+          if (!capCheck.valid) {
+            addToast(
+              capCheck.error ||
+                'La suma de minutos asignados excede la duración real de tu jornada.',
+              'error'
+            );
+            return;
+          }
+        }
+
         // 4. Ajustar intervalos de tareas
         const adjustedIntervals = (target.taskIntervals || [])
           .filter((interval) => interval.startMs < realCheckoutMs)
@@ -2587,30 +2605,34 @@ export const useCheckinStore = create<CheckinState>()(
         // 5. Imputar minutos enteros a tareas seleccionadas en useRayonerStore y Firestore (`tasks`)
         if (user) {
           try {
-            const validManualAllocations = allocations.filter((a) => a.minutes > 0);
             if (validManualAllocations.length > 0) {
               const rayonerStore = useRayonerStore.getState();
               rayonerStore.recordDayAllocations(
                 user.id,
                 validManualAllocations.map((a) => ({
                   taskId: a.taskId,
-                  hours: Number((a.minutes / 60).toFixed(2)),
+                  hours: Number((a.minutes / 60).toFixed(4)),
                 }))
               );
 
-              validManualAllocations.forEach((a) => {
-                const prevHours = rayonerStore.taskActualHours[a.taskId] || 0;
-                const totalTaskMinutes = Math.max(0, Math.round(prevHours * 60));
-                void updateTaskProgressInFirestore(a.taskId, {
-                  loggedMinutes: totalTaskMinutes,
-                });
-              });
+              const latestState = useRayonerStore.getState();
+              void commitShiftTaskAllocationsToFirestore(
+                validManualAllocations.map((a) => ({
+                  taskId: a.taskId,
+                  minutes: Math.round(a.minutes),
+                  cumulativeMinutes: Math.max(
+                    0,
+                    Math.round((latestState.taskActualHours[a.taskId] || 0) * 60)
+                  ),
+                })),
+                recalculatedDurationMinutes
+              );
             } else if (adjustedIntervals.length > 0) {
               useRayonerStore.getState().recordDayAllocations(
                 user.id,
                 adjustedIntervals.map((int) => ({
                   taskId: int.taskId,
-                  hours: Number((int.durationSeconds / 3600).toFixed(2)),
+                  hours: Number((int.durationSeconds / 3600).toFixed(4)),
                 }))
               );
             }
@@ -2687,6 +2709,7 @@ export const useCheckinStore = create<CheckinState>()(
           totalMinutes: recalculatedDurationMinutes,
           note: regularizedRecord.regularizationNote,
           exceeded12hAlert: hasExceeded12h,
+          allocations: validManualAllocations,
         });
 
         if (isFirebaseConfigured() && db) {

@@ -1,5 +1,6 @@
-import { collection, doc, getDocs, query, setDoc, where, deleteDoc } from 'firebase/firestore';
+import { collection, doc, getDocs, query, setDoc, where, deleteDoc, writeBatch } from 'firebase/firestore';
 import { db, isFirebaseConfigured } from './firebase';
+import { validateShiftTimeDistribution } from './attendanceService';
 import {
   trackFirestoreDelete,
   trackFirestoreRead,
@@ -153,6 +154,63 @@ export async function fetchTasksByAssignee(userId: string): Promise<TaskDocument
   } catch (err) {
     console.warn('[taskService] Error al consultar tareas por colaborador:', err);
     return [];
+  }
+}
+
+/**
+ * Guarda de forma atómica (writeBatch) los minutos enteros asignados a tareas en una jornada.
+ * Rechaza con error controlado antes de batch.commit() si assignedMinutes > totalShiftMinutes.
+ */
+export async function commitShiftTaskAllocationsToFirestore(
+  allocations: Array<{ taskId: string; minutes: number; cumulativeMinutes?: number }>,
+  totalShiftMinutes: number
+): Promise<{ success: boolean; error?: string }> {
+  const check = validateShiftTimeDistribution(allocations, totalShiftMinutes);
+  if (!check.valid) {
+    return {
+      success: false,
+      error: check.error || 'La suma de tiempos asignados excede la duración de la jornada.',
+    };
+  }
+
+  const validEntries = allocations.filter((a) => toIntegerMinutes(a.minutes) > 0);
+  if (validEntries.length === 0) {
+    return { success: true };
+  }
+
+  if (!isFirebaseConfigured() || !db) {
+    return { success: true };
+  }
+
+  try {
+    const batch = writeBatch(db);
+    const nowIso = new Date().toISOString();
+
+    validEntries.forEach((entry) => {
+      const targetMins =
+        entry.cumulativeMinutes !== undefined
+          ? toIntegerMinutes(entry.cumulativeMinutes)
+          : toIntegerMinutes(entry.minutes);
+
+      batch.set(
+        doc(db!, 'tasks', entry.taskId),
+        {
+          loggedMinutes: targetMins,
+          updatedAt: nowIso,
+        },
+        { merge: true }
+      );
+    });
+
+    await batch.commit();
+    trackFirestoreWrite(validEntries.length);
+    return { success: true };
+  } catch (err: any) {
+    console.warn('[taskService] Error en commitShiftTaskAllocationsToFirestore:', err);
+    return {
+      success: false,
+      error: err?.message || 'Error al guardar tiempos de tareas en Firestore.',
+    };
   }
 }
 

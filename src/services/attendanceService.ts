@@ -199,7 +199,49 @@ export async function truncateAttendanceAt12Hours(
 }
 
 /**
- * Guarda la regularización de salida real en Firestore y libera la sesión pendiente
+ * Validación matemática estricta en minutos enteros (Hard Cap):
+ * Verifica que assignedMinutes <= totalShiftMinutes antes de cualquier guardado o commit.
+ */
+export function validateShiftTimeDistribution(
+  allocations: Array<{ taskId: string; minutes: number }>,
+  totalShiftMinutes: number
+): {
+  valid: boolean;
+  assignedMinutes: number;
+  totalShiftMinutes: number;
+  remainingMinutes: number;
+  error?: string;
+} {
+  const safeTotal = Math.max(0, Math.round(totalShiftMinutes || 0));
+  const assignedMinutes = (allocations || []).reduce(
+    (sum, item) => sum + Math.max(0, Math.round(item.minutes || 0)),
+    0
+  );
+  const remainingMinutes = safeTotal - assignedMinutes;
+
+  if (assignedMinutes > safeTotal) {
+    return {
+      valid: false,
+      assignedMinutes,
+      totalShiftMinutes: safeTotal,
+      remainingMinutes,
+      error: `Exceso de capacidad: Intentaste asignar ${formatMinutesSexagesimal(
+        assignedMinutes
+      )}, superando el tiempo real laborado de ${formatMinutesSexagesimal(safeTotal)}.`,
+    };
+  }
+
+  return {
+    valid: true,
+    assignedMinutes,
+    totalShiftMinutes: safeTotal,
+    remainingMinutes,
+  };
+}
+
+/**
+ * Guarda la regularización de salida real en Firestore y libera la sesión pendiente.
+ * Rechaza la operación si los minutos asignados en tareas superan totalMinutes del turno.
  */
 export async function regularizeAttendanceInFirestore(
   attendanceId: string,
@@ -208,9 +250,22 @@ export async function regularizeAttendanceInFirestore(
     totalMinutes: number;
     note?: string;
     exceeded12hAlert?: boolean;
+    allocations?: Array<{ taskId: string; minutes: number }>;
   }
-): Promise<boolean> {
-  if (!isFirebaseConfigured() || !db || !attendanceId) return true;
+): Promise<{ success: boolean; error?: string }> {
+  const safeTotalMinutes = Math.max(0, Math.round(payload.totalMinutes || 0));
+
+  if (payload.allocations && payload.allocations.length > 0) {
+    const check = validateShiftTimeDistribution(payload.allocations, safeTotalMinutes);
+    if (!check.valid) {
+      console.error('[attendanceService] Operación rechazada por exceso de capacidad:', check.error);
+      return { success: false, error: check.error };
+    }
+  }
+
+  if (!isFirebaseConfigured() || !db || !attendanceId) {
+    return { success: true };
+  }
 
   const checkOutIso = new Date(payload.checkOutMs).toISOString();
 
@@ -222,7 +277,7 @@ export async function regularizeAttendanceInFirestore(
           timestamp: checkOutIso,
           timestampMs: Math.round(payload.checkOutMs),
         },
-        totalMinutes: Math.max(0, Math.round(payload.totalMinutes || 0)),
+        totalMinutes: safeTotalMinutes,
         regularized: true,
         requiresRegularization: false,
         status: 'completed',
@@ -233,10 +288,13 @@ export async function regularizeAttendanceInFirestore(
       { merge: true }
     );
     trackFirestoreWrite(1);
-    return true;
-  } catch (err) {
+    return { success: true };
+  } catch (err: any) {
     console.warn('[attendanceService] Error al regularizar asistencia en Firestore:', err);
-    return false;
+    return {
+      success: false,
+      error: err?.message || 'Error al guardar la regularización en Firestore.',
+    };
   }
 }
 

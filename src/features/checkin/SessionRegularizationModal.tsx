@@ -5,8 +5,10 @@ import { useRayonerStore } from '../../store/useRayonerStore';
 import {
   formatMinutesSexagesimal,
   MAX_CONTINUOUS_SHIFT_MINUTES,
+  validateShiftTimeDistribution,
 } from '../../services/attendanceService';
 import { fetchTasksByAssignee, type TaskDocument } from '../../services/taskService';
+import { TimeDistributionBar } from './TimeDistributionBar';
 
 interface SessionRegularizationModalProps {
   isOpen: boolean;
@@ -37,6 +39,7 @@ export function SessionRegularizationModal({
   const [realCheckoutTime, setRealCheckoutTime] = useState('18:30');
   const [observationNote, setObservationNote] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [capWarning, setCapWarning] = useState('');
 
   // Tareas remotas del usuario en Firestore
   const [remoteTasks, setRemoteTasks] = useState<TaskDocument[]>([]);
@@ -82,6 +85,7 @@ export function SessionRegularizationModal({
       const mm = String(finalSuggested.getMinutes()).padStart(2, '0');
       setRealCheckoutTime(`${hh}:${mm}`);
       setAllocatedMinutes({});
+      setCapWarning('');
       setIsAddingExtraordinary(false);
     }
   }, [isOpen, pendingCheckin?.id, pendingCheckin?.checkInTimeMs]);
@@ -213,39 +217,103 @@ export function SessionRegularizationModal({
     return Array.from(map.values());
   }, [user?.id, tasks, assignments, remoteTasks, projects, clients]);
 
-  const totalAllocatedMinutes = useMemo(() => {
+  const totalShiftMinutes = calculation.totalMinutes;
+
+  const assignedMinutes = useMemo(() => {
     return Object.values(allocatedMinutes).reduce(
       (acc, m) => acc + Math.max(0, Math.round(m || 0)),
       0
     );
   }, [allocatedMinutes]);
 
-  const remainingMinutes = calculation.totalMinutes - totalAllocatedMinutes;
+  const remainingMinutes = totalShiftMinutes - assignedMinutes;
+  const isOverflow = assignedMinutes > totalShiftMinutes;
+  const isFullDistributed = remainingMinutes <= 0;
+
+  // Cerrar formulario extraordinario automáticamente si el disponible llega a 0h 00m
+  useEffect(() => {
+    if (isFullDistributed && isAddingExtraordinary) {
+      setIsAddingExtraordinary(false);
+    }
+  }, [isFullDistributed, isAddingExtraordinary]);
+
+  const distributionSegments = useMemo(() => {
+    return userTasks
+      .map((t) => ({
+        id: t.id,
+        label: t.title,
+        minutes: allocatedMinutes[t.id] || 0,
+      }))
+      .filter((s) => s.minutes > 0);
+  }, [userTasks, allocatedMinutes]);
 
   if (!isOpen || !pendingCheckin) return null;
 
-  const handleUpdateTaskTime = (taskId: string, hours: number, minutes: number) => {
-    const safeH = Math.max(0, Math.min(12, Math.floor(hours || 0)));
-    const safeM = Math.max(0, Math.min(59, Math.floor(minutes || 0)));
+  // Hard Cap matemático por tarea: maxAllowedForTask_i = totalShiftMinutes - sum_{j != i} taskMinutes_j
+  const handleUpdateTaskTime = (taskId: string, rawHours: number, rawMinutes: number) => {
+    const safeH = Math.max(0, Math.floor(rawHours || 0));
+    const safeM = Math.max(0, Math.min(59, Math.floor(rawMinutes || 0)));
+    const requestedMinutes = safeH * 60 + safeM;
+
+    const otherTasksMinutes = Object.entries(allocatedMinutes).reduce(
+      (acc, [id, mins]) => (id === taskId ? acc : acc + Math.max(0, Math.round(mins || 0))),
+      0
+    );
+    const maxAllowedForTask = Math.max(0, totalShiftMinutes - otherTasksMinutes);
+
+    if (requestedMinutes > maxAllowedForTask) {
+      setAllocatedMinutes((prev) => ({
+        ...prev,
+        [taskId]: maxAllowedForTask,
+      }));
+      setCapWarning(
+        `Tope de jornada alcanzado: el máximo disponible para esta actividad es ${formatMinutesSexagesimal(
+          maxAllowedForTask
+        )} (duración calculada: ${formatMinutesSexagesimal(totalShiftMinutes)}).`
+      );
+      return;
+    }
+
+    setCapWarning('');
     setAllocatedMinutes((prev) => ({
       ...prev,
-      [taskId]: safeH * 60 + safeM,
+      [taskId]: requestedMinutes,
     }));
+  };
+
+  const handleExtraTimeChange = (rawH: number, rawM: number) => {
+    const safeH = Math.max(0, Math.floor(rawH || 0));
+    const safeM = Math.max(0, Math.min(59, Math.floor(rawM || 0)));
+    const req = safeH * 60 + safeM;
+    const clamped = Math.min(req, Math.max(0, remainingMinutes));
+    if (req > Math.max(0, remainingMinutes)) {
+      setCapWarning(
+        `No puedes asignar más del tiempo disponible (${formatMinutesSexagesimal(
+          Math.max(0, remainingMinutes)
+        )}).`
+      );
+    } else {
+      setCapWarning('');
+    }
+    setExtraHours(Math.floor(clamped / 60));
+    setExtraMinutes(clamped % 60);
   };
 
   const handleCreateExtraordinary = (e: React.FormEvent) => {
     e.preventDefault();
+    if (remainingMinutes <= 0) {
+      addToast('Has distribuido el 100% de tu jornada.', 'info');
+      return;
+    }
     if (!extraTitle.trim()) {
       addToast('Escribe el nombre de la tarea extraordinaria.', 'error');
       return;
     }
     if (!user?.id) return;
 
-    const totalExtraMins = Math.max(
-      0,
-      Math.min(12, extraHours) * 60 + Math.min(59, extraMinutes)
-    );
-    const plannedHours = Math.max(0.25, Number((totalExtraMins / 60).toFixed(2)));
+    const requestedExtraMins = Math.max(0, extraHours * 60 + extraMinutes);
+    const clampedExtraMins = Math.min(requestedExtraMins, Math.max(0, remainingMinutes));
+    const plannedHours = Math.max(0.25, Number((clampedExtraMins / 60).toFixed(2)));
 
     const newTaskId = addExtraordinaryTask({
       name: extraTitle.trim(),
@@ -256,10 +324,10 @@ export function SessionRegularizationModal({
       userName: `${user.name} ${user.lastName || ''}`.trim() || user.email,
     });
 
-    if (totalExtraMins > 0) {
+    if (clampedExtraMins > 0) {
       setAllocatedMinutes((prev) => ({
         ...prev,
-        [newTaskId]: totalExtraMins,
+        [newTaskId]: clampedExtraMins,
       }));
     }
 
@@ -267,6 +335,7 @@ export function SessionRegularizationModal({
     setExtraTitle('');
     setExtraHours(0);
     setExtraMinutes(0);
+    setCapWarning('');
     setIsAddingExtraordinary(false);
   };
 
@@ -276,12 +345,26 @@ export function SessionRegularizationModal({
       return;
     }
 
+    const allocations = Object.entries(allocatedMinutes)
+      .filter(([, mins]) => mins > 0)
+      .map(([taskId, minutes]) => ({ taskId, minutes: Math.round(minutes) }));
+
+    const validation = validateShiftTimeDistribution(allocations, totalShiftMinutes);
+    if (!validation.valid) {
+      setCapWarning(
+        validation.error ||
+          'El tiempo asignado excede la duración calculada de tu jornada.'
+      );
+      addToast(
+        validation.error ||
+          'El tiempo asignado excede la duración calculada de tu jornada.',
+        'error'
+      );
+      return;
+    }
+
     setIsSubmitting(true);
     try {
-      const allocations = Object.entries(allocatedMinutes)
-        .filter(([, mins]) => mins > 0)
-        .map(([taskId, minutes]) => ({ taskId, minutes: Math.round(minutes) }));
-
       await onConfirm({
         realCheckoutTimeStr: realCheckoutTime,
         note: observationNote.trim(),
@@ -300,7 +383,7 @@ export function SessionRegularizationModal({
       aria-modal="true"
       aria-labelledby="regularization-modal-title"
     >
-      <div className="w-full max-w-2xl bg-[#101726] text-slate-200 border border-slate-800 p-6 shadow-2xl space-y-6">
+      <div className="w-full max-w-2xl bg-[#101726] text-slate-200 border border-slate-800 p-6 shadow-2xl space-y-5">
         {/* Encabezado y Aviso Obligatorio */}
         <div className="border-b border-slate-800 pb-4">
           <div className="text-xs font-mono uppercase tracking-wider text-amber-400 mb-1">
@@ -337,7 +420,10 @@ export function SessionRegularizationModal({
               id="regularization-checkout-time"
               type="time"
               value={realCheckoutTime}
-              onChange={(e) => setRealCheckoutTime(e.target.value)}
+              onChange={(e) => {
+                setRealCheckoutTime(e.target.value);
+                setCapWarning('');
+              }}
               className="bg-[#101726] text-slate-100 font-mono text-sm border border-slate-700 px-3 py-1.5 focus:outline-none focus:border-blue-600"
             />
           </div>
@@ -356,10 +442,33 @@ export function SessionRegularizationModal({
           </div>
         </div>
 
-        {/* Validación / Alerta si supera las 12 horas reglamentarias */}
+        {/* Barra Visual Segmentada de Distribución de Jornada */}
+        {calculation.isValid && (
+          <TimeDistributionBar
+            totalShiftMinutes={totalShiftMinutes}
+            segments={distributionSegments}
+            variant="dark"
+          />
+        )}
+
+        {/* Validaciones / Alertas inline */}
         {!calculation.isValid && calculation.error && (
           <div className="text-xs font-medium text-rose-400 bg-rose-950/30 border border-rose-900/60 px-3.5 py-2.5">
             {calculation.error}
+          </div>
+        )}
+
+        {isOverflow && (
+          <div className="text-xs font-medium text-rose-400 bg-rose-950/30 border border-rose-900/60 px-3.5 py-2.5">
+            El tiempo asignado ({formatMinutesSexagesimal(assignedMinutes)}) excede la
+            duración calculada de tu jornada ({formatMinutesSexagesimal(totalShiftMinutes)}
+            ). Reduce los minutos asignados para poder guardar.
+          </div>
+        )}
+
+        {!isOverflow && capWarning && (
+          <div className="text-xs text-amber-300 bg-amber-950/30 border border-amber-900/60 px-3.5 py-2">
+            {capWarning}
           </div>
         )}
 
@@ -372,32 +481,45 @@ export function SessionRegularizationModal({
 
         {/* Gestión de Tareas de la Jornada */}
         <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-                Distribución de tiempo en actividades
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+              Distribución de tiempo en actividades
+            </span>
+
+            {isFullDistributed ? (
+              <span className="text-xs font-mono text-slate-400">
+                Has distribuido el 100% de tu jornada
               </span>
-              {totalAllocatedMinutes > 0 && (
-                <span className="text-[11px] font-mono text-slate-400">
-                  Asignado: {formatMinutesSexagesimal(totalAllocatedMinutes)}
-                </span>
-              )}
-            </div>
-            <button
-              type="button"
-              onClick={() => setIsAddingExtraordinary((v) => !v)}
-              className="text-xs font-medium text-sky-400 hover:text-sky-300 cursor-pointer"
-            >
-              {isAddingExtraordinary ? 'Cancelar' : '+ Crear Tarea Extraordinaria'}
-            </button>
+            ) : (
+              <button
+                type="button"
+                disabled={isFullDistributed || !calculation.isValid}
+                onClick={() => {
+                  const nextOpen = !isAddingExtraordinary;
+                  setIsAddingExtraordinary(nextOpen);
+                  if (nextOpen) {
+                    const rem = Math.max(0, remainingMinutes);
+                    setExtraHours(Math.floor(rem / 60));
+                    setExtraMinutes(rem % 60);
+                  }
+                }}
+                className="text-xs font-medium text-sky-400 hover:text-sky-300 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {isAddingExtraordinary ? 'Cancelar' : '+ Crear Tarea Extraordinaria'}
+              </button>
+            )}
           </div>
 
           {/* Mini-formulario integrado para tarea extraordinaria */}
-          {isAddingExtraordinary && (
+          {isAddingExtraordinary && !isFullDistributed && (
             <form
               onSubmit={handleCreateExtraordinary}
               className="bg-[#090E17] border border-slate-700 p-4 space-y-3"
             >
+              <div className="flex items-center justify-between text-[11px] font-mono text-slate-400">
+                <span>Nueva actividad extraordinaria</span>
+                <span>Máx. disponible: {formatMinutesSexagesimal(Math.max(0, remainingMinutes))}</span>
+              </div>
               <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-end">
                 <div className="sm:col-span-6">
                   <label className="text-[11px] uppercase tracking-wider text-slate-400 block mb-1">
@@ -419,10 +541,10 @@ export function SessionRegularizationModal({
                   <input
                     type="number"
                     min={0}
-                    max={12}
+                    max={Math.floor(Math.max(0, remainingMinutes) / 60)}
                     value={extraHours}
                     onChange={(e) =>
-                      setExtraHours(Math.max(0, Math.min(12, Number(e.target.value) || 0)))
+                      handleExtraTimeChange(Number(e.target.value), extraMinutes)
                     }
                     className="w-full bg-[#101726] font-mono text-xs text-center text-slate-100 border border-slate-700 px-2 py-1.5 focus:outline-none focus:border-blue-600"
                   />
@@ -437,7 +559,7 @@ export function SessionRegularizationModal({
                     max={59}
                     value={extraMinutes}
                     onChange={(e) =>
-                      setExtraMinutes(Math.max(0, Math.min(59, Number(e.target.value) || 0)))
+                      handleExtraTimeChange(extraHours, Number(e.target.value))
                     }
                     className="w-full bg-[#101726] font-mono text-xs text-center text-slate-100 border border-slate-700 px-2 py-1.5 focus:outline-none focus:border-blue-600"
                   />
@@ -466,6 +588,7 @@ export function SessionRegularizationModal({
                 const mins = allocatedMinutes[task.id] || 0;
                 const h = Math.floor(mins / 60);
                 const m = mins % 60;
+                const maxForThisTask = Math.max(0, remainingMinutes + mins);
 
                 return (
                   <div
@@ -484,7 +607,7 @@ export function SessionRegularizationModal({
                         <input
                           type="number"
                           min={0}
-                          max={12}
+                          max={Math.floor(maxForThisTask / 60)}
                           value={h}
                           onChange={(e) =>
                             handleUpdateTaskTime(task.id, Number(e.target.value), m)
@@ -513,12 +636,13 @@ export function SessionRegularizationModal({
                       {remainingMinutes > 0 && (
                         <button
                           type="button"
-                          onClick={() =>
+                          onClick={() => {
+                            setCapWarning('');
                             setAllocatedMinutes((prev) => ({
                               ...prev,
                               [task.id]: (prev[task.id] || 0) + remainingMinutes,
-                            }))
-                          }
+                            }));
+                          }}
                           className="px-2 py-1 text-[11px] font-medium text-sky-400 border border-slate-700 hover:bg-slate-800 cursor-pointer"
                         >
                           + Resto
@@ -557,9 +681,9 @@ export function SessionRegularizationModal({
           </span>
           <button
             type="button"
-            disabled={!calculation.isValid || isSubmitting}
+            disabled={!calculation.isValid || isOverflow || isSubmitting}
             onClick={() => void handleSubmit()}
-            className="px-4 py-2 text-xs font-semibold bg-blue-700 hover:bg-blue-600 text-white transition cursor-pointer disabled:opacity-50"
+            className="px-4 py-2 text-xs font-semibold bg-blue-700 hover:bg-blue-600 text-white transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {isSubmitting ? 'Guardando cierre...' : 'Confirmar Salida y Regularizar Jornada'}
           </button>

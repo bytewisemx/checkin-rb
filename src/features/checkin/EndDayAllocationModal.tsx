@@ -1,8 +1,16 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useRayonerStore } from '../../store/useRayonerStore';
 import { useCheckinStore } from '../../store/useCheckinStore';
-import { formatMinutesSexagesimal } from '../../services/attendanceService';
-import { fetchTasksByAssignee, updateTaskProgressInFirestore, type TaskDocument } from '../../services/taskService';
+import {
+  formatMinutesSexagesimal,
+  validateShiftTimeDistribution,
+} from '../../services/attendanceService';
+import {
+  fetchTasksByAssignee,
+  commitShiftTaskAllocationsToFirestore,
+  type TaskDocument,
+} from '../../services/taskService';
+import { TimeDistributionBar } from './TimeDistributionBar';
 
 interface EndDayAllocationModalProps {
   isOpen: boolean;
@@ -34,6 +42,7 @@ export function EndDayAllocationModal({
     projects,
     tasks,
     assignments,
+    taskActualHours,
     addExtraordinaryTask,
   } = useRayonerStore();
 
@@ -46,14 +55,16 @@ export function EndDayAllocationModal({
 
   // Minutos enteros asignados por tarea: taskId -> minutos enteros
   const [allocatedMinutes, setAllocatedMinutes] = useState<Record<string, number>>({});
+  const [capWarning, setCapWarning] = useState<string>('');
+  const [isSaving, setIsSaving] = useState(false);
 
   // Subformulario compacto para registrar tarea extraordinaria
   const [isAddingExtraordinary, setIsAddingExtraordinary] = useState(false);
   const [extraTitle, setExtraTitle] = useState('');
   const [extraHours, setExtraHours] = useState<number>(0);
-  const [extraMinutes, setExtraMinutes] = useState<number>(30);
+  const [extraMinutes, setExtraMinutes] = useState<number>(0);
 
-  const totalDayMinutes = useMemo(() => {
+  const totalShiftMinutes = useMemo(() => {
     return Math.max(0, Math.round(workedDurationMinutes || 0));
   }, [workedDurationMinutes]);
 
@@ -131,38 +142,83 @@ export function EndDayAllocationModal({
     if (isOpen) {
       const initial: Record<string, number> = {};
       if (activeTaskId && availableTasks.some((t) => t.id === activeTaskId)) {
-        initial[activeTaskId] = totalDayMinutes;
+        initial[activeTaskId] = totalShiftMinutes;
       }
       setAllocatedMinutes(initial);
+      setCapWarning('');
       setIsAddingExtraordinary(false);
       setExtraTitle('');
-      setExtraHours(Math.floor(totalDayMinutes / 60));
-      setExtraMinutes(totalDayMinutes % 60);
+      const initialRem = activeTaskId && initial[activeTaskId] ? 0 : totalShiftMinutes;
+      setExtraHours(Math.floor(initialRem / 60));
+      setExtraMinutes(initialRem % 60);
     }
-  }, [isOpen, activeTaskId, totalDayMinutes]);
+  }, [isOpen, activeTaskId, totalShiftMinutes]);
 
-  const sumAllocatedMinutes = useMemo(() => {
+  const assignedMinutes = useMemo(() => {
     return Object.values(allocatedMinutes).reduce(
       (acc, m) => acc + Math.max(0, Math.round(m || 0)),
       0
     );
   }, [allocatedMinutes]);
 
-  const remainingMinutes = totalDayMinutes - sumAllocatedMinutes;
+  const remainingMinutes = totalShiftMinutes - assignedMinutes;
+  const isOverflow = assignedMinutes > totalShiftMinutes;
+  const isFullDistributed = remainingMinutes <= 0;
+
+  // Cerrar formulario extraordinario automáticamente si el disponible llega a 0h 00m
+  useEffect(() => {
+    if (isFullDistributed && isAddingExtraordinary) {
+      setIsAddingExtraordinary(false);
+    }
+  }, [isFullDistributed, isAddingExtraordinary]);
+
+  const distributionSegments = useMemo(() => {
+    return availableTasks
+      .map((t) => ({
+        id: t.id,
+        label: t.title,
+        minutes: allocatedMinutes[t.id] || 0,
+      }))
+      .filter((s) => s.minutes > 0);
+  }, [availableTasks, allocatedMinutes]);
 
   if (!isOpen) return null;
 
-  const handleUpdateTaskTime = (taskId: string, hours: number, minutes: number) => {
-    const safeH = Math.max(0, Math.min(12, Math.floor(hours || 0)));
-    const safeM = Math.max(0, Math.min(59, Math.floor(minutes || 0)));
+  // Hard Cap matemático por tarea: maxAllowedForTask_i = totalShiftMinutes - sum_{j != i} taskMinutes_j
+  const handleUpdateTaskTime = (taskId: string, rawHours: number, rawMinutes: number) => {
+    const safeH = Math.max(0, Math.floor(rawHours || 0));
+    const safeM = Math.max(0, Math.min(59, Math.floor(rawMinutes || 0)));
+    const requestedMinutes = safeH * 60 + safeM;
+
+    const otherTasksMinutes = Object.entries(allocatedMinutes).reduce(
+      (acc, [id, mins]) => (id === taskId ? acc : acc + Math.max(0, Math.round(mins || 0))),
+      0
+    );
+    const maxAllowedForTask = Math.max(0, totalShiftMinutes - otherTasksMinutes);
+
+    if (requestedMinutes > maxAllowedForTask) {
+      setAllocatedMinutes((prev) => ({
+        ...prev,
+        [taskId]: maxAllowedForTask,
+      }));
+      setCapWarning(
+        `Tope de jornada alcanzado: el máximo disponible para esta actividad es ${formatMinutesSexagesimal(
+          maxAllowedForTask
+        )} (jornada total: ${formatMinutesSexagesimal(totalShiftMinutes)}).`
+      );
+      return;
+    }
+
+    setCapWarning('');
     setAllocatedMinutes((prev) => ({
       ...prev,
-      [taskId]: safeH * 60 + safeM,
+      [taskId]: requestedMinutes,
     }));
   };
 
   const handleAssignRemaining = (taskId: string) => {
     if (remainingMinutes <= 0) return;
+    setCapWarning('');
     const current = allocatedMinutes[taskId] || 0;
     setAllocatedMinutes((prev) => ({
       ...prev,
@@ -170,16 +226,39 @@ export function EndDayAllocationModal({
     }));
   };
 
+  const handleExtraTimeChange = (rawH: number, rawM: number) => {
+    const safeH = Math.max(0, Math.floor(rawH || 0));
+    const safeM = Math.max(0, Math.min(59, Math.floor(rawM || 0)));
+    const req = safeH * 60 + safeM;
+    const clamped = Math.min(req, Math.max(0, remainingMinutes));
+    if (req > Math.max(0, remainingMinutes)) {
+      setCapWarning(
+        `No puedes asignar más del tiempo disponible (${formatMinutesSexagesimal(
+          Math.max(0, remainingMinutes)
+        )}).`
+      );
+    } else {
+      setCapWarning('');
+    }
+    setExtraHours(Math.floor(clamped / 60));
+    setExtraMinutes(clamped % 60);
+  };
+
   const handleCreateExtraordinary = (e: React.FormEvent) => {
     e.preventDefault();
+    if (remainingMinutes <= 0) {
+      addToast('Has distribuido el 100% de tu jornada.', 'info');
+      return;
+    }
     if (!extraTitle.trim()) {
       addToast('Ingresa el título de la tarea extraordinaria.', 'error');
       return;
     }
     if (!user?.id) return;
 
-    const totalExtraMins = Math.max(0, Math.min(12, extraHours) * 60 + Math.min(59, extraMinutes));
-    const plannedHours = Math.max(0.25, Number((totalExtraMins / 60).toFixed(2)));
+    const requestedExtraMins = Math.max(0, extraHours * 60 + extraMinutes);
+    const clampedExtraMins = Math.min(requestedExtraMins, Math.max(0, remainingMinutes));
+    const plannedHours = Math.max(0.25, Number((clampedExtraMins / 60).toFixed(2)));
 
     const newTaskId = addExtraordinaryTask({
       name: extraTitle.trim(),
@@ -190,10 +269,10 @@ export function EndDayAllocationModal({
       userName: `${user.name} ${user.lastName || ''}`.trim() || user.email,
     });
 
-    if (totalExtraMins > 0) {
+    if (clampedExtraMins > 0) {
       setAllocatedMinutes((prev) => ({
         ...prev,
-        [newTaskId]: totalExtraMins,
+        [newTaskId]: clampedExtraMins,
       }));
     }
 
@@ -201,34 +280,61 @@ export function EndDayAllocationModal({
     setExtraTitle('');
     setExtraHours(0);
     setExtraMinutes(0);
+    setCapWarning('');
     setIsAddingExtraordinary(false);
   };
 
-  const handleConfirm = () => {
-    const entries = Object.entries(allocatedMinutes).filter(([, mins]) => mins > 0);
+  const handleConfirm = async () => {
+    const entries = Object.entries(allocatedMinutes)
+      .filter(([, mins]) => mins > 0)
+      .map(([taskId, minutes]) => ({ taskId, minutes: Math.round(minutes) }));
+
+    // Validación matemática estricta antes de guardar
+    const validation = validateShiftTimeDistribution(entries, totalShiftMinutes);
+    if (!validation.valid) {
+      setCapWarning(validation.error || 'El tiempo distribuido excede tu jornada.');
+      addToast(validation.error || 'El tiempo distribuido excede tu jornada.', 'error');
+      return;
+    }
 
     if (entries.length === 0) {
       onCloseAsGeneral();
       return;
     }
 
-    // Actualizar minutos enteros en Firestore para cada tarea imputada
-    entries.forEach(([taskId, mins]) => {
-      void updateTaskProgressInFirestore(taskId, {
-        loggedMinutes: Math.max(0, Math.round(mins)),
-      });
-    });
+    setIsSaving(true);
+    try {
+      const commitRes = await commitShiftTaskAllocationsToFirestore(
+        entries.map((e) => ({
+          taskId: e.taskId,
+          minutes: e.minutes,
+          cumulativeMinutes: Math.max(
+            0,
+            Math.round((taskActualHours[e.taskId] || 0) * 60) + e.minutes
+          ),
+        })),
+        totalShiftMinutes
+      );
 
-    const allocationsInHours = entries.map(([taskId, mins]) => ({
-      taskId,
-      hours: Number((mins / 60).toFixed(4)),
-    }));
-    onConfirmCloseDay(allocationsInHours);
+      if (!commitRes.success) {
+        setCapWarning(commitRes.error || 'No se pudo guardar la distribución de tiempo.');
+        addToast(commitRes.error || 'Error al guardar tiempos de tareas.', 'error');
+        return;
+      }
+
+      const allocationsInHours = entries.map((e) => ({
+        taskId: e.taskId,
+        hours: Number((e.minutes / 60).toFixed(4)),
+      }));
+      onConfirmCloseDay(allocationsInHours);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
     <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/80 backdrop-blur-xs p-4 overflow-y-auto">
-      <div className="w-full max-w-2xl bg-white dark:bg-[#101726] text-slate-900 dark:text-slate-200 border border-slate-200 dark:border-slate-800 p-6 shadow-2xl space-y-6">
+      <div className="w-full max-w-2xl bg-white dark:bg-[#101726] text-slate-900 dark:text-slate-200 border border-slate-200 dark:border-slate-800 p-6 shadow-2xl space-y-5">
         {/* Encabezado */}
         <div className="flex items-start justify-between border-b border-slate-200 dark:border-slate-800 pb-4">
           <div>
@@ -239,7 +345,7 @@ export function EndDayAllocationModal({
               Registro de Salida y Distribución de Tiempo
             </h3>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-              Asigna el tiempo trabajado a tus actividades del día o registra una tarea extraordinaria si lo requieres.
+              Distribuye el tiempo laborado entre tus actividades del día sin exceder tu jornada real ({formatMinutesSexagesimal(totalShiftMinutes)}).
             </p>
           </div>
           <button
@@ -251,65 +357,66 @@ export function EndDayAllocationModal({
           </button>
         </div>
 
-        {/* Barra de resumen en formato sexagesimal Xh Ym */}
-        <div className="grid grid-cols-3 gap-4 bg-slate-50 dark:bg-[#090E17] p-4 border border-slate-200 dark:border-slate-800">
-          <div>
-            <span className="text-[11px] uppercase tracking-wider text-slate-500 dark:text-slate-400 block">
-              Jornada Total
-            </span>
-            <span className="text-xl font-bold font-['Space_Grotesk'] text-slate-900 dark:text-white">
-              {formatMinutesSexagesimal(totalDayMinutes)}
-            </span>
+        {/* Barra Visual Segmentada de Distribución de Jornada */}
+        <TimeDistributionBar
+          totalShiftMinutes={totalShiftMinutes}
+          segments={distributionSegments}
+          variant="adaptive"
+        />
+
+        {/* Aviso inline cuando se intenta rebasar la capacidad de la jornada */}
+        {capWarning && (
+          <div className="text-xs font-medium text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/60 px-3.5 py-2">
+            {capWarning}
           </div>
-          <div>
-            <span className="text-[11px] uppercase tracking-wider text-slate-500 dark:text-slate-400 block">
-              Tiempo Asignado
-            </span>
-            <span className="text-xl font-bold font-['Space_Grotesk'] text-blue-700 dark:text-sky-400">
-              {formatMinutesSexagesimal(sumAllocatedMinutes)}
-            </span>
-          </div>
-          <div className="text-right">
-            <span className="text-[11px] uppercase tracking-wider text-slate-500 dark:text-slate-400 block">
-              {remainingMinutes >= 0 ? 'Sin Asignar' : 'Excedente'}
-            </span>
-            <span
-              className={`text-xl font-bold font-['Space_Grotesk'] ${
-                remainingMinutes < 0
-                  ? 'text-rose-600 dark:text-rose-400'
-                  : 'text-slate-700 dark:text-slate-300'
-              }`}
-            >
-              {formatMinutesSexagesimal(Math.abs(remainingMinutes))}
-            </span>
-          </div>
-        </div>
+        )}
 
         {/* Encabezado de Actividades + Acción Rápida */}
         <div className="space-y-3">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-wrap items-center justify-between gap-2">
             <span className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
               Actividades de la jornada ({availableTasks.length})
             </span>
-            <button
-              type="button"
-              onClick={() => setIsAddingExtraordinary((v) => !v)}
-              className="text-xs font-semibold text-blue-700 dark:text-sky-400 hover:underline cursor-pointer"
-            >
-              {isAddingExtraordinary
-                ? 'Cancelar registro'
-                : '+ Registrar Tarea Extraordinaria'}
-            </button>
+
+            {isFullDistributed ? (
+              <span className="text-xs font-mono text-slate-500 dark:text-slate-400">
+                Has distribuido el 100% de tu jornada
+              </span>
+            ) : (
+              <button
+                type="button"
+                disabled={isFullDistributed}
+                onClick={() => {
+                  const nextOpen = !isAddingExtraordinary;
+                  setIsAddingExtraordinary(nextOpen);
+                  if (nextOpen) {
+                    const rem = Math.max(0, remainingMinutes);
+                    setExtraHours(Math.floor(rem / 60));
+                    setExtraMinutes(rem % 60);
+                  }
+                }}
+                className="text-xs font-semibold text-blue-700 dark:text-sky-400 hover:underline cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {isAddingExtraordinary
+                  ? 'Cancelar registro'
+                  : '+ Registrar Tarea Extraordinaria'}
+              </button>
+            )}
           </div>
 
           {/* Formulario compacto para crear tarea extraordinaria */}
-          {isAddingExtraordinary && (
+          {isAddingExtraordinary && !isFullDistributed && (
             <form
               onSubmit={handleCreateExtraordinary}
               className="bg-slate-50 dark:bg-[#090E17] border border-slate-200 dark:border-slate-700 p-4 space-y-3"
             >
-              <div className="text-xs font-semibold text-slate-800 dark:text-slate-200">
-                Nueva Actividad Extraordinaria (Sin proyecto asignado)
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-slate-800 dark:text-slate-200">
+                  Nueva Actividad Extraordinaria (Sin proyecto asignado)
+                </span>
+                <span className="text-[11px] font-mono text-slate-500">
+                  Máx. disponible: {formatMinutesSexagesimal(Math.max(0, remainingMinutes))}
+                </span>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-end">
                 <div className="sm:col-span-6">
@@ -332,9 +439,11 @@ export function EndDayAllocationModal({
                   <input
                     type="number"
                     min={0}
-                    max={12}
+                    max={Math.floor(Math.max(0, remainingMinutes) / 60)}
                     value={extraHours}
-                    onChange={(e) => setExtraHours(Math.max(0, Math.min(12, Number(e.target.value) || 0)))}
+                    onChange={(e) =>
+                      handleExtraTimeChange(Number(e.target.value), extraMinutes)
+                    }
                     className="w-full bg-white dark:bg-[#101726] font-mono text-xs text-slate-900 dark:text-slate-100 border border-slate-300 dark:border-slate-700 px-2.5 py-2 text-center focus:outline-none focus:border-blue-600"
                   />
                 </div>
@@ -347,7 +456,9 @@ export function EndDayAllocationModal({
                     min={0}
                     max={59}
                     value={extraMinutes}
-                    onChange={(e) => setExtraMinutes(Math.max(0, Math.min(59, Number(e.target.value) || 0)))}
+                    onChange={(e) =>
+                      handleExtraTimeChange(extraHours, Number(e.target.value))
+                    }
                     className="w-full bg-white dark:bg-[#101726] font-mono text-xs text-slate-900 dark:text-slate-100 border border-slate-300 dark:border-slate-700 px-2.5 py-2 text-center focus:outline-none focus:border-blue-600"
                   />
                 </div>
@@ -383,6 +494,7 @@ export function EndDayAllocationModal({
                 const mins = allocatedMinutes[task.id] || 0;
                 const h = Math.floor(mins / 60);
                 const m = mins % 60;
+                const maxForThisTask = Math.max(0, remainingMinutes + mins);
 
                 return (
                   <div
@@ -403,7 +515,7 @@ export function EndDayAllocationModal({
                         <input
                           type="number"
                           min={0}
-                          max={12}
+                          max={Math.floor(maxForThisTask / 60)}
                           value={h}
                           onChange={(e) =>
                             handleUpdateTaskTime(task.id, Number(e.target.value), m)
@@ -452,7 +564,8 @@ export function EndDayAllocationModal({
           <button
             type="button"
             onClick={onCloseAsGeneral}
-            className="text-xs font-medium text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 cursor-pointer"
+            disabled={isSaving}
+            className="text-xs font-medium text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 cursor-pointer disabled:opacity-50"
           >
             Confirmar salida con 0 tareas (Jornada General)
           </button>
@@ -461,17 +574,21 @@ export function EndDayAllocationModal({
             <button
               type="button"
               onClick={onClose}
+              disabled={isSaving}
               className="px-3.5 py-2 text-xs font-medium text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer"
             >
               Volver
             </button>
             <button
               type="button"
-              onClick={handleConfirm}
-              className="px-4 py-2 text-xs font-semibold bg-blue-700 hover:bg-blue-600 text-white transition cursor-pointer"
+              disabled={isOverflow || isSaving}
+              onClick={() => void handleConfirm()}
+              className="px-4 py-2 text-xs font-semibold bg-blue-700 hover:bg-blue-600 text-white transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {sumAllocatedMinutes > 0
-                ? `Confirmar Salida (${formatMinutesSexagesimal(sumAllocatedMinutes)})`
+              {isSaving
+                ? 'Guardando...'
+                : assignedMinutes > 0
+                ? `Confirmar Salida (${formatMinutesSexagesimal(assignedMinutes)})`
                 : 'Confirmar Salida'}
             </button>
           </div>
