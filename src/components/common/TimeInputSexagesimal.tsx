@@ -43,9 +43,9 @@ export const TimeInputSexagesimal: React.FC<TimeInputSexagesimalProps> = ({
   };
 
   return (
-    <div className={`space-y-1 ${className}`}>
+    <div className={`space-y-1.5 ${className}`}>
       {label && (
-        <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase">
+        <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
           {label}
         </label>
       )}
@@ -58,15 +58,15 @@ export const TimeInputSexagesimal: React.FC<TimeInputSexagesimalProps> = ({
             disabled={disabled}
             value={currentHours}
             onChange={handleHoursChange}
-            className="w-full bg-white dark:bg-[#0B111E] border border-slate-300 dark:border-slate-700 rounded-lg px-2.5 py-1.5 text-xs font-mono font-bold text-slate-900 dark:text-slate-100 text-right focus:outline-none focus:border-blue-600 dark:focus:border-sky-400"
+            className="w-full bg-white dark:bg-[#0D1320] border border-slate-300 dark:border-slate-700/60 rounded-md px-3 py-2 text-sm font-semibold tabular-nums text-slate-900 dark:text-slate-100 text-right focus:outline-none focus:border-[#1E3A8A] transition-colors"
             placeholder="0"
           />
-          <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400 pointer-events-none">
+          <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs font-semibold text-slate-400 pointer-events-none">
             h
           </span>
         </div>
 
-        <span className="text-slate-400 font-bold">:</span>
+        <span className="text-slate-400 font-semibold">:</span>
 
         <div className="flex-1 relative">
           <input
@@ -77,10 +77,10 @@ export const TimeInputSexagesimal: React.FC<TimeInputSexagesimalProps> = ({
             disabled={disabled}
             value={currentMinutes.toString().padStart(2, '0')}
             onChange={handleMinutesChange}
-            className="w-full bg-white dark:bg-[#0B111E] border border-slate-300 dark:border-slate-700 rounded-lg px-2.5 py-1.5 text-xs font-mono font-bold text-slate-900 dark:text-slate-100 text-right focus:outline-none focus:border-blue-600 dark:focus:border-sky-400"
+            className="w-full bg-white dark:bg-[#0D1320] border border-slate-300 dark:border-slate-700/60 rounded-md px-3 py-2 text-sm font-semibold tabular-nums text-slate-900 dark:text-slate-100 text-right focus:outline-none focus:border-[#1E3A8A] transition-colors"
             placeholder="00"
           />
-          <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400 pointer-events-none">
+          <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs font-semibold text-slate-400 pointer-events-none">
             m
           </span>
         </div>

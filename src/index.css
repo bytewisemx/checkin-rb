@@ -274,6 +274,14 @@ html.dark {
     color: #F8FAFC;
   }
 
+  /* Erradicación global de fuentes monospace de máquina de escribir en favor de Plus Jakarta Sans / Inter con tabular-nums */
+  .font-mono,
+  code:not(pre code),
+  kbd {
+    font-family: 'Plus Jakarta Sans', 'Inter', system-ui, -apple-system, sans-serif !important;
+    font-variant-numeric: tabular-nums !important;
+  }
+
   input[type="text"]::placeholder,
   input[type="email"]::placeholder,
   input[type="password"]::placeholder,
@@ -289,8 +297,8 @@ html.dark {
   select:focus,
   textarea:focus {
     outline: none;
-    border-color: var(--primary-glow);
-    box-shadow: 0 0 0 1px var(--primary-glow);
+    border-color: #1E3A8A !important;
+    box-shadow: 0 0 0 1px #1E3A8A !important;
   }
 
   ::-webkit-scrollbar {

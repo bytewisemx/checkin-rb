@@ -389,13 +389,13 @@ export function CreateCompanyModal({
               </div>
 
               {/* Sección 1 — Identificación y Datos Fiscales */}
-              <div className="space-y-3">
-                <div className="text-[11px] font-mono uppercase tracking-wider text-slate-500 dark:text-slate-400">
+              <div className="space-y-4">
+                <div className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
                   Sección 1 · Identificación y Datos Fiscales
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="sm:col-span-2">
-                    <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1">
+                    <label className="block text-[13px] font-medium text-slate-700 dark:text-slate-300 mb-1.5">
                       Razón Social *
                     </label>
                     <input
@@ -405,12 +405,12 @@ export function CreateCompanyModal({
                       value={name}
                       onChange={(e) => handleNameChange(e.target.value)}
                       placeholder="Ej. Corporativo Industrial del Centro S.A. de C.V."
-                      className="w-full bg-slate-50 dark:bg-[#090E17] text-slate-900 dark:text-slate-100 border border-slate-300 dark:border-slate-700 px-3 py-2 text-sm focus:outline-none focus:border-blue-600"
+                      className="w-full bg-white dark:bg-[#0D1320] text-slate-900 dark:text-slate-100 border border-slate-300 dark:border-slate-700/60 rounded-md py-2.5 px-3.5 text-sm focus:outline-none focus:border-[#1E3A8A] transition-colors"
                     />
                   </div>
 
                   <div>
-                    <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1">
+                    <label className="block text-[13px] font-medium text-slate-700 dark:text-slate-300 mb-1.5">
                       Nombre Comercial
                     </label>
                     <input
@@ -418,12 +418,12 @@ export function CreateCompanyModal({
                       value={commercialName}
                       onChange={(e) => setCommercialName(e.target.value)}
                       placeholder="Ej. Grupo Industrial CIC"
-                      className="w-full bg-slate-50 dark:bg-[#090E17] text-slate-900 dark:text-slate-100 border border-slate-300 dark:border-slate-700 px-3 py-2 text-sm focus:outline-none focus:border-blue-600"
+                      className="w-full bg-white dark:bg-[#0D1320] text-slate-900 dark:text-slate-100 border border-slate-300 dark:border-slate-700/60 rounded-md py-2.5 px-3.5 text-sm focus:outline-none focus:border-[#1E3A8A] transition-colors"
                     />
                   </div>
 
                   <div>
-                    <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1">
+                    <label className="block text-[13px] font-medium text-slate-700 dark:text-slate-300 mb-1.5">
                       Clave Interna *
                     </label>
                     <input
@@ -435,12 +435,12 @@ export function CreateCompanyModal({
                         setCode(e.target.value.toUpperCase());
                       }}
                       placeholder="CIC-2026-01"
-                      className="w-full bg-slate-50 dark:bg-[#090E17] text-slate-900 dark:text-slate-100 font-mono border border-slate-300 dark:border-slate-700 px-3 py-2 text-sm uppercase focus:outline-none focus:border-blue-600"
+                      className="w-full bg-white dark:bg-[#0D1320] text-slate-900 dark:text-slate-100 tabular-nums border border-slate-300 dark:border-slate-700/60 rounded-md py-2.5 px-3.5 text-sm uppercase focus:outline-none focus:border-[#1E3A8A] transition-colors"
                     />
                   </div>
 
                   <div>
-                    <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1">
+                    <label className="block text-[13px] font-medium text-slate-700 dark:text-slate-300 mb-1.5">
                       RFC / ID Fiscal
                     </label>
                     <input
@@ -449,12 +449,12 @@ export function CreateCompanyModal({
                       value={taxId}
                       onChange={(e) => setTaxId(e.target.value.toUpperCase())}
                       placeholder="CIC200101ABC"
-                      className="w-full bg-slate-50 dark:bg-[#090E17] text-slate-900 dark:text-slate-100 font-mono border border-slate-300 dark:border-slate-700 px-3 py-2 text-sm uppercase focus:outline-none focus:border-blue-600"
+                      className="w-full bg-white dark:bg-[#0D1320] text-slate-900 dark:text-slate-100 tabular-nums border border-slate-300 dark:border-slate-700/60 rounded-md py-2.5 px-3.5 text-sm uppercase focus:outline-none focus:border-[#1E3A8A] transition-colors"
                     />
                   </div>
 
                   <div>
-                    <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1">
+                    <label className="block text-[13px] font-medium text-slate-700 dark:text-slate-300 mb-1.5">
                       Giro / Sector
                     </label>
                     <input
@@ -462,12 +462,12 @@ export function CreateCompanyModal({
                       value={industry}
                       onChange={(e) => setIndustry(e.target.value)}
                       placeholder="Ej. Manufactura / Automotriz"
-                      className="w-full bg-slate-50 dark:bg-[#090E17] text-slate-900 dark:text-slate-100 border border-slate-300 dark:border-slate-700 px-3 py-2 text-sm focus:outline-none focus:border-blue-600"
+                      className="w-full bg-white dark:bg-[#0D1320] text-slate-900 dark:text-slate-100 border border-slate-300 dark:border-slate-700/60 rounded-md py-2.5 px-3.5 text-sm focus:outline-none focus:border-[#1E3A8A] transition-colors"
                     />
                   </div>
 
                   <div className="sm:col-span-2">
-                    <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1">
+                    <label className="block text-[13px] font-medium text-slate-700 dark:text-slate-300 mb-1.5">
                       Régimen Fiscal
                     </label>
                     <input
@@ -476,7 +476,7 @@ export function CreateCompanyModal({
                       value={taxRegime}
                       onChange={(e) => setTaxRegime(e.target.value)}
                       placeholder="Ej. 601 - General de Ley Personas Morales"
-                      className="w-full bg-slate-50 dark:bg-[#090E17] text-slate-900 dark:text-slate-100 border border-slate-300 dark:border-slate-700 px-3 py-2 text-sm focus:outline-none focus:border-blue-600"
+                      className="w-full bg-white dark:bg-[#0D1320] text-slate-900 dark:text-slate-100 border border-slate-300 dark:border-slate-700/60 rounded-md py-2.5 px-3.5 text-sm focus:outline-none focus:border-[#1E3A8A] transition-colors"
                     />
                     <datalist id="common-tax-regimes-list">
                       {COMMON_TAX_REGIMES.map((regime) => (
@@ -486,7 +486,7 @@ export function CreateCompanyModal({
                   </div>
 
                   <div className="sm:col-span-2">
-                    <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1">
+                    <label className="block text-[13px] font-medium text-slate-700 dark:text-slate-300 mb-1.5">
                       Dirección Fiscal / Sede
                     </label>
                     <input
@@ -494,20 +494,20 @@ export function CreateCompanyModal({
                       value={fiscalAddress}
                       onChange={(e) => setFiscalAddress(e.target.value)}
                       placeholder="Calle, número, colonia, ciudad y estado"
-                      className="w-full bg-slate-50 dark:bg-[#090E17] text-slate-900 dark:text-slate-100 border border-slate-300 dark:border-slate-700 px-3 py-2 text-sm focus:outline-none focus:border-blue-600"
+                      className="w-full bg-white dark:bg-[#0D1320] text-slate-900 dark:text-slate-100 border border-slate-300 dark:border-slate-700/60 rounded-md py-2.5 px-3.5 text-sm focus:outline-none focus:border-[#1E3A8A] transition-colors"
                     />
                   </div>
                 </div>
               </div>
 
               {/* Sección 2 — Contacto Clave y Vigencia */}
-              <div className="space-y-3 pt-4 border-t border-slate-200 dark:border-slate-800/80">
-                <div className="text-[11px] font-mono uppercase tracking-wider text-slate-500 dark:text-slate-400">
+              <div className="space-y-4 pt-5 border-t border-slate-200 dark:border-slate-800/60">
+                <div className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
                   Sección 2 · Contacto Clave y Vigencia Contractual
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1">
+                    <label className="block text-[13px] font-medium text-slate-700 dark:text-slate-300 mb-1.5">
                       Nombre del Contacto Principal
                     </label>
                     <input
@@ -515,12 +515,12 @@ export function CreateCompanyModal({
                       value={contactName}
                       onChange={(e) => setContactName(e.target.value)}
                       placeholder="Ej. Lic. Fernando Ruiz"
-                      className="w-full bg-slate-50 dark:bg-[#090E17] text-slate-900 dark:text-slate-100 border border-slate-300 dark:border-slate-700 px-3 py-2 text-sm focus:outline-none focus:border-blue-600"
+                      className="w-full bg-white dark:bg-[#0D1320] text-slate-900 dark:text-slate-100 border border-slate-300 dark:border-slate-700/60 rounded-md py-2.5 px-3.5 text-sm focus:outline-none focus:border-[#1E3A8A] transition-colors"
                     />
                   </div>
 
                   <div>
-                    <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1">
+                    <label className="block text-[13px] font-medium text-slate-700 dark:text-slate-300 mb-1.5">
                       Cargo / Puesto
                     </label>
                     <input
@@ -528,12 +528,12 @@ export function CreateCompanyModal({
                       value={contactRole}
                       onChange={(e) => setContactRole(e.target.value)}
                       placeholder="Ej. Director de Administración"
-                      className="w-full bg-slate-50 dark:bg-[#090E17] text-slate-900 dark:text-slate-100 border border-slate-300 dark:border-slate-700 px-3 py-2 text-sm focus:outline-none focus:border-blue-600"
+                      className="w-full bg-white dark:bg-[#0D1320] text-slate-900 dark:text-slate-100 border border-slate-300 dark:border-slate-700/60 rounded-md py-2.5 px-3.5 text-sm focus:outline-none focus:border-[#1E3A8A] transition-colors"
                     />
                   </div>
 
                   <div>
-                    <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1">
+                    <label className="block text-[13px] font-medium text-slate-700 dark:text-slate-300 mb-1.5">
                       Correo Electrónico
                     </label>
                     <input
@@ -541,12 +541,12 @@ export function CreateCompanyModal({
                       value={contactEmail}
                       onChange={(e) => setContactEmail(e.target.value)}
                       placeholder="contacto@empresa.com.mx"
-                      className="w-full bg-slate-50 dark:bg-[#090E17] text-slate-900 dark:text-slate-100 border border-slate-300 dark:border-slate-700 px-3 py-2 text-sm focus:outline-none focus:border-blue-600"
+                      className="w-full bg-white dark:bg-[#0D1320] text-slate-900 dark:text-slate-100 border border-slate-300 dark:border-slate-700/60 rounded-md py-2.5 px-3.5 text-sm focus:outline-none focus:border-[#1E3A8A] transition-colors"
                     />
                   </div>
 
                   <div>
-                    <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1">
+                    <label className="block text-[13px] font-medium text-slate-700 dark:text-slate-300 mb-1.5">
                       Teléfono
                     </label>
                     <input
@@ -554,12 +554,12 @@ export function CreateCompanyModal({
                       value={contactPhone}
                       onChange={(e) => setContactPhone(e.target.value)}
                       placeholder="+52 449 123 4567"
-                      className="w-full bg-slate-50 dark:bg-[#090E17] text-slate-900 dark:text-slate-100 font-mono border border-slate-300 dark:border-slate-700 px-3 py-2 text-sm focus:outline-none focus:border-blue-600"
+                      className="w-full bg-white dark:bg-[#0D1320] text-slate-900 dark:text-slate-100 tabular-nums border border-slate-300 dark:border-slate-700/60 rounded-md py-2.5 px-3.5 text-sm focus:outline-none focus:border-[#1E3A8A] transition-colors"
                     />
                   </div>
 
                   <div>
-                    <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1">
+                    <label className="block text-[13px] font-medium text-slate-700 dark:text-slate-300 mb-1.5">
                       Fecha de Inicio *
                     </label>
                     <input
@@ -567,24 +567,24 @@ export function CreateCompanyModal({
                       required
                       value={startDate}
                       onChange={(e) => setStartDate(e.target.value)}
-                      className="w-full bg-slate-50 dark:bg-[#090E17] text-slate-900 dark:text-slate-100 font-mono border border-slate-300 dark:border-slate-700 px-3 py-2 text-sm focus:outline-none focus:border-blue-600"
+                      className="w-full bg-white dark:bg-[#0D1320] text-slate-900 dark:text-slate-100 tabular-nums border border-slate-300 dark:border-slate-700/60 rounded-md py-2.5 px-3.5 text-sm focus:outline-none focus:border-[#1E3A8A] transition-colors"
                     />
                   </div>
 
                   <div>
-                    <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1">
+                    <label className="block text-[13px] font-medium text-slate-700 dark:text-slate-300 mb-1.5">
                       Fecha de Renovación / Corte
                     </label>
                     <input
                       type="date"
                       value={renewalDate}
                       onChange={(e) => setRenewalDate(e.target.value)}
-                      className="w-full bg-slate-50 dark:bg-[#090E17] text-slate-900 dark:text-slate-100 font-mono border border-slate-300 dark:border-slate-700 px-3 py-2 text-sm focus:outline-none focus:border-blue-600"
+                      className="w-full bg-white dark:bg-[#0D1320] text-slate-900 dark:text-slate-100 tabular-nums border border-slate-300 dark:border-slate-700/60 rounded-md py-2.5 px-3.5 text-sm focus:outline-none focus:border-[#1E3A8A] transition-colors"
                     />
                   </div>
 
                   <div className="sm:col-span-2">
-                    <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1">
+                    <label className="block text-[13px] font-medium text-slate-700 dark:text-slate-300 mb-1.5">
                       Observaciones / Acuerdos Importantes
                     </label>
                     <textarea
@@ -592,24 +592,24 @@ export function CreateCompanyModal({
                       value={notes}
                       onChange={(e) => setNotes(e.target.value)}
                       placeholder="Condiciones de servicio, cierres fiscales mensuales o requerimientos especiales..."
-                      className="w-full bg-slate-50 dark:bg-[#090E17] text-slate-900 dark:text-slate-100 border border-slate-300 dark:border-slate-700 px-3 py-2 text-sm focus:outline-none focus:border-blue-600 resize-none"
+                      className="w-full bg-white dark:bg-[#0D1320] text-slate-900 dark:text-slate-100 border border-slate-300 dark:border-slate-700/60 rounded-md py-2.5 px-3.5 text-sm focus:outline-none focus:border-[#1E3A8A] resize-none transition-colors"
                     />
                   </div>
 
                   {isEditing && (
-                    <div className="sm:col-span-2 flex items-center justify-between pt-2 border-t border-slate-200 dark:border-slate-800/80">
+                    <div className="sm:col-span-2 flex items-center justify-between pt-3 border-t border-slate-200 dark:border-slate-800/60">
                       <div>
-                        <span className="block text-xs font-semibold uppercase tracking-wider text-slate-700 dark:text-slate-300">
+                        <span className="block text-[13px] font-medium text-slate-700 dark:text-slate-300">
                           Estatus Comercial
                         </span>
-                        <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                        <span className="text-xs text-slate-500 dark:text-slate-400">
                           Controla si la empresa está activa para nuevos proyectos.
                         </span>
                       </div>
                       <select
                         value={status}
                         onChange={(e) => setStatus(e.target.value as 'active' | 'inactive')}
-                        className="bg-slate-50 dark:bg-[#090E17] text-slate-900 dark:text-slate-100 text-xs font-semibold border border-slate-300 dark:border-slate-700 px-3 py-1.5 focus:outline-none focus:border-blue-600"
+                        className="bg-white dark:bg-[#0D1320] text-slate-900 dark:text-slate-100 text-sm font-medium border border-slate-300 dark:border-slate-700/60 rounded-md px-3.5 py-2 focus:outline-none focus:border-[#1E3A8A] transition-colors"
                       >
                         <option value="active">Activa</option>
                         <option value="inactive">Inactiva / En pausa</option>
@@ -620,26 +620,26 @@ export function CreateCompanyModal({
               </div>
 
               {errorMsg && (
-                <div className="text-xs text-rose-600 dark:text-rose-400 border-l-2 border-rose-500 pl-3 py-1">
+                <div className="text-sm text-rose-600 dark:text-rose-400 border-l-2 border-rose-500 pl-3 py-1">
                   {errorMsg}
                 </div>
               )}
             </div>
 
-            {/* Footer Fijo */}
-            <div className="px-6 py-4 border-t border-slate-200 dark:border-slate-800 flex items-center justify-end gap-3 shrink-0 bg-slate-50 dark:bg-[#0D1320]">
+            {/* Footer Fijo con Botones Minimalistas */}
+            <div className="px-6 py-4 border-t border-slate-200 dark:border-slate-800/80 flex items-center justify-end gap-3 shrink-0 bg-white dark:bg-[#101726]">
               <button
                 type="button"
                 onClick={onClose}
                 disabled={isSubmitting}
-                className="px-4 py-2 text-xs font-medium text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
+                className="px-4 py-2.5 text-sm font-medium text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-md transition-colors cursor-pointer"
               >
                 Cancelar
               </button>
               <button
                 type="submit"
                 disabled={isSubmitting}
-                className="px-5 py-2 text-xs font-semibold text-white bg-blue-700 hover:bg-blue-600 disabled:opacity-50 transition cursor-pointer"
+                className="px-5 py-2.5 text-sm font-medium text-white bg-[#1E3A8A] hover:bg-[#1D4ED8] rounded-md transition-colors disabled:opacity-50 cursor-pointer"
               >
                 {isSubmitting
                   ? 'Guardando...'

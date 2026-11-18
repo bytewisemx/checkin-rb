@@ -51,7 +51,7 @@ export function LiveTimerCell({
 
   return (
     <div
-      className={`inline-flex items-center gap-1.5 font-mono text-xs tabular-nums select-none ${className}`}
+      className={`inline-flex items-center gap-1.5 font-sans text-sm tabular-nums select-none ${className}`}
       title={isRunning ? `Cronómetro activo: ${formattedTime}` : `Tiempo acumulado: ${formattedTime}`}
     >
       {isRunning && (
@@ -60,7 +60,7 @@ export function LiveTimerCell({
           aria-hidden="true"
         />
       )}
-      <span className={isRunning ? 'font-bold text-blue-700 dark:text-blue-400' : 'text-slate-500 dark:text-slate-400'}>
+      <span className={isRunning ? 'font-semibold text-blue-700 dark:text-sky-400' : 'text-slate-500 dark:text-slate-400'}>
         {formattedTime}
       </span>
     </div>

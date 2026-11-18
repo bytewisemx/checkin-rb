@@ -132,28 +132,28 @@ export function AttendanceDateDetailModal({
               {/* Grid con Horarios y Métricas */}
               <div className="grid grid-cols-3 gap-3">
                 <div className="p-3 rounded-md bg-slate-50 dark:bg-[#1A2742] border border-slate-200 dark:border-[#233354]">
-                  <span className="text-[10px] text-slate-500 dark:text-[#94A3B8] block uppercase font-heading font-semibold">
+                  <span className="text-xs text-slate-500 dark:text-[#94A3B8] block uppercase font-heading font-semibold">
                     Entrada
                   </span>
-                  <span className="text-sm font-bold text-slate-900 dark:text-white mt-0.5 block font-mono">
+                  <span className="text-sm font-bold text-slate-900 dark:text-white mt-0.5 block tabular-nums">
                     {formatTime(record?.checkInTimeMs)}
                   </span>
                 </div>
 
                 <div className="p-3 rounded-md bg-slate-50 dark:bg-[#1A2742] border border-slate-200 dark:border-[#233354]">
-                  <span className="text-[10px] text-slate-500 dark:text-[#94A3B8] block uppercase font-heading font-semibold">
+                  <span className="text-xs text-slate-500 dark:text-[#94A3B8] block uppercase font-heading font-semibold">
                     Salida
                   </span>
-                  <span className="text-sm font-bold text-slate-900 dark:text-white mt-0.5 block font-mono">
+                  <span className="text-sm font-bold text-slate-900 dark:text-white mt-0.5 block tabular-nums">
                     {record?.checkOutTimeMs ? formatTime(record.checkOutTimeMs) : 'En curso'}
                   </span>
                 </div>
 
                 <div className="p-3 rounded-md bg-slate-50 dark:bg-[#1A2742] border border-slate-200 dark:border-[#233354]">
-                  <span className="text-[10px] text-slate-500 dark:text-[#94A3B8] block uppercase font-heading font-semibold">
+                  <span className="text-xs text-slate-500 dark:text-[#94A3B8] block uppercase font-heading font-semibold">
                     Total Horas
                   </span>
-                  <span className="text-sm font-bold text-blue-600 dark:text-[#38BDF8] mt-0.5 block font-mono">
+                  <span className="text-sm font-bold text-blue-600 dark:text-[#38BDF8] mt-0.5 block tabular-nums">
                     {formatHoursMinutes(record?.totalDurationMinutes)}
                   </span>
                 </div>
@@ -196,7 +196,7 @@ export function AttendanceDateDetailModal({
                   <div className="p-3 rounded-lg bg-blue-50/70 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-900/60 space-y-1">
                     <div className="flex items-center justify-between text-xs font-bold text-blue-900 dark:text-blue-200">
                       <span>Auditoría de Regularización de Salida:</span>
-                      <span className="font-mono text-[11px] font-semibold">
+                      <span className="tabular-nums text-xs font-semibold">
                         Corte a las {record.autoStoppedAt || '23:59:00'}
                       </span>
                     </div>
@@ -250,7 +250,7 @@ export function AttendanceDateDetailModal({
                     </div>
 
                     <div className="text-right">
-                      <span className="font-mono text-slate-900 dark:text-white block">
+                      <span className="tabular-nums text-slate-900 dark:text-white block font-medium">
                         {formatTime(empRec.checkInTimeMs)} - {empRec.checkOutTimeMs ? formatTime(empRec.checkOutTimeMs) : 'En curso'}
                       </span>
                       <span

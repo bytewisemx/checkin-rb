@@ -567,7 +567,7 @@ export function KanbanBoard() {
                               )}
                             </div>
                             {task.locationMode && (
-                              <div className="text-[11px] text-slate-400 mt-1 truncate">
+                              <div className="text-xs text-slate-400 mt-1 truncate">
                                 {task.locationMode === 'client_site'
                                   ? `En Oficina de Cliente${task.locationAddress ? ` • ${task.locationAddress}` : ''}`
                                   : 'En Oficina (Despacho)'}
@@ -577,11 +577,11 @@ export function KanbanBoard() {
 
                           {/* Alerta de Retorno por el Supervisor */}
                           {stage.id === 'review' && task.supervisorReviewNote && (
-                            <div className="border-l-2 border-amber-500 pl-3 py-1 text-xs text-amber-900 space-y-0.5 bg-amber-50/50">
+                            <div className="border-l-2 border-amber-500 pl-3 py-1.5 text-xs text-amber-900 space-y-0.5 bg-amber-50/50 rounded-r-md">
                               <span className="font-semibold text-amber-900 block">
                                 Retornada por el Supervisor
                               </span>
-                              <p className="text-[11px] text-amber-800 leading-relaxed">
+                              <p className="text-xs text-amber-800 leading-relaxed">
                                 {task.supervisorReviewNote}
                               </p>
                             </div>
@@ -592,9 +592,9 @@ export function KanbanBoard() {
                             <div className="flex items-center justify-between text-xs">
                               <span className="text-slate-500">
                                 {isCurrentlyActive ? (
-                                  <span className="text-blue-700 font-semibold flex items-center gap-1">
+                                  <span className="text-[#1E3A8A] dark:text-sky-400 font-semibold flex items-center gap-1">
                                     <span>En curso ahora:</span>
-                                    <span className="font-mono">
+                                    <span className="tabular-nums">
                                       {formatMinutesSexagesimal(liveMinutes)}
                                     </span>
                                   </span>
@@ -602,7 +602,7 @@ export function KanbanBoard() {
                                   'Avance de tiempo:'
                                 )}
                               </span>
-                              <span className="font-mono font-medium text-slate-800">
+                              <span className="font-medium text-slate-800 dark:text-slate-200 tabular-nums">
                                 {formatMinutesSexagesimal(totalActualMinutes)}{' '}
                                 <span className="text-slate-400 font-normal">
                                   /{' '}
@@ -614,28 +614,28 @@ export function KanbanBoard() {
                             </div>
 
                             {/* Barra de Progreso Discreta */}
-                            <div className="w-full bg-slate-100 h-1 rounded-full overflow-hidden">
+                            <div className="w-full bg-slate-100 dark:bg-slate-800 h-1 rounded-full overflow-hidden">
                               <div
                                 className={`h-full rounded-full transition-all duration-300 ${
                                   task.status === 'completed'
                                     ? 'bg-slate-400'
                                     : percentConsumed > 100
                                     ? 'bg-rose-600'
-                                    : 'bg-blue-700'
+                                    : 'bg-[#1E3A8A] dark:bg-blue-600'
                                 }`}
                                 style={{ width: `${Math.min(100, percentConsumed || 4)}%` }}
                               />
                             </div>
 
-                            <div className="flex items-center justify-between text-[11px] text-slate-500 font-mono">
+                            <div className="flex items-center justify-between text-xs text-slate-500 tabular-nums">
                               <span>Consumo: {percentConsumed}%</span>
                               {task.dueDate && <span>Vence: {task.dueDate}</span>}
                             </div>
                           </div>
 
                           {/* Pie de la Tarjeta con Acción Única Sobria */}
-                          <div className="pt-2.5 border-t border-slate-100 flex items-center justify-between text-xs">
-                            <span className="text-[11px] text-slate-400 font-mono">
+                          <div className="pt-2.5 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs">
+                            <span className="text-xs text-slate-400">
                               {task.notes && task.notes.length > 0
                                 ? `${task.notes.length} notas en bitácora`
                                 : 'Clic para ver detalle'}
@@ -649,7 +649,7 @@ export function KanbanBoard() {
                                   e.stopPropagation();
                                   handleOpenFinalizeModal(task);
                                 }}
-                                className="px-3 py-1 text-xs font-semibold text-white bg-blue-700 hover:bg-blue-600 transition rounded shadow-2xs cursor-pointer"
+                                className="px-3.5 py-1.5 text-xs font-medium text-white bg-[#1E3A8A] hover:bg-[#1D4ED8] rounded-md transition-colors cursor-pointer"
                                 title="Finalizar tarea y enviar a revisión del supervisor"
                               >
                                 Finalizar

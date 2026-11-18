@@ -364,25 +364,25 @@ export function EndDayAllocationModal({
   };
 
   return (
-    <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/80 backdrop-blur-xs p-4 overflow-y-auto">
-      <div className="w-full max-w-2xl bg-white dark:bg-[#101726] text-slate-900 dark:text-slate-200 border border-slate-200 dark:border-slate-800 p-6 shadow-2xl space-y-5">
+    <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/80 backdrop-blur-xs p-4 overflow-y-auto font-sans">
+      <div className="w-full max-w-2xl bg-white dark:bg-[#101726] text-slate-900 dark:text-slate-200 border border-slate-200 dark:border-slate-800/80 p-6 shadow-2xl space-y-6">
         {/* Encabezado */}
-        <div className="flex items-start justify-between border-b border-slate-200 dark:border-slate-800 pb-4">
+        <div className="flex items-start justify-between border-b border-slate-200 dark:border-slate-800/80 pb-4">
           <div>
-            <div className="text-xs font-mono uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">
+            <div className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">
               Resumen de Cierre de Jornada
             </div>
-            <h3 className="text-lg font-bold font-['Space_Grotesk'] text-slate-900 dark:text-white">
+            <h3 className="text-lg font-semibold font-['Space_Grotesk'] text-slate-900 dark:text-white tracking-tight">
               Registro de Salida y Distribución de Tiempo
             </h3>
-            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
               Distribuye el tiempo laborado entre tus actividades del día sin exceder tu jornada real ({formatMinutesSexagesimal(totalShiftMinutes)}).
             </p>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="text-xs font-medium text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 px-2 py-1 cursor-pointer"
+            className="text-sm font-medium text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 px-2 py-1 cursor-pointer"
           >
             Cerrar
           </button>
@@ -397,7 +397,7 @@ export function EndDayAllocationModal({
 
         {/* Aviso inline cuando se intenta rebasar la capacidad de la jornada */}
         {capWarning && (
-          <div className="text-xs font-medium text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/60 px-3.5 py-2">
+          <div className="text-sm font-medium text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/60 px-3.5 py-2.5 rounded-md">
             {capWarning}
           </div>
         )}
@@ -410,7 +410,7 @@ export function EndDayAllocationModal({
             </span>
 
             {isFullDistributed ? (
-              <span className="text-xs font-mono text-slate-500 dark:text-slate-400">
+              <span className="text-sm text-slate-500 dark:text-slate-400">
                 Has distribuido el 100% de tu jornada
               </span>
             ) : (
@@ -426,7 +426,7 @@ export function EndDayAllocationModal({
                     setExtraMinutes(rem % 60);
                   }
                 }}
-                className="text-xs font-semibold text-blue-700 dark:text-sky-400 hover:underline cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                className="text-sm font-medium text-[#1E3A8A] dark:text-sky-400 hover:underline cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 {isAddingExtraordinary
                   ? 'Cancelar registro'
@@ -439,19 +439,19 @@ export function EndDayAllocationModal({
           {isAddingExtraordinary && !isFullDistributed && (
             <form
               onSubmit={handleCreateExtraordinary}
-              className="bg-slate-50 dark:bg-[#090E17] border border-slate-200 dark:border-slate-700 p-4 space-y-3"
+              className="bg-slate-50 dark:bg-[#0D1320] border border-slate-200 dark:border-slate-700/60 rounded-md p-4 space-y-3"
             >
               <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold text-slate-800 dark:text-slate-200">
+                <span className="text-sm font-medium text-slate-800 dark:text-slate-200">
                   Nueva Actividad Extraordinaria (Sin proyecto asignado)
                 </span>
-                <span className="text-[11px] font-mono text-slate-500">
+                <span className="text-xs text-slate-500 tabular-nums">
                   Máx. disponible: {formatMinutesSexagesimal(Math.max(0, remainingMinutes))}
                 </span>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-end">
                 <div className="sm:col-span-6">
-                  <label className="text-[11px] uppercase tracking-wider text-slate-500 dark:text-slate-400 block mb-1">
+                  <label className="text-xs font-medium text-slate-600 dark:text-slate-400 block mb-1">
                     Descripción de la actividad
                   </label>
                   <input
@@ -459,12 +459,12 @@ export function EndDayAllocationModal({
                     value={extraTitle}
                     onChange={(e) => setExtraTitle(e.target.value)}
                     placeholder="Ej. Apoyo administrativo o reunión interna"
-                    className="w-full bg-white dark:bg-[#101726] text-xs text-slate-900 dark:text-slate-100 border border-slate-300 dark:border-slate-700 px-3 py-2 focus:outline-none focus:border-blue-600"
+                    className="w-full bg-white dark:bg-[#101726] text-sm text-slate-900 dark:text-slate-100 border border-slate-300 dark:border-slate-700/60 rounded-md px-3 py-2 focus:outline-none focus:border-[#1E3A8A]"
                     required
                   />
                 </div>
                 <div className="sm:col-span-2">
-                  <label className="text-[11px] uppercase tracking-wider text-slate-500 dark:text-slate-400 block mb-1">
+                  <label className="text-xs font-medium text-slate-600 dark:text-slate-400 block mb-1">
                     Horas
                   </label>
                   <input
@@ -475,11 +475,11 @@ export function EndDayAllocationModal({
                     onChange={(e) =>
                       handleExtraTimeChange(Number(e.target.value), extraMinutes)
                     }
-                    className="w-full bg-white dark:bg-[#101726] font-mono text-xs text-slate-900 dark:text-slate-100 border border-slate-300 dark:border-slate-700 px-2.5 py-2 text-center focus:outline-none focus:border-blue-600"
+                    className="w-full bg-white dark:bg-[#101726] text-sm tabular-nums text-slate-900 dark:text-slate-100 border border-slate-300 dark:border-slate-700/60 rounded-md px-2.5 py-2 text-center focus:outline-none focus:border-[#1E3A8A]"
                   />
                 </div>
                 <div className="sm:col-span-2">
-                  <label className="text-[11px] uppercase tracking-wider text-slate-500 dark:text-slate-400 block mb-1">
+                  <label className="text-xs font-medium text-slate-600 dark:text-slate-400 block mb-1">
                     Min (0-59)
                   </label>
                   <input
@@ -490,13 +490,13 @@ export function EndDayAllocationModal({
                     onChange={(e) =>
                       handleExtraTimeChange(extraHours, Number(e.target.value))
                     }
-                    className="w-full bg-white dark:bg-[#101726] font-mono text-xs text-slate-900 dark:text-slate-100 border border-slate-300 dark:border-slate-700 px-2.5 py-2 text-center focus:outline-none focus:border-blue-600"
+                    className="w-full bg-white dark:bg-[#101726] text-sm tabular-nums text-slate-900 dark:text-slate-100 border border-slate-300 dark:border-slate-700/60 rounded-md px-2.5 py-2 text-center focus:outline-none focus:border-[#1E3A8A]"
                   />
                 </div>
                 <div className="sm:col-span-2">
                   <button
                     type="submit"
-                    className="w-full py-2 px-3 bg-blue-700 hover:bg-blue-600 text-white text-xs font-semibold transition cursor-pointer"
+                    className="w-full py-2 px-3 bg-[#1E3A8A] hover:bg-[#1D4ED8] text-white text-sm font-medium rounded-md transition cursor-pointer"
                   >
                     Agregar
                   </button>
@@ -505,18 +505,18 @@ export function EndDayAllocationModal({
             </form>
           )}
 
-          {/* Contenedor / Tabla de Tareas (O estado vacío sobrio sin datos ficticios) */}
-          <div className="border border-slate-200 dark:border-slate-800 divide-y divide-slate-200/70 dark:divide-slate-800/60 max-h-60 overflow-y-auto">
+          {/* Contenedor / Tabla de Tareas (Limpia sin recuadros pesados) */}
+          <div className="border border-slate-200 dark:border-slate-800/80 rounded-md divide-y divide-slate-200 dark:divide-slate-800/60 max-h-64 overflow-y-auto">
             {isLoadingRemote && availableTasks.length === 0 ? (
-              <div className="p-6 text-center text-xs text-slate-500 dark:text-slate-400">
+              <div className="p-6 text-center text-sm text-slate-500 dark:text-slate-400">
                 Consultando actividades asignadas...
               </div>
             ) : availableTasks.length === 0 ? (
               <div className="p-6 text-center space-y-2">
-                <p className="text-xs font-medium text-slate-700 dark:text-slate-300">
+                <p className="text-sm font-medium text-slate-700 dark:text-slate-300">
                   No tienes tareas asignadas registradas en esta jornada.
                 </p>
-                <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                <p className="text-xs text-slate-500 dark:text-slate-400">
                   Puedes registrar una actividad extraordinaria con el botón superior o confirmar tu salida como jornada general.
                 </p>
               </div>
@@ -530,19 +530,19 @@ export function EndDayAllocationModal({
                 return (
                   <div
                     key={task.id}
-                    className="p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white dark:bg-[#101726]"
+                    className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white dark:bg-[#101726]"
                   >
                     <div className="min-w-0">
-                      <div className="text-xs font-semibold text-slate-900 dark:text-slate-100 truncate">
+                      <div className="text-sm font-medium text-slate-900 dark:text-slate-100 truncate">
                         {task.title}
                       </div>
-                      <div className="text-[11px] text-slate-500 dark:text-slate-400">
+                      <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
                         {task.companyName} · {task.projectName}
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-2 shrink-0">
-                      <div className="flex items-center gap-1">
+                    <div className="flex items-center gap-2.5 shrink-0">
+                      <div className="flex items-center gap-1.5">
                         <input
                           type="number"
                           min={0}
@@ -552,12 +552,12 @@ export function EndDayAllocationModal({
                             handleUpdateTaskTime(task.id, Number(e.target.value), m)
                           }
                           aria-label={`Horas para ${task.title}`}
-                          className="w-12 bg-slate-50 dark:bg-[#090E17] font-mono text-xs text-center text-slate-900 dark:text-slate-100 border border-slate-300 dark:border-slate-700 py-1 focus:outline-none focus:border-blue-600"
+                          className="w-14 bg-white dark:bg-[#0D1320] text-sm font-medium tabular-nums text-center text-slate-900 dark:text-slate-100 border border-slate-300 dark:border-slate-700/60 rounded-md py-1.5 focus:outline-none focus:border-[#1E3A8A]"
                         />
-                        <span className="text-[11px] font-mono text-slate-500">h</span>
+                        <span className="text-xs font-semibold text-slate-400">h</span>
                       </div>
 
-                      <div className="flex items-center gap-1">
+                      <div className="flex items-center gap-1.5">
                         <input
                           type="number"
                           min={0}
@@ -567,16 +567,16 @@ export function EndDayAllocationModal({
                             handleUpdateTaskTime(task.id, h, Number(e.target.value))
                           }
                           aria-label={`Minutos para ${task.title}`}
-                          className="w-12 bg-slate-50 dark:bg-[#090E17] font-mono text-xs text-center text-slate-900 dark:text-slate-100 border border-slate-300 dark:border-slate-700 py-1 focus:outline-none focus:border-blue-600"
+                          className="w-14 bg-white dark:bg-[#0D1320] text-sm font-medium tabular-nums text-center text-slate-900 dark:text-slate-100 border border-slate-300 dark:border-slate-700/60 rounded-md py-1.5 focus:outline-none focus:border-[#1E3A8A]"
                         />
-                        <span className="text-[11px] font-mono text-slate-500">m</span>
+                        <span className="text-xs font-semibold text-slate-400">m</span>
                       </div>
 
                       {remainingMinutes > 0 && (
                         <button
                           type="button"
                           onClick={() => handleAssignRemaining(task.id)}
-                          className="px-2 py-1 text-[11px] font-medium text-blue-700 dark:text-sky-400 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+                          className="px-2.5 py-1.5 text-xs font-medium text-[#1E3A8A] dark:text-sky-400 border border-slate-300 dark:border-slate-700 rounded-md hover:bg-slate-50 dark:hover:bg-slate-800 transition cursor-pointer"
                           title="Asignar el tiempo restante de la jornada"
                         >
                           + Resto
@@ -591,22 +591,22 @@ export function EndDayAllocationModal({
         </div>
 
         {/* Acciones finales */}
-        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-3 border-t border-slate-200 dark:border-slate-800">
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-4 border-t border-slate-200 dark:border-slate-800/80">
           <button
             type="button"
             onClick={onCloseAsGeneral}
             disabled={isSaving}
-            className="text-xs font-medium text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 cursor-pointer disabled:opacity-50"
+            className="text-sm font-medium text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 cursor-pointer disabled:opacity-50"
           >
             Confirmar salida con 0 tareas (Jornada General)
           </button>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3">
             <button
               type="button"
               onClick={onClose}
               disabled={isSaving}
-              className="px-3.5 py-2 text-xs font-medium text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer"
+              className="px-4 py-2.5 text-sm font-medium text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-md transition-colors cursor-pointer"
             >
               Volver
             </button>
@@ -614,7 +614,7 @@ export function EndDayAllocationModal({
               type="button"
               disabled={isOverflow || isSaving}
               onClick={() => void handleConfirm()}
-              className="px-4 py-2 text-xs font-semibold bg-blue-700 hover:bg-blue-600 text-white transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-5 py-2.5 text-sm font-medium text-white bg-[#1E3A8A] hover:bg-[#1D4ED8] rounded-md transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isSaving
                 ? 'Guardando...'

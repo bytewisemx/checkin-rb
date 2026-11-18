@@ -1,3 +1,4 @@
+
 import { useState, useEffect, useRef } from 'react';
 import {
   ScanFace,
@@ -284,9 +285,8 @@ export function FacialCheckinModal({
                   autoPlay
                   playsInline
                   muted
-                  className={`w-full h-full object-cover scale-x-[-1] transition-opacity duration-300 ${
-                    verificationSuccess ? 'opacity-90' : 'opacity-100'
-                  }`}
+                  className={`w-full h-full object-cover scale-x-[-1] transition-opacity duration-300 ${verificationSuccess ? 'opacity-90' : 'opacity-100'
+                    }`}
                 />
 
                 {/* Línea de escaneo láser */}
@@ -296,20 +296,18 @@ export function FacialCheckinModal({
 
                 {/* Marco de Encuadre Ovalado */}
                 <div
-                  className={`absolute inset-0 flex items-center justify-center pointer-events-none transition-all duration-300 ${
-                    verificationSuccess ? 'bg-emerald-500/20' : ''
-                  }`}
+                  className={`absolute inset-0 flex items-center justify-center pointer-events-none transition-all duration-300 ${verificationSuccess ? 'bg-emerald-500/20' : ''
+                    }`}
                 >
                   <div
-                    className={`w-48 h-64 rounded-[50%] border-2 transition-all duration-300 flex flex-col items-center justify-center ${
-                      verificationSuccess
+                    className={`w-48 h-64 rounded-[50%] border-2 transition-all duration-300 flex flex-col items-center justify-center ${verificationSuccess
                         ? 'border-emerald-400 shadow-[0_0_35px_rgba(16,185,129,0.5)] scale-105'
                         : faceDetected && matchScore >= 70
-                        ? 'border-emerald-400 shadow-[0_0_25px_rgba(16,185,129,0.4)]'
-                        : faceDetected
-                        ? 'border-[#38BDF8] shadow-[0_0_20px_rgba(56,189,248,0.35)]'
-                        : 'border-white/50 border-dashed'
-                    }`}
+                          ? 'border-emerald-400 shadow-[0_0_25px_rgba(16,185,129,0.4)]'
+                          : faceDetected
+                            ? 'border-[#38BDF8] shadow-[0_0_20px_rgba(56,189,248,0.35)]'
+                            : 'border-white/50 border-dashed'
+                      }`}
                   >
                     {verificationSuccess && (
                       <div className="bg-slate-950/90 text-emerald-400 px-3.5 py-1.5 rounded-full border border-emerald-400/50 flex items-center space-x-1.5 text-xs font-black animate-scale-up shadow-lg">
@@ -344,13 +342,12 @@ export function FacialCheckinModal({
                   </div>
 
                   <div
-                    className={`px-2.5 py-1 rounded-lg text-[10px] font-bold border backdrop-blur-xs transition-colors ${
-                      verificationSuccess || matchScore >= 70
+                    className={`px-2.5 py-1 rounded-lg text-[10px] font-bold border backdrop-blur-xs transition-colors ${verificationSuccess || matchScore >= 70
                         ? 'bg-emerald-950/90 text-emerald-400 border-emerald-400/50'
                         : faceDetected
-                        ? 'bg-sky-950/90 text-[#38BDF8] border-sky-400/50'
-                        : 'bg-slate-950/80 text-slate-400 border-slate-700/80'
-                    }`}
+                          ? 'bg-sky-950/90 text-[#38BDF8] border-sky-400/50'
+                          : 'bg-slate-950/80 text-slate-400 border-slate-700/80'
+                      }`}
                   >
                     {faceDetected ? `Similitud: ${matchScore}%` : 'Sin Rostro'}
                   </div>
@@ -366,11 +363,10 @@ export function FacialCheckinModal({
                 {statusMessage}
               </span>
               <span
-                className={`font-mono font-bold text-xs shrink-0 ${
-                  matchScore >= 70 && faceDetected
+                className={`text-xs font-semibold tabular-nums shrink-0 ${matchScore >= 70 && faceDetected
                     ? 'text-emerald-400 font-extrabold'
                     : 'text-[#38BDF8]'
-                }`}
+                  }`}
               >
                 {faceDetected ? `${matchScore}% / 70%` : '0%'}
               </span>
@@ -378,13 +374,12 @@ export function FacialCheckinModal({
 
             <div className="w-full bg-[#0F172A] h-2 rounded-full overflow-hidden border border-[#233354]">
               <div
-                className={`h-full rounded-full transition-all duration-200 ${
-                  matchScore >= 70 && faceDetected
+                className={`h-full rounded-full transition-all duration-200 ${matchScore >= 70 && faceDetected
                     ? 'bg-emerald-500 shadow-[0_0_12px_#10B981]'
                     : faceDetected
-                    ? 'bg-gradient-to-r from-blue-600 to-[#38BDF8]'
-                    : 'bg-slate-700'
-                }`}
+                      ? 'bg-gradient-to-r from-blue-600 to-[#38BDF8]'
+                      : 'bg-slate-700'
+                  }`}
                 style={{
                   width: `${faceDetected ? Math.min(100, Math.max(matchScore, 5)) : 0}%`,
                 }}
@@ -398,9 +393,8 @@ export function FacialCheckinModal({
                   {cameraError
                     ? 'Cámara obligatoria'
                     : isVerifying
-                    ? 'Confirmando acceso...'
-                    : `Auto-aceptación activa al superar 70% real${
-                        liveDistance != null ? ` (d=${liveDistance})` : ''
+                      ? 'Confirmando acceso...'
+                      : `Auto-aceptación activa al superar 70% real${liveDistance != null ? ` (d=${liveDistance})` : ''
                       }`}
                 </span>
               </span>

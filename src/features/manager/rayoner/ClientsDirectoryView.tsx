@@ -198,14 +198,14 @@ export function ClientsDirectoryView() {
 
   return (
     <div className="space-y-6 py-2 font-sans animate-fade-in">
-      {/* Encabezado y Acción Principal (sin iconos decorativos en el título) */}
-      <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-200 dark:border-slate-800 pb-4">
+      {/* Encabezado y Acción Principal Minimalista */}
+      <div className="flex items-center justify-between pb-6 border-b border-slate-200 dark:border-slate-800/60">
         <div>
-          <h2 className="text-xl font-bold font-['Space_Grotesk'] text-slate-900 dark:text-white">
-            Directorio de Clientes y Empresas
-          </h2>
-          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-            Catálogo corporativo, expedientes fiscales y proyectos asociados
+          <h1 className="text-xl font-semibold font-['Space_Grotesk'] text-slate-900 dark:text-slate-100 tracking-tight">
+            Clientes y Empresas
+          </h1>
+          <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+            Catálogo corporativo y expedientes vigentes
           </p>
         </div>
 
@@ -214,28 +214,15 @@ export function ClientsDirectoryView() {
             type="button"
             data-tour="btn-directory-new-company"
             onClick={handleOpenCreateCompany}
-            className="btn-corporate-secondary inline-flex items-center justify-center gap-2 px-4 py-2 text-xs font-semibold tracking-wide bg-blue-700 hover:bg-blue-600 text-white border border-blue-600 cursor-pointer shrink-0"
+            className="px-5 py-2.5 text-sm font-medium text-white bg-[#1E3A8A] hover:bg-[#1D4ED8] rounded-md transition-colors cursor-pointer shrink-0"
           >
-            <svg
-              className="w-3.5 h-3.5 shrink-0"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth={2.2}
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              aria-hidden="true"
-            >
-              <line x1="12" y1="5" x2="12" y2="19" />
-              <line x1="5" y1="12" x2="19" y2="12" />
-            </svg>
-            <span>Nueva Empresa</span>
+            Nueva Empresa
           </button>
         )}
       </div>
 
-      {/* Barra de Búsqueda, Filtros y Ordenamiento */}
-      <div className="grid grid-cols-1 md:grid-cols-12 gap-3 bg-white dark:bg-[#0D1320] p-3 border border-slate-200 dark:border-slate-800">
+      {/* Barra de Búsqueda, Filtros y Ordenamiento (Aireada sin cajas anidadas) */}
+      <div className="grid grid-cols-1 md:grid-cols-12 gap-3.5 pt-1 pb-2">
         {/* Buscador */}
         <div className="md:col-span-5">
           <input
@@ -243,7 +230,7 @@ export function ClientsDirectoryView() {
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Buscar por razón social, clave, RFC o contacto..."
-            className="w-full bg-slate-50 dark:bg-[#090E17] text-slate-900 dark:text-slate-100 text-xs border border-slate-300 dark:border-slate-700 px-3 py-2 focus:outline-none focus:border-blue-600"
+            className="w-full bg-white dark:bg-[#0D1320] text-slate-900 dark:text-slate-100 text-sm border border-slate-200 dark:border-slate-700/60 rounded-md py-2.5 px-3.5 focus:outline-none focus:border-[#1E3A8A] transition-colors"
           />
         </div>
 
@@ -252,7 +239,7 @@ export function ClientsDirectoryView() {
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
-            className="w-full bg-slate-50 dark:bg-[#090E17] text-slate-800 dark:text-slate-200 text-xs border border-slate-300 dark:border-slate-700 px-3 py-2 focus:outline-none focus:border-blue-600 cursor-pointer"
+            className="w-full bg-white dark:bg-[#0D1320] text-slate-800 dark:text-slate-200 text-sm border border-slate-200 dark:border-slate-700/60 rounded-md py-2.5 px-3.5 focus:outline-none focus:border-[#1E3A8A] cursor-pointer transition-colors"
           >
             <option value="all">Estatus: Todos</option>
             <option value="active">Activas</option>
@@ -266,7 +253,7 @@ export function ClientsDirectoryView() {
           <select
             value={sectorFilter}
             onChange={(e) => setSectorFilter(e.target.value)}
-            className="w-full bg-slate-50 dark:bg-[#090E17] text-slate-800 dark:text-slate-200 text-xs border border-slate-300 dark:border-slate-700 px-3 py-2 focus:outline-none focus:border-blue-600 cursor-pointer"
+            className="w-full bg-white dark:bg-[#0D1320] text-slate-800 dark:text-slate-200 text-sm border border-slate-200 dark:border-slate-700/60 rounded-md py-2.5 px-3.5 focus:outline-none focus:border-[#1E3A8A] cursor-pointer transition-colors"
           >
             <option value="all">Sector: Todos</option>
             {availableSectors.map((sector) => (
@@ -282,7 +269,7 @@ export function ClientsDirectoryView() {
           <select
             value={sortBy}
             onChange={(e) => setSortBy(e.target.value as SortOption)}
-            className="w-full bg-slate-50 dark:bg-[#090E17] text-slate-800 dark:text-slate-200 text-xs border border-slate-300 dark:border-slate-700 px-3 py-2 focus:outline-none focus:border-blue-600 cursor-pointer"
+            className="w-full bg-white dark:bg-[#0D1320] text-slate-800 dark:text-slate-200 text-sm border border-slate-200 dark:border-slate-700/60 rounded-md py-2.5 px-3.5 focus:outline-none focus:border-[#1E3A8A] cursor-pointer transition-colors"
           >
             <option value="newest">Ordenar: Más recientes</option>
             <option value="alpha_asc">Ordenar: Nombre (A - Z)</option>
@@ -294,56 +281,43 @@ export function ClientsDirectoryView() {
 
       {/* Tabla de Directorio o Estado Vacío Limpio */}
       {clients.length === 0 ? (
-        <div className="border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#101726] py-16 px-6 text-center space-y-4">
+        <div className="py-16 px-6 text-center space-y-4 border-b border-slate-200 dark:border-slate-800/60">
           <p className="text-sm text-slate-600 dark:text-slate-300 font-medium">
             No hay clientes o empresas registradas en el directorio.
           </p>
-          <p className="text-xs text-slate-500 dark:text-slate-400 max-w-md mx-auto">
+          <p className="text-sm text-slate-500 dark:text-slate-400 max-w-md mx-auto">
             Da de alta tu primera empresa para vincular proyectos, presupuestos en horas y asignación de tareas.
           </p>
           {canManage && (
-            <div className="pt-1 flex justify-center">
+            <div className="pt-2 flex justify-center">
               <button
                 type="button"
                 onClick={handleOpenCreateCompany}
-                className="btn-corporate-secondary inline-flex items-center justify-center gap-2 px-5 py-2.5 text-xs font-semibold tracking-wide bg-blue-700 hover:bg-blue-600 text-white border border-blue-600 cursor-pointer"
+                className="px-5 py-2.5 text-sm font-medium text-white bg-[#1E3A8A] hover:bg-[#1D4ED8] rounded-md transition-colors cursor-pointer"
               >
-                <svg
-                  className="w-3.5 h-3.5 shrink-0"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth={2.2}
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  aria-hidden="true"
-                >
-                  <line x1="12" y1="5" x2="12" y2="19" />
-                  <line x1="5" y1="12" x2="19" y2="12" />
-                </svg>
-                <span>Registrar Primera Empresa</span>
+                Registrar Primera Empresa
               </button>
             </div>
           )}
         </div>
       ) : (
-        <div className="overflow-x-auto border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#101726]">
-          <table className="w-full text-left border-collapse">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse font-sans">
             <thead>
-              <tr className="border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#0D1320] text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                <th className="py-3 px-4 min-w-[240px]">Empresa / Clave</th>
-                <th className="py-3 px-4 min-w-[160px]">RFC y Sector</th>
-                <th className="py-3 px-4 min-w-[180px]">Contacto Principal</th>
-                <th className="py-3 px-4 min-w-[155px]">Inicio / Vigencia</th>
-                <th className="py-3 px-4 text-right min-w-[140px]">Proyectos / Tiempo</th>
-                <th className="py-3 px-4">Estatus</th>
-                <th className="py-3 px-4 text-right min-w-[175px]">Acciones</th>
+              <tr className="border-b border-slate-200 dark:border-slate-800/80 text-xs font-medium text-slate-500 dark:text-slate-400">
+                <th className="py-3.5 px-5 min-w-[240px]">Empresa</th>
+                <th className="py-3.5 px-5 min-w-[180px]">Clave / RFC</th>
+                <th className="py-3.5 px-5 min-w-[180px]">Contacto Principal</th>
+                <th className="py-3.5 px-5 min-w-[160px]">Inicio / Vigencia</th>
+                <th className="py-3.5 px-5 text-right min-w-[150px]">Tiempo Invertido</th>
+                <th className="py-3.5 px-5 min-w-[110px]">Estatus</th>
+                <th className="py-3.5 px-5 text-right min-w-[160px]">Acciones</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-200 dark:divide-slate-800/70 text-xs text-slate-700 dark:text-slate-300">
+            <tbody className="divide-y divide-slate-200 dark:divide-slate-800/40 text-sm text-slate-700 dark:text-slate-300">
               {filteredCompanies.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="py-12 px-4 text-center text-slate-500 dark:text-slate-400 space-y-2">
+                  <td colSpan={7} className="py-12 px-5 text-center text-slate-500 dark:text-slate-400 space-y-2">
                     <div>No se encontraron empresas con los filtros aplicados.</div>
                     {hasActiveFilters && (
                       <button
@@ -353,7 +327,7 @@ export function ClientsDirectoryView() {
                           setStatusFilter('all');
                           setSectorFilter('all');
                         }}
-                        className="text-xs font-semibold text-blue-700 dark:text-sky-400 hover:underline cursor-pointer"
+                        className="text-sm font-medium text-[#1E3A8A] dark:text-sky-400 hover:underline cursor-pointer"
                       >
                         Limpiar filtros
                       </button>
@@ -373,10 +347,10 @@ export function ClientsDirectoryView() {
                     return (
                       <tr
                         key={company.id}
-                        className="hover:bg-slate-50/70 dark:hover:bg-[#141D30] transition-colors"
+                        className="hover:bg-slate-50/60 dark:hover:bg-slate-900/40 transition-colors"
                       >
-                        {/* 1. Empresa / Clave */}
-                        <td className="py-3.5 px-4">
+                        {/* 1. Empresa */}
+                        <td className="py-4 px-5">
                           <div className="flex items-center gap-3">
                             <CompanyLogoBadge
                               name={company.name}
@@ -388,41 +362,43 @@ export function ClientsDirectoryView() {
                               <button
                                 type="button"
                                 onClick={() => setSelectedDetailCompany(company)}
-                                className="font-semibold text-slate-900 dark:text-white hover:text-blue-700 dark:hover:text-sky-400 text-left block truncate max-w-[230px] cursor-pointer"
+                                className="font-medium text-slate-900 dark:text-slate-100 hover:text-[#1E3A8A] dark:hover:text-sky-400 text-left block truncate max-w-[240px] cursor-pointer"
                               >
                                 {company.commercialName || company.name}
                               </button>
                               {company.commercialName && company.commercialName !== company.name && (
-                                <span className="text-[11px] text-slate-500 dark:text-slate-400 block truncate max-w-[230px]">
+                                <span className="text-xs text-slate-500 dark:text-slate-400 block truncate max-w-[240px] mt-0.5">
                                   {company.name}
-                                </span>
-                              )}
-                              {company.code && (
-                                <span className="text-[11px] font-mono text-slate-500 dark:text-sky-400/90 block mt-0.5">
-                                  {company.code}
                                 </span>
                               )}
                             </div>
                           </div>
                         </td>
 
-                        {/* 2. RFC y Sector */}
-                        <td className="py-3.5 px-4">
-                          <div className="font-mono text-slate-800 dark:text-slate-200">
-                            {company.taxId || '—'}
+                        {/* 2. Clave / RFC */}
+                        <td className="py-4 px-5">
+                          <div className="text-slate-800 dark:text-slate-200 tabular-nums">
+                            {company.code || company.taxId || '—'}
                           </div>
-                          <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 truncate max-w-[180px]">
-                            {company.industry || 'Sin sector especificado'}
-                          </div>
+                          {company.code && company.taxId && (
+                            <div className="text-xs text-slate-500 dark:text-slate-400 tabular-nums mt-0.5">
+                              RFC: {company.taxId}
+                            </div>
+                          )}
+                          {company.industry && (
+                            <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 truncate max-w-[180px]">
+                              {company.industry}
+                            </div>
+                          )}
                         </td>
 
                         {/* 3. Contacto Principal */}
-                        <td className="py-3.5 px-4">
+                        <td className="py-4 px-5">
                           <div className="font-medium text-slate-800 dark:text-slate-200 truncate max-w-[190px]">
                             {company.contactName || '—'}
                           </div>
                           {(company.contactEmail || company.contactPhone) && (
-                            <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 truncate max-w-[200px]">
+                            <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 truncate max-w-[200px] tabular-nums">
                               {[company.contactEmail, company.contactPhone]
                                 .filter(Boolean)
                                 .join(' • ')}
@@ -431,15 +407,15 @@ export function ClientsDirectoryView() {
                         </td>
 
                         {/* 4. Inicio / Vigencia */}
-                        <td className="py-3.5 px-4 font-mono">
+                        <td className="py-4 px-5 tabular-nums">
                           <div className="text-slate-800 dark:text-slate-200">
                             {company.startDate || '—'}
                           </div>
                           {company.renewalDate ? (
                             <div
-                              className={`text-[11px] mt-0.5 ${
+                              className={`text-xs mt-0.5 ${
                                 isUpcomingRenewal
-                                  ? 'text-amber-600 dark:text-amber-400 font-semibold'
+                                  ? 'text-amber-600 dark:text-amber-400 font-medium'
                                   : 'text-slate-500 dark:text-slate-400'
                               }`}
                             >
@@ -449,65 +425,53 @@ export function ClientsDirectoryView() {
                                 : ''}
                             </div>
                           ) : (
-                            <div className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">
+                            <div className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">
                               Sin vencimiento
                             </div>
                           )}
                         </td>
 
                         {/* 5. Proyectos y Tiempo Invertido (Xh Ym) */}
-                        <td className="py-3.5 px-4 text-right">
-                          <div className="font-['Space_Grotesk'] font-bold text-slate-900 dark:text-white tabular-nums">
+                        <td className="py-4 px-5 text-right">
+                          <div className="font-['Space_Grotesk'] font-semibold text-slate-900 dark:text-slate-100 tabular-nums">
                             {formatMinutesSexagesimal(investedMinutes)}
                           </div>
-                          <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                          <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
                             {activeProjectsCount}{' '}
-                            {activeProjectsCount === 1 ? 'proyecto activo' : 'proyectos activos'}
+                            {activeProjectsCount === 1 ? 'proyecto' : 'proyectos'}
                           </div>
                         </td>
 
-                        {/* 6. Estatus */}
-                        <td className="py-3.5 px-4">
-                          <span
-                            className={`inline-block px-2 py-0.5 text-[10px] font-mono uppercase tracking-wider border ${
-                              isActive
-                                ? 'bg-sky-50 text-blue-800 border-blue-200 dark:bg-sky-950/50 dark:text-sky-300 dark:border-sky-800/70'
-                                : 'bg-slate-100 text-slate-500 border-slate-300 dark:bg-slate-800/80 dark:text-slate-400 dark:border-slate-700'
-                            }`}
-                          >
-                            {isActive ? 'Activa' : 'Inactiva'}
-                          </span>
+                        {/* 6. Estatus (Punto discreto 6px, sin píldoras chillonas) */}
+                        <td className="py-4 px-5">
+                          <div className="flex items-center gap-2">
+                            <span
+                              className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                                isActive ? 'bg-emerald-500 dark:bg-emerald-400' : 'bg-slate-400 dark:bg-slate-500'
+                              }`}
+                            />
+                            <span className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                              {isActive ? 'Activa' : 'Inactiva'}
+                            </span>
+                          </div>
                         </td>
 
                         {/* 7. Acciones */}
-                        <td className="py-3.5 px-4 text-right">
-                          <div className="inline-flex items-center justify-end gap-2">
+                        <td className="py-4 px-5 text-right">
+                          <div className="inline-flex items-center justify-end gap-3">
                             <button
                               type="button"
                               onClick={() => setSelectedDetailCompany(company)}
-                              className="px-2.5 py-1 text-[11px] font-medium text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-700 hover:border-blue-600 hover:text-blue-700 dark:hover:text-sky-400 transition cursor-pointer"
+                              className="text-sm font-medium text-blue-700 dark:text-sky-400 hover:text-blue-800 dark:hover:text-sky-300 transition cursor-pointer"
                             >
-                              Expediente
+                              Gestionar
                             </button>
                             <button
                               type="button"
                               onClick={() => handleOpenNewProjectForCompany(company.id)}
-                              className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold text-white bg-blue-700 hover:bg-blue-600 transition cursor-pointer"
+                              className="text-sm font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition cursor-pointer"
                             >
-                              <svg
-                                className="w-3 h-3 shrink-0"
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                strokeWidth={2.2}
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                aria-hidden="true"
-                              >
-                                <line x1="12" y1="5" x2="12" y2="19" />
-                                <line x1="5" y1="12" x2="19" y2="12" />
-                              </svg>
-                              <span>Proyecto</span>
+                              + Proyecto
                             </button>
                           </div>
                         </td>
@@ -529,10 +493,10 @@ export function ClientsDirectoryView() {
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            className="w-full max-w-lg h-full bg-white dark:bg-[#101726] text-slate-900 dark:text-slate-200 border-l border-slate-200 dark:border-slate-800 shadow-2xl flex flex-col"
+            className="w-full max-w-lg h-full bg-white dark:bg-[#101726] text-slate-900 dark:text-slate-200 border-l border-slate-200 dark:border-slate-800/80 shadow-2xl flex flex-col font-sans"
           >
             {/* Header del Expediente */}
-            <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-start justify-between gap-4">
+            <div className="px-6 py-5 border-b border-slate-200 dark:border-slate-800/80 flex items-start justify-between gap-4">
               <div className="flex items-center gap-3.5 min-w-0">
                 <CompanyLogoBadge
                   name={detailData.company.name}
@@ -541,10 +505,10 @@ export function ClientsDirectoryView() {
                   size="md"
                 />
                 <div className="min-w-0">
-                  <h3 className="text-base font-bold font-['Space_Grotesk'] text-slate-900 dark:text-white truncate">
+                  <h3 className="text-base font-semibold font-['Space_Grotesk'] text-slate-900 dark:text-white truncate">
                     {detailData.company.commercialName || detailData.company.name}
                   </h3>
-                  <p className="text-xs font-mono text-slate-500 dark:text-sky-400">
+                  <p className="text-sm text-slate-500 dark:text-slate-400 tabular-nums">
                     {detailData.company.code || 'Sin clave'}
                   </p>
                 </div>
@@ -552,149 +516,160 @@ export function ClientsDirectoryView() {
               <button
                 type="button"
                 onClick={() => setSelectedDetailCompany(null)}
-                className="text-xs text-slate-500 hover:text-slate-900 dark:hover:text-white px-2 py-1 cursor-pointer"
+                className="text-sm text-slate-500 hover:text-slate-900 dark:hover:text-white px-2 py-1 cursor-pointer"
               >
                 Cerrar
               </button>
             </div>
 
-            {/* Contenido del Expediente */}
-            <div className="p-6 overflow-y-auto space-y-6 flex-1 text-xs">
+            {/* Contenido del Expediente (Aireado, sin cajas dentro de cajas) */}
+            <div className="p-6 overflow-y-auto space-y-6 flex-1 text-sm">
               {/* Resumen de Métricas */}
-              <div className="grid grid-cols-3 gap-3 border-b border-slate-200 dark:border-slate-800 pb-4">
+              <div className="grid grid-cols-3 gap-4 border-b border-slate-200 dark:border-slate-800/60 pb-5">
                 <div>
-                  <span className="text-[10px] font-mono uppercase tracking-wider text-slate-500 block">
+                  <span className="text-xs font-medium text-slate-500 dark:text-slate-400 block">
                     Proyectos Activos
                   </span>
-                  <span className="text-lg font-bold font-['Space_Grotesk'] text-slate-900 dark:text-white">
+                  <span className="text-xl font-bold font-['Space_Grotesk'] text-slate-900 dark:text-white tabular-nums mt-1 block">
                     {detailData.activeProjectsCount}
                   </span>
                 </div>
                 <div>
-                  <span className="text-[10px] font-mono uppercase tracking-wider text-slate-500 block">
+                  <span className="text-xs font-medium text-slate-500 dark:text-slate-400 block">
                     Tiempo Invertido
                   </span>
-                  <span className="text-lg font-bold font-['Space_Grotesk'] text-slate-900 dark:text-white">
+                  <span className="text-xl font-bold font-['Space_Grotesk'] text-slate-900 dark:text-white tabular-nums mt-1 block">
                     {formatMinutesSexagesimal(detailData.investedMinutes)}
                   </span>
                 </div>
                 <div>
-                  <span className="text-[10px] font-mono uppercase tracking-wider text-slate-500 block">
+                  <span className="text-xs font-medium text-slate-500 dark:text-slate-400 block">
                     Estatus
                   </span>
-                  <span className="text-sm font-semibold text-blue-700 dark:text-sky-400 mt-0.5 block">
-                    {detailData.company.isActive !== false ? 'Activa' : 'Inactiva'}
-                  </span>
+                  <div className="flex items-center gap-2 mt-2">
+                    <span
+                      className={`w-2 h-2 rounded-full ${
+                        detailData.company.isActive !== false ? 'bg-emerald-500' : 'bg-slate-400'
+                      }`}
+                    />
+                    <span className="text-sm font-medium text-slate-800 dark:text-slate-200">
+                      {detailData.company.isActive !== false ? 'Activa' : 'Inactiva'}
+                    </span>
+                  </div>
                 </div>
               </div>
 
               {/* Datos Fiscales y Corporativos */}
-              <div className="space-y-2.5">
-                <div className="text-[10px] font-mono uppercase tracking-wider text-slate-500">
+              <div className="space-y-3 pb-5 border-b border-slate-200 dark:border-slate-800/60">
+                <div className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
                   Identificación y Datos Fiscales
                 </div>
-                <dl className="grid grid-cols-2 gap-3 bg-slate-50 dark:bg-[#090E17] border border-slate-200 dark:border-slate-800 p-3.5">
-                  <div className="col-span-2">
-                    <dt className="text-[10px] uppercase text-slate-500">Razón Social</dt>
-                    <dd className="font-semibold text-slate-900 dark:text-slate-100 mt-0.5">
+                <div className="space-y-3 pt-1">
+                  <div className="flex items-baseline justify-between gap-4">
+                    <span className="text-sm text-slate-500 dark:text-slate-400">Razón Social</span>
+                    <span className="text-sm font-medium text-slate-900 dark:text-slate-100 text-right">
                       {detailData.company.name}
-                    </dd>
+                    </span>
                   </div>
-                  <div>
-                    <dt className="text-[10px] uppercase text-slate-500">RFC / ID Fiscal</dt>
-                    <dd className="font-mono text-slate-800 dark:text-slate-200 mt-0.5">
+                  <div className="flex items-baseline justify-between gap-4">
+                    <span className="text-sm text-slate-500 dark:text-slate-400">RFC / ID Fiscal</span>
+                    <span className="text-sm font-medium text-slate-800 dark:text-slate-200 tabular-nums text-right">
                       {detailData.company.taxId || '—'}
-                    </dd>
+                    </span>
                   </div>
-                  <div>
-                    <dt className="text-[10px] uppercase text-slate-500">Giro / Sector</dt>
-                    <dd className="text-slate-800 dark:text-slate-200 mt-0.5">
+                  <div className="flex items-baseline justify-between gap-4">
+                    <span className="text-sm text-slate-500 dark:text-slate-400">Giro / Sector</span>
+                    <span className="text-sm text-slate-800 dark:text-slate-200 text-right">
                       {detailData.company.industry || '—'}
-                    </dd>
+                    </span>
                   </div>
                   {detailData.company.taxRegime && (
-                    <div className="col-span-2">
-                      <dt className="text-[10px] uppercase text-slate-500">Régimen Fiscal</dt>
-                      <dd className="text-slate-800 dark:text-slate-200 mt-0.5">
+                    <div className="flex items-baseline justify-between gap-4">
+                      <span className="text-sm text-slate-500 dark:text-slate-400">Régimen Fiscal</span>
+                      <span className="text-sm text-slate-800 dark:text-slate-200 text-right">
                         {detailData.company.taxRegime}
-                      </dd>
+                      </span>
                     </div>
                   )}
-                  <div className="col-span-2">
-                    <dt className="text-[10px] uppercase text-slate-500">Dirección Fiscal / Sede</dt>
-                    <dd className="text-slate-800 dark:text-slate-200 mt-0.5">
-                      {detailData.company.fiscalAddress || '—'}
-                    </dd>
-                  </div>
-                </dl>
+                  {detailData.company.fiscalAddress && (
+                    <div className="flex items-baseline justify-between gap-4">
+                      <span className="text-sm text-slate-500 dark:text-slate-400">Dirección Fiscal</span>
+                      <span className="text-sm text-slate-800 dark:text-slate-200 text-right max-w-xs">
+                        {detailData.company.fiscalAddress}
+                      </span>
+                    </div>
+                  )}
+                </div>
               </div>
 
               {/* Contacto y Vigencia */}
-              <div className="space-y-2.5">
-                <div className="text-[10px] font-mono uppercase tracking-wider text-slate-500">
-                  Contacto Principal y Vigencia Contractual
+              <div className="space-y-3 pb-5 border-b border-slate-200 dark:border-slate-800/60">
+                <div className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                  Contacto Principal y Vigencia
                 </div>
-                <dl className="grid grid-cols-2 gap-3 bg-slate-50 dark:bg-[#090E17] border border-slate-200 dark:border-slate-800 p-3.5">
-                  <div>
-                    <dt className="text-[10px] uppercase text-slate-500">Representante</dt>
-                    <dd className="font-medium text-slate-900 dark:text-slate-100 mt-0.5">
+                <div className="space-y-3 pt-1">
+                  <div className="flex items-baseline justify-between gap-4">
+                    <span className="text-sm text-slate-500 dark:text-slate-400">Representante</span>
+                    <span className="text-sm font-medium text-slate-900 dark:text-slate-100 text-right">
                       {detailData.company.contactName || '—'}
-                    </dd>
-                    {detailData.company.contactRole && (
-                      <dd className="text-[11px] text-slate-500">{detailData.company.contactRole}</dd>
-                    )}
+                      {detailData.company.contactRole && (
+                        <span className="text-xs text-slate-500 block">{detailData.company.contactRole}</span>
+                      )}
+                    </span>
                   </div>
-                  <div>
-                    <dt className="text-[10px] uppercase text-slate-500">Correo / Teléfono</dt>
-                    <dd className="text-slate-800 dark:text-slate-200 mt-0.5 break-all">
-                      {detailData.company.contactEmail || '—'}
-                    </dd>
-                    {detailData.company.contactPhone && (
-                      <dd className="font-mono text-[11px] text-slate-500">
-                        {detailData.company.contactPhone}
-                      </dd>
-                    )}
-                  </div>
-                  <div>
-                    <dt className="text-[10px] uppercase text-slate-500">Fecha de Inicio</dt>
-                    <dd className="font-mono text-slate-800 dark:text-slate-200 mt-0.5">
+                  {(detailData.company.contactEmail || detailData.company.contactPhone) && (
+                    <div className="flex items-baseline justify-between gap-4">
+                      <span className="text-sm text-slate-500 dark:text-slate-400">Correo / Teléfono</span>
+                      <span className="text-sm text-slate-800 dark:text-slate-200 tabular-nums text-right">
+                        {[detailData.company.contactEmail, detailData.company.contactPhone]
+                          .filter(Boolean)
+                          .join(' • ')}
+                      </span>
+                    </div>
+                  )}
+                  <div className="flex items-baseline justify-between gap-4">
+                    <span className="text-sm text-slate-500 dark:text-slate-400">Fecha de Inicio</span>
+                    <span className="text-sm text-slate-800 dark:text-slate-200 tabular-nums text-right">
                       {detailData.company.startDate || '—'}
-                    </dd>
+                    </span>
                   </div>
-                  <div>
-                    <dt className="text-[10px] uppercase text-slate-500">Renovación / Corte</dt>
-                    <dd
-                      className={`font-mono mt-0.5 ${
+                  <div className="flex items-baseline justify-between gap-4">
+                    <span className="text-sm text-slate-500 dark:text-slate-400">Renovación / Corte</span>
+                    <span
+                      className={`text-sm tabular-nums text-right ${
                         detailData.isUpcomingRenewal
-                          ? 'text-amber-600 dark:text-amber-400 font-semibold'
+                          ? 'text-amber-600 dark:text-amber-400 font-medium'
                           : 'text-slate-800 dark:text-slate-200'
                       }`}
                     >
                       {detailData.company.renewalDate || 'Sin vencimiento'}
-                    </dd>
+                      {detailData.isUpcomingRenewal && detailData.daysToRenewal !== null
+                        ? ` (${detailData.daysToRenewal}d restantes)`
+                        : ''}
+                    </span>
                   </div>
                   {detailData.company.notes && (
-                    <div className="col-span-2 pt-2 border-t border-slate-200 dark:border-slate-800">
-                      <dt className="text-[10px] uppercase text-slate-500">Notas y Acuerdos</dt>
-                      <dd className="text-slate-700 dark:text-slate-300 mt-1 leading-relaxed">
+                    <div className="pt-2">
+                      <span className="text-xs text-slate-500 block mb-1">Notas y Acuerdos</span>
+                      <p className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed">
                         {detailData.company.notes}
-                      </dd>
+                      </p>
                     </div>
                   )}
-                </dl>
+                </div>
               </div>
 
               {/* Proyectos Vinculados */}
-              <div className="space-y-2.5">
-                <div className="text-[10px] font-mono uppercase tracking-wider text-slate-500">
+              <div className="space-y-3">
+                <div className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
                   Proyectos Asociados ({detailData.companyProjects.length})
                 </div>
                 {detailData.companyProjects.length === 0 ? (
-                  <p className="text-xs text-slate-500 dark:text-slate-400 border border-dashed border-slate-300 dark:border-slate-800 p-4 text-center">
+                  <p className="text-sm text-slate-500 dark:text-slate-400 py-4 text-center">
                     Aún no hay proyectos vinculados a esta empresa.
                   </p>
                 ) : (
-                  <div className="divide-y divide-slate-200 dark:divide-slate-800 border border-slate-200 dark:border-slate-800">
+                  <div className="divide-y divide-slate-200 dark:divide-slate-800/40">
                     {detailData.companyProjects.map((proj) => {
                       const projTasks = tasks.filter((t) => t.projectId === proj.id);
                       const mins = projTasks.reduce(
@@ -706,20 +681,20 @@ export function ClientsDirectoryView() {
                           ? proj.plannedMinutes
                           : Math.round((proj.totalBudgetHours || 0) * 60);
                       return (
-                        <div key={proj.id} className="p-3 flex items-center justify-between gap-3">
+                        <div key={proj.id} className="py-3 flex items-center justify-between gap-3">
                           <div className="min-w-0">
-                            <div className="font-semibold text-slate-900 dark:text-white truncate">
+                            <div className="font-medium text-slate-900 dark:text-white truncate">
                               {proj.name}
                             </div>
-                            <div className="text-[11px] font-mono text-slate-500">
+                            <div className="text-xs text-slate-500 tabular-nums mt-0.5">
                               {proj.code} • Líder: {proj.leadUserName}
                             </div>
                           </div>
-                          <div className="text-right font-mono shrink-0">
-                            <div className="font-bold text-slate-900 dark:text-slate-100">
+                          <div className="text-right tabular-nums shrink-0">
+                            <div className="font-semibold text-slate-900 dark:text-slate-100">
                               {formatMinutesSexagesimal(mins)}
                             </div>
-                            <div className="text-[10px] text-slate-500">
+                            <div className="text-xs text-slate-500">
                               de {formatMinutesSexagesimal(plannedMins)}
                             </div>
                           </div>
@@ -732,12 +707,12 @@ export function ClientsDirectoryView() {
             </div>
 
             {/* Footer de Acciones del Drawer */}
-            <div className="px-6 py-4 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between gap-3 bg-slate-50 dark:bg-[#0D1320]">
+            <div className="px-6 py-4 border-t border-slate-200 dark:border-slate-800/80 flex items-center justify-between gap-3 bg-white dark:bg-[#101726]">
               {canManage ? (
                 <button
                   type="button"
                   onClick={() => handleOpenEditCompany(detailData.company)}
-                  className="px-4 py-2 text-xs font-semibold text-slate-800 dark:text-slate-200 border border-slate-300 dark:border-slate-700 hover:border-blue-600 transition cursor-pointer"
+                  className="px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-md transition cursor-pointer"
                 >
                   Editar Expediente
                 </button>
@@ -747,22 +722,9 @@ export function ClientsDirectoryView() {
               <button
                 type="button"
                 onClick={() => handleOpenNewProjectForCompany(detailData.company.id)}
-                className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-blue-700 hover:bg-blue-600 transition cursor-pointer"
+                className="px-5 py-2.5 text-sm font-medium text-white bg-[#1E3A8A] hover:bg-[#1D4ED8] rounded-md transition-colors cursor-pointer"
               >
-                <svg
-                  className="w-3.5 h-3.5 shrink-0"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth={2.2}
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  aria-hidden="true"
-                >
-                  <line x1="12" y1="5" x2="12" y2="19" />
-                  <line x1="5" y1="12" x2="19" y2="12" />
-                </svg>
-                <span>Crear Proyecto</span>
+                Crear Proyecto
               </button>
             </div>
           </div>

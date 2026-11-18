@@ -3,18 +3,20 @@ import { useCheckinStore } from '../../store/useCheckinStore';
 import { useRayonerStore } from '../../store/useRayonerStore';
 import { useGamificationStore } from '../../store/useGamificationStore';
 import { logoutFirebase } from '../../services/firebase';
-import { 
-  calculateGamification, 
-  MONTHLY_GAMIFICATION_RULES, 
-  RANK_TIERS 
+import {
+  calculateGamification,
+  MONTHLY_GAMIFICATION_RULES,
+  RANK_TIERS
 } from '../../services/gamification';
 import { RankMedal } from './RankMedal';
 import { AvatarCreatorModal } from '../avatar';
+
+
 import { FacialEnrollmentModal } from '../../features/checkin/FacialEnrollmentModal';
 import { normalizeRole, isBiometricsRequiredForUser } from '../../services/rbac';
-import { 
-  X, Camera, LogOut, Calendar, Shield, User, 
-  Briefcase, Award, TrendingUp, CheckCircle2, 
+import {
+  X, Camera, LogOut, Calendar, Shield, User,
+  Briefcase, Award, TrendingUp, CheckCircle2,
   Settings, Clock, AlertTriangle, Zap, PlayCircle,
   HelpCircle, ChevronDown, ChevronUp, Timer, Target, Copy,
   Sparkles, ScanFace, ShieldCheck, Sun, Moon
@@ -30,10 +32,10 @@ type TabType = 'rank' | 'rules' | 'profile' | 'settings';
 
 export function UserProfileModal({ isOpen, onClose, initialTab = 'rank' }: UserProfileModalProps) {
   const { user, updateProfile, logout, addToast, history, activeCheckin, theme, setTheme } = useCheckinStore();
-  const { 
-    manualEditsByDate, 
-    taskSwitchesByDate, 
-    previousSeason 
+  const {
+    manualEditsByDate,
+    taskSwitchesByDate,
+    previousSeason
   } = useGamificationStore();
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -126,7 +128,7 @@ export function UserProfileModal({ isOpen, onClose, initialTab = 'rank' }: UserP
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 dark:bg-[#090E17]/80 backdrop-blur-xs animate-fade-in">
-      <div 
+      <div
         className="w-full max-w-2xl bg-white dark:bg-[#101726] text-slate-900 dark:text-slate-100 rounded-xl shadow-2xl shadow-black/60 border border-slate-200 dark:border-slate-800 overflow-hidden flex flex-col max-h-[92vh] animate-scale-up"
         onClick={(e) => e.stopPropagation()}
       >
@@ -179,6 +181,7 @@ export function UserProfileModal({ isOpen, onClose, initialTab = 'rank' }: UserP
                 <span className="text-[11px] font-heading font-bold uppercase tracking-wider text-blue-700 dark:text-sky-400">
                   {normalizedRole}
                 </span>
+
                 <span className="text-slate-300 dark:text-slate-600">•</span>
                 <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">
                   {gamification.seasonName}
@@ -217,11 +220,10 @@ export function UserProfileModal({ isOpen, onClose, initialTab = 'rank' }: UserP
           <div className="flex items-center space-x-2 sm:space-x-6 mt-4 border-b border-slate-200 dark:border-[#233354] overflow-x-auto no-scrollbar">
             <button
               onClick={() => setActiveTab('rank')}
-              className={`pb-2.5 pt-1 text-xs sm:text-sm font-heading transition-colors flex items-center space-x-1.5 cursor-pointer whitespace-nowrap border-b-2 ${
-                activeTab === 'rank'
-                  ? 'border-blue-600 dark:border-sky-400 text-blue-700 dark:text-sky-400 font-bold'
-                  : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 font-medium'
-              }`}
+              className={`pb-2.5 pt-1 text-xs sm:text-sm font-heading transition-colors flex items-center space-x-1.5 cursor-pointer whitespace-nowrap border-b-2 ${activeTab === 'rank'
+                ? 'border-blue-600 dark:border-sky-400 text-blue-700 dark:text-sky-400 font-bold'
+                : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 font-medium'
+                }`}
             >
               <Award className="w-4 h-4 shrink-0" />
               <span>Medalla & Mes</span>
@@ -229,11 +231,10 @@ export function UserProfileModal({ isOpen, onClose, initialTab = 'rank' }: UserP
 
             <button
               onClick={() => setActiveTab('rules')}
-              className={`pb-2.5 pt-1 text-xs sm:text-sm font-heading transition-colors flex items-center space-x-1.5 cursor-pointer whitespace-nowrap border-b-2 ${
-                activeTab === 'rules'
-                  ? 'border-blue-600 dark:border-sky-400 text-blue-700 dark:text-sky-400 font-bold'
-                  : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 font-medium'
-              }`}
+              className={`pb-2.5 pt-1 text-xs sm:text-sm font-heading transition-colors flex items-center space-x-1.5 cursor-pointer whitespace-nowrap border-b-2 ${activeTab === 'rules'
+                ? 'border-blue-600 dark:border-sky-400 text-blue-700 dark:text-sky-400 font-bold'
+                : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 font-medium'
+                }`}
             >
               <Target className="w-4 h-4 shrink-0" />
               <span>¿Cómo Ganar?</span>
@@ -241,11 +242,10 @@ export function UserProfileModal({ isOpen, onClose, initialTab = 'rank' }: UserP
 
             <button
               onClick={() => setActiveTab('profile')}
-              className={`pb-2.5 pt-1 text-xs sm:text-sm font-heading transition-colors flex items-center space-x-1.5 cursor-pointer whitespace-nowrap border-b-2 ${
-                activeTab === 'profile'
-                  ? 'border-blue-600 dark:border-sky-400 text-blue-700 dark:text-sky-400 font-bold'
-                  : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 font-medium'
-              }`}
+              className={`pb-2.5 pt-1 text-xs sm:text-sm font-heading transition-colors flex items-center space-x-1.5 cursor-pointer whitespace-nowrap border-b-2 ${activeTab === 'profile'
+                ? 'border-blue-600 dark:border-sky-400 text-blue-700 dark:text-sky-400 font-bold'
+                : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 font-medium'
+                }`}
             >
               <User className="w-4 h-4 shrink-0" />
               <span>Datos Perfil</span>
@@ -253,11 +253,10 @@ export function UserProfileModal({ isOpen, onClose, initialTab = 'rank' }: UserP
 
             <button
               onClick={() => setActiveTab('settings')}
-              className={`pb-2.5 pt-1 text-xs sm:text-sm font-heading transition-colors flex items-center space-x-1.5 cursor-pointer whitespace-nowrap border-b-2 ${
-                activeTab === 'settings'
-                  ? 'border-blue-600 dark:border-sky-400 text-blue-700 dark:text-sky-400 font-bold'
-                  : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 font-medium'
-              }`}
+              className={`pb-2.5 pt-1 text-xs sm:text-sm font-heading transition-colors flex items-center space-x-1.5 cursor-pointer whitespace-nowrap border-b-2 ${activeTab === 'settings'
+                ? 'border-blue-600 dark:border-sky-400 text-blue-700 dark:text-sky-400 font-bold'
+                : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 font-medium'
+                }`}
             >
               <Settings className="w-4 h-4 shrink-0" />
               <span>Ajustes</span>
@@ -267,16 +266,16 @@ export function UserProfileModal({ isOpen, onClose, initialTab = 'rank' }: UserP
 
         {/* Cuerpo del Modal */}
         <div className="p-5 sm:p-6 overflow-y-auto space-y-6 flex-1 bg-white dark:bg-[#131D31]">
-          
+
           {/* ==================================================== */}
           {/* PESTAÑA 1: MEDALLA Y TEMPORADA MENSUAL (DISEÑO ABIERTO) */}
           {/* ==================================================== */}
           {activeTab === 'rank' && (
             <div className="space-y-6">
-              
+
               {/* Información de Temporada y Rango (Desencapsulado y sin fondo gris pesado) */}
               <div className="space-y-5">
-                
+
                 {/* Banner de Ciclo Mensual y Reinicio (Limpio y flotante) */}
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-slate-100 dark:border-[#233354] text-xs gap-2">
                   <div className="flex items-center space-x-2">
@@ -296,7 +295,7 @@ export function UserProfileModal({ isOpen, onClose, initialTab = 'rank' }: UserP
                   <div className="flex items-center space-x-5">
                     {/* Medalla Animada */}
                     <div className="relative shrink-0">
-                      <div 
+                      <div
                         className="absolute inset-0 rounded-full blur-md opacity-40 dark:opacity-70 animate-pulse"
                         style={{ backgroundColor: gamification.rank.color }}
                       />
@@ -312,7 +311,7 @@ export function UserProfileModal({ isOpen, onClose, initialTab = 'rank' }: UserP
                           {gamification.rank.title}
                         </span>
                       </div>
-                      
+
                       <div className="flex items-baseline space-x-2 mt-1">
                         <span className="text-3xl font-heading font-bold text-slate-900 dark:text-white">
                           {gamification.points.toLocaleString()}
@@ -350,19 +349,19 @@ export function UserProfileModal({ isOpen, onClose, initialTab = 'rank' }: UserP
                   <div className="flex items-center justify-between text-xs">
                     <span className="font-medium text-slate-600 dark:text-slate-400 flex items-center">
                       <TrendingUp className="w-3.5 h-3.5 mr-1 text-blue-600 dark:text-sky-400" />
-                      {gamification.nextRank 
+                      {gamification.nextRank
                         ? `Meta: Avanzar a rango ${gamification.nextRank.title}`
                         : '¡Has alcanzado el rango máximo Diamante del mes!'}
                     </span>
                     <span className="font-heading font-bold text-slate-900 dark:text-white">
-                      {gamification.nextRank 
+                      {gamification.nextRank
                         ? `${gamification.pointsForNext} pts restantes (${gamification.progressPercent}%)`
                         : '100% completado'}
                     </span>
                   </div>
 
                   <div className="w-full h-2.5 bg-slate-100 dark:bg-[#0B111E] rounded-full overflow-hidden p-0.5 border border-slate-200 dark:border-[#233354]">
-                    <div 
+                    <div
                       className={`h-full rounded-full transition-all duration-700 bg-gradient-to-r ${gamification.rank.gradient}`}
                       style={{ width: `${gamification.progressPercent}%` }}
                     />
@@ -374,13 +373,12 @@ export function UserProfileModal({ isOpen, onClose, initialTab = 'rank' }: UserP
                       const tierConfig = RANK_TIERS[tierKey];
                       const isActive = gamification.rank.tier === tierKey;
                       return (
-                        <div 
+                        <div
                           key={tierKey}
-                          className={`p-2.5 rounded-xl text-center transition-all ${
-                            isActive 
-                              ? 'bg-blue-50/80 dark:bg-blue-950/30 border border-blue-500/40 dark:border-sky-400/50 shadow-xs' 
-                              : 'bg-slate-50/60 dark:bg-[#1A2742]/20 border border-slate-200/50 dark:border-transparent opacity-75 hover:opacity-100'
-                          }`}
+                          className={`p-2.5 rounded-xl text-center transition-all ${isActive
+                            ? 'bg-blue-50/80 dark:bg-blue-950/30 border border-blue-500/40 dark:border-sky-400/50 shadow-xs'
+                            : 'bg-slate-50/60 dark:bg-[#1A2742]/20 border border-slate-200/50 dark:border-transparent opacity-75 hover:opacity-100'
+                            }`}
                         >
                           <RankMedal tier={tierKey} size="xs" className="mx-auto mb-1" />
                           <span className={`text-[11px] font-heading font-bold uppercase block tracking-wider ${isActive ? 'text-blue-700 dark:text-sky-300' : 'text-slate-800 dark:text-[#F8FAFC]'}`}>
@@ -408,11 +406,10 @@ export function UserProfileModal({ isOpen, onClose, initialTab = 'rank' }: UserP
                       Rendimiento de Hoy ({gamification.todayAudit.totalDayPoints} / 100 pts)
                     </h3>
                   </div>
-                  <span className={`text-[11px] font-medium px-2.5 py-0.5 rounded-md ${
-                    gamification.todayAudit.totalDayPoints === 100 
-                      ? 'bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400' 
-                      : 'bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-sky-300'
-                  }`}>
+                  <span className={`text-[11px] font-medium px-2.5 py-0.5 rounded-md ${gamification.todayAudit.totalDayPoints === 100
+                    ? 'bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400'
+                    : 'bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-sky-300'
+                    }`}>
                     {gamification.todayAudit.totalDayPoints === 100 ? '⭐ Día Perfecto' : 'En progreso hoy'}
                   </span>
                 </div>
@@ -443,11 +440,10 @@ export function UserProfileModal({ isOpen, onClose, initialTab = 'rank' }: UserP
                   </div>
 
                   {/* Criterio 3: Trabajo en Vivo vs Ediciones */}
-                  <div className={`p-3.5 rounded-xl border transition-all ${
-                    gamification.todayAudit.isPenalizedForManualEdits 
-                      ? 'bg-rose-50/70 dark:bg-rose-950/20 border-rose-200 dark:border-rose-900/40'
-                      : 'bg-slate-50 dark:bg-[#1A2742]/30 border-slate-200/70 dark:border-[#233354]'
-                  }`}>
+                  <div className={`p-3.5 rounded-xl border transition-all ${gamification.todayAudit.isPenalizedForManualEdits
+                    ? 'bg-rose-50/70 dark:bg-rose-950/20 border-rose-200 dark:border-rose-900/40'
+                    : 'bg-slate-50 dark:bg-[#1A2742]/30 border-slate-200/70 dark:border-[#233354]'
+                    }`}>
                     <div className="flex items-center justify-between">
                       <span className="text-[10px] font-heading font-bold uppercase tracking-wider text-slate-500 dark:text-[#94A3B8]">3. Tiempo en Vivo</span>
                       <span className="text-xs font-heading font-bold text-blue-600 dark:text-sky-400">+{gamification.todayAudit.liveTrackingPoints} pts</span>
@@ -499,8 +495,8 @@ export function UserProfileModal({ isOpen, onClose, initialTab = 'rank' }: UserP
                         <div>
                           <span className="font-heading font-semibold text-slate-900 dark:text-white block capitalize">{d.dateFormatted}</span>
                           <span className="text-[10px] text-slate-500 dark:text-slate-400">
-                            Puntual: {d.isPunctual ? '✓ (+30 pts)' : `Tarde (${d.minutesLate}m)`} • 
-                            Jornada 8h: {d.isFullShift ? '✓ (+30 pts)' : `${Math.floor(d.workedMinutes / 60)}h`} • 
+                            Puntual: {d.isPunctual ? '✓ (+30 pts)' : `Tarde (${d.minutesLate}m)`} •
+                            Jornada 8h: {d.isFullShift ? '✓ (+30 pts)' : `${Math.floor(d.workedMinutes / 60)}h`} •
                             En Vivo: {d.isPenalizedForManualEdits ? 'Anulado por edición manual' : '✓ (+40 pts)'}
                           </span>
                         </div>
@@ -521,7 +517,7 @@ export function UserProfileModal({ isOpen, onClose, initialTab = 'rank' }: UserP
           {/* ==================================================== */}
           {activeTab === 'rules' && (
             <div className="space-y-5">
-              
+
               {/* Explicación de la Filosofía Mensual (Diseño Abierto) */}
               <div className="space-y-1.5 pb-2 border-b border-slate-100 dark:border-[#233354]">
                 <div className="flex items-center space-x-2">
@@ -543,7 +539,7 @@ export function UserProfileModal({ isOpen, onClose, initialTab = 'rank' }: UserP
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   {MONTHLY_GAMIFICATION_RULES.map((rule) => (
-                    <div 
+                    <div
                       key={rule.id}
                       className="bg-slate-50 dark:bg-[#1A2742]/30 border border-slate-200/80 dark:border-[#233354] rounded-xl p-4 space-y-2 relative overflow-hidden"
                     >
@@ -775,11 +771,10 @@ export function UserProfileModal({ isOpen, onClose, initialTab = 'rank' }: UserP
                       setTheme('light');
                       addToast('Tema cambiado a Tonalidad Clara', 'info');
                     }}
-                    className={`p-3.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
-                      theme === 'light'
-                        ? 'bg-white border-blue-600 ring-2 ring-blue-600/20 shadow-xs'
-                        : 'bg-slate-50 dark:bg-[#131D31] border-slate-200 dark:border-[#233354] hover:border-slate-300'
-                    }`}
+                    className={`p-3.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between ${theme === 'light'
+                      ? 'bg-white border-blue-600 ring-2 ring-blue-600/20 shadow-xs'
+                      : 'bg-slate-50 dark:bg-[#131D31] border-slate-200 dark:border-[#233354] hover:border-slate-300'
+                      }`}
                   >
                     <div className="flex items-center justify-between w-full mb-1.5">
                       <div className="flex items-center space-x-2">
@@ -803,11 +798,10 @@ export function UserProfileModal({ isOpen, onClose, initialTab = 'rank' }: UserP
                       setTheme('dark');
                       addToast('Tema cambiado a Tonalidad Oscura', 'info');
                     }}
-                    className={`p-3.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
-                      theme === 'dark'
-                        ? 'bg-[#0B111E] border-sky-400 ring-2 ring-sky-400/20 shadow-xs'
-                        : 'bg-slate-50 dark:bg-[#131D31] border-slate-200 dark:border-[#233354] hover:border-slate-300'
-                    }`}
+                    className={`p-3.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between ${theme === 'dark'
+                      ? 'bg-[#0B111E] border-sky-400 ring-2 ring-sky-400/20 shadow-xs'
+                      : 'bg-slate-50 dark:bg-[#131D31] border-slate-200 dark:border-[#233354] hover:border-slate-300'
+                      }`}
                   >
                     <div className="flex items-center justify-between w-full mb-1.5">
                       <div className="flex items-center space-x-2">

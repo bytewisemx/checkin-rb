@@ -66,17 +66,17 @@ export function TimeDistributionBar({
   return (
     <div className={containerCls}>
       {/* Contadores superiores */}
-      <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+      <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
         <div>
           <span className={labelMutedCls}>Distribución de Jornada: </span>
           <span
-            className={`font-mono font-semibold ${
+            className={`font-semibold tabular-nums ${
               isOverflow ? 'text-rose-500 dark:text-rose-400' : valueMainCls
             }`}
           >
             {formatMinutesSexagesimal(assignedMinutes)}
           </span>
-          <span className="text-slate-500 font-mono">
+          <span className="text-slate-500 tabular-nums">
             {' '}
             asignadas de {formatMinutesSexagesimal(safeTotal)}
           </span>
@@ -87,7 +87,7 @@ export function TimeDistributionBar({
             {isOverflow ? 'Excedente: ' : 'Sin asignar: '}
           </span>
           <span
-            className={`font-mono font-semibold ${
+            className={`font-semibold tabular-nums ${
               isOverflow
                 ? 'text-rose-500 dark:text-rose-400'
                 : safeRemaining > 0
@@ -122,7 +122,7 @@ export function TimeDistributionBar({
       </div>
 
       {/* Leyenda Compacta de Segmentos */}
-      <div className={`flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11px] ${labelMutedCls} pt-0.5`}>
+      <div className={`flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs ${labelMutedCls} pt-0.5`}>
         {activeSegments.map((seg, idx) => {
           const colorCls = isOverflow
             ? 'bg-rose-600/80'
@@ -132,7 +132,7 @@ export function TimeDistributionBar({
 
           return (
             <div key={seg.id} className="flex items-center gap-1.5">
-              <span className={`w-2 h-2 ${colorCls} inline-block shrink-0`} />
+              <span className={`w-2 h-2 ${colorCls} inline-block shrink-0 rounded-xs`} />
               <span
                 className={`truncate max-w-[160px] ${
                   isDarkOnly ? 'text-slate-300' : 'text-slate-700 dark:text-slate-300'
@@ -140,7 +140,7 @@ export function TimeDistributionBar({
               >
                 {seg.label}
               </span>
-              <span className="font-mono text-slate-500 dark:text-slate-400">
+              <span className="tabular-nums text-slate-500 dark:text-slate-400">
                 ({formatMinutesSexagesimal(seg.minutes)} · {pctLabel}%)
               </span>
             </div>
@@ -149,14 +149,14 @@ export function TimeDistributionBar({
 
         <div className="flex items-center gap-1.5">
           <span
-            className={`w-2 h-2 inline-block shrink-0 ${
+            className={`w-2 h-2 inline-block shrink-0 rounded-xs ${
               isDarkOnly
                 ? 'bg-slate-800 border border-slate-600'
                 : 'bg-slate-200 dark:bg-slate-800 border border-slate-400 dark:border-slate-600'
             }`}
           />
           <span>Sin asignar</span>
-          <span className="font-mono">
+          <span className="tabular-nums">
             ({formatMinutesSexagesimal(safeRemaining)} · {remainingPct}%)
           </span>
         </div>
