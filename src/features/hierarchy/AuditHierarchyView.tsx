@@ -915,11 +915,10 @@ export function AuditHierarchyView({ onNavigateToInvitations }: AuditHierarchyVi
                         {team.code}
                       </span>
                       <span
-                        className={`text-[10px] font-semibold px-2 py-0.5 rounded ${
-                          team.status === 'active'
-                            ? 'bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300'
-                            : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400'
-                        }`}
+                        className={`text-[10px] font-semibold px-2 py-0.5 rounded ${team.status === 'active'
+                          ? 'bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300'
+                          : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400'
+                          }`}
                       >
                         {team.status === 'active' ? '● Activo' : '○ Inactivo'}
                       </span>
@@ -1033,11 +1032,10 @@ export function AuditHierarchyView({ onNavigateToInvitations }: AuditHierarchyVi
                                 </div>
                               </div>
                               <span
-                                className={`text-[10px] font-semibold px-2 py-0.5 rounded shrink-0 ${
-                                  normRole === 'RH'
-                                    ? 'bg-rose-50 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300'
-                                    : 'bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300'
-                                }`}
+                                className={`text-[10px] font-semibold px-2 py-0.5 rounded shrink-0 ${normRole === 'RH'
+                                  ? 'bg-rose-50 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300'
+                                  : 'bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300'
+                                  }`}
                               >
                                 {normRole === 'RH' ? 'RH Asignado' : 'Colaborador'}
                               </span>
@@ -1182,11 +1180,10 @@ export function AuditHierarchyView({ onNavigateToInvitations }: AuditHierarchyVi
                         <div
                           key={member.id}
                           onClick={() => handleToggleMember(member.id)}
-                          className={`flex items-center justify-between p-2 rounded-lg text-xs cursor-pointer transition-colors ${
-                            isSelected
-                              ? 'bg-blue-50 text-blue-900 border border-blue-200 dark:bg-blue-950/70 dark:text-blue-200 dark:border-blue-900'
-                              : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-800 hover:bg-slate-100'
-                          }`}
+                          className={`flex items-center justify-between p-2 rounded-lg text-xs cursor-pointer transition-colors ${isSelected
+                            ? 'bg-blue-50 text-blue-900 border border-blue-200 dark:bg-blue-950/70 dark:text-blue-200 dark:border-blue-900'
+                            : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-800 hover:bg-slate-100'
+                            }`}
                         >
                           <div className="flex items-center gap-2 min-w-0">
                             {member.photoURL ? (
@@ -1210,11 +1207,10 @@ export function AuditHierarchyView({ onNavigateToInvitations }: AuditHierarchyVi
                           </div>
 
                           <div
-                            className={`w-4 h-4 rounded flex items-center justify-center border ${
-                              isSelected
-                                ? 'bg-blue-700 border-blue-700 text-white'
-                                : 'border-slate-300 dark:border-slate-700'
-                            }`}
+                            className={`w-4 h-4 rounded flex items-center justify-center border ${isSelected
+                              ? 'bg-blue-700 border-blue-700 text-white'
+                              : 'border-slate-300 dark:border-slate-700'
+                              }`}
                           >
                             {isSelected && <Check className="w-3 h-3" />}
                           </div>
@@ -1233,11 +1229,10 @@ export function AuditHierarchyView({ onNavigateToInvitations }: AuditHierarchyVi
                 <button
                   type="button"
                   onClick={() => setFormStatus(formStatus === 'active' ? 'inactive' : 'active')}
-                  className={`px-3 py-1 text-xs font-semibold rounded-full border transition-colors cursor-pointer ${
-                    formStatus === 'active'
-                      ? 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/60 dark:text-blue-300'
-                      : 'bg-slate-100 text-slate-500 border-slate-300 dark:bg-slate-800 dark:text-slate-400'
-                  }`}
+                  className={`px-3 py-1 text-xs font-semibold rounded-full border transition-colors cursor-pointer ${formStatus === 'active'
+                    ? 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/60 dark:text-blue-300'
+                    : 'bg-slate-100 text-slate-500 border-slate-300 dark:bg-slate-800 dark:text-slate-400'
+                    }`}
                 >
                   {formStatus === 'active' ? '● Activo' : '○ Inactivo'}
                 </button>

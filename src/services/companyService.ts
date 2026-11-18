@@ -7,7 +7,8 @@ import {
   deleteDoc,
   serverTimestamp,
 } from 'firebase/firestore';
-import { db, isFirebaseConfigured } from './firebase';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { db, storage, isFirebaseConfigured } from './firebase';
 import { normalizeRole, type LegacyOrCurrentRole } from './rbac';
 import {
   registerActiveListener,
@@ -20,16 +21,40 @@ import type { Project, TaskNode } from '../types/rayoner';
 
 export interface CompanyDocument {
   id: string;
+  // Identidad y Marca
   name: string;
+  commercialName: string;
   code: string;
+  logoUrl: string;
+  // Datos Fiscales y Corporativos
   taxId: string;
+  taxRegime: string;
+  industry: string;
+  fiscalAddress: string;
+  // Contacto Principal
   contactName: string;
+  contactRole: string;
+  contactEmail: string;
+  contactPhone: string;
+  // Fechas y Vigencia Contractual
+  startDate: string;
+  renewalDate: string;
+  notes: string;
+  // Control y Auditoría
   status: 'active' | 'inactive';
   createdBy: string;
   createdByRole: string;
   createdAt?: any;
   updatedAt?: string;
 }
+
+export const ALLOWED_LOGO_TYPES = [
+  'image/png',
+  'image/jpeg',
+  'image/webp',
+  'image/svg+xml',
+];
+export const MAX_LOGO_SIZE_BYTES = 2 * 1024 * 1024; // 2 MB
 
 /**
  * Validación RBAC estricta para crear / administrar empresas:
@@ -47,6 +72,30 @@ export function canCreateOrManageCompanies(role?: LegacyOrCurrentRole | null): b
 export function canReadCompanies(role?: LegacyOrCurrentRole | null): boolean {
   const norm = normalizeRole(role ?? undefined);
   return norm !== 'RH';
+}
+
+/**
+ * Genera el monograma sobrio de 2 iniciales a partir del nombre comercial o razón social.
+ */
+export function getCompanyInitials(name?: string | null, commercialName?: string | null): string {
+  const source = (commercialName || name || '').trim();
+  if (!source) return 'EM';
+  const stopWords = new Set(['DE', 'DEL', 'LA', 'LAS', 'LOS', 'EL', 'Y', 'SA', 'CV', 'S', 'A', 'C', 'V']);
+  const words = source
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-zA-Z0-9\s]/g, ' ')
+    .toUpperCase()
+    .split(/\s+/)
+    .filter((w) => w.length > 0 && !stopWords.has(w));
+
+  if (words.length >= 2) {
+    return `${words[0][0]}${words[1][0]}`.toUpperCase();
+  }
+  if (words.length === 1) {
+    return words[0].slice(0, 2).toUpperCase();
+  }
+  return source.slice(0, 2).toUpperCase();
 }
 
 /**
@@ -80,15 +129,119 @@ export function generateCompanyCodeSuggestion(name: string, sequence = 1): strin
 }
 
 /**
+ * Redimensiona un archivo de imagen raster a máx. 256x256px en DataURL optimizado
+ * (o lee directamente DataURL si es SVG).
+ */
+export async function optimizeCompanyLogoToDataUrl(
+  file: File,
+  maxDimension = 256
+): Promise<string> {
+  if (!ALLOWED_LOGO_TYPES.includes(file.type)) {
+    throw new Error('Formato no soportado. Usa PNG, JPG, WEBP o SVG.');
+  }
+  if (file.size > MAX_LOGO_SIZE_BYTES) {
+    throw new Error('El archivo excede el límite permitido de 2 MB.');
+  }
+
+  // Si es SVG, leer directamente como DataURL
+  if (file.type === 'image/svg+xml') {
+    return new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || ''));
+      reader.onerror = () => reject(new Error('No se pudo leer el archivo SVG.'));
+      reader.readAsDataURL(file);
+    });
+  }
+
+  // Para PNG/JPG/WEBP, redimensionar en canvas a máx 256x256px preservando relación de aspecto
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        const scale = Math.min(1, maxDimension / Math.max(img.width, img.height));
+        const width = Math.max(1, Math.round(img.width * scale));
+        const height = Math.max(1, Math.round(img.height * scale));
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          resolve(String(reader.result || ''));
+          return;
+        }
+        ctx.clearRect(0, 0, width, height);
+        ctx.drawImage(img, 0, 0, width, height);
+        const outputMime = file.type === 'image/jpeg' ? 'image/jpeg' : 'image/png';
+        resolve(canvas.toDataURL(outputMime, 0.88));
+      };
+      img.onerror = () => reject(new Error('No se pudo procesar la imagen seleccionada.'));
+      img.src = String(reader.result || '');
+    };
+    reader.onerror = () => reject(new Error('No se pudo leer la imagen seleccionada.'));
+    reader.readAsDataURL(file);
+  });
+}
+
+/**
+ * Sube el logotipo de la empresa a Firebase Storage (`companies/logos/{companyCode}_{timestamp}`)
+ * con fallback automático a DataURL optimizado (máx. 256x256px) si Storage no está habilitado.
+ */
+export async function uploadCompanyLogo(
+  file: File,
+  companyCode: string
+): Promise<string> {
+  const optimizedDataUrl = await optimizeCompanyLogoToDataUrl(file, 256);
+
+  if (!isFirebaseConfigured() || !storage) {
+    return optimizedDataUrl;
+  }
+
+  try {
+    const safeCode = (companyCode || 'EMP').trim().toUpperCase().replace(/[^A-Z0-9-]/g, '');
+    const ext = file.name.split('.').pop()?.toLowerCase() || 'png';
+    const path = `companies/logos/${safeCode}_${Date.now()}.${ext}`;
+    const storageRef = ref(storage, path);
+
+    const uploadWithTimeout = Promise.race([
+      (async () => {
+        const snap = await uploadBytes(storageRef, file, { contentType: file.type });
+        return await getDownloadURL(snap.ref);
+      })(),
+      new Promise<string>((_, reject) =>
+        setTimeout(() => reject(new Error('storage-timeout')), 4000)
+      ),
+    ]);
+
+    const downloadUrl = await uploadWithTimeout;
+    return downloadUrl || optimizedDataUrl;
+  } catch (err) {
+    console.warn('[companyService] Firebase Storage no disponible; usando DataURL optimizado 256x256:', err);
+    return optimizedDataUrl;
+  }
+}
+
+/**
  * Crea o actualiza una empresa/cliente en la colección `companies` de Cloud Firestore.
  * Valida permisos RBAC (solo Socio, Gerente y TI) y usa serverTimestamp() en creación.
  */
 export async function saveCompanyToFirestore(company: {
   id: string;
   name: string;
+  commercialName?: string;
   code: string;
+  logoUrl?: string;
   taxId?: string;
+  taxRegime?: string;
+  industry?: string;
+  fiscalAddress?: string;
   contactName?: string;
+  contactRole?: string;
+  contactEmail?: string;
+  contactPhone?: string;
+  startDate?: string;
+  renewalDate?: string;
+  notes?: string;
   status?: 'active' | 'inactive';
   createdBy: string;
   createdByRole: string;
@@ -105,7 +258,7 @@ export async function saveCompanyToFirestore(company: {
   if (!cleanName) {
     return {
       success: false,
-      error: 'El nombre o razón social de la empresa es obligatorio.',
+      error: 'La razón social de la empresa es obligatoria.',
     };
   }
 
@@ -115,16 +268,26 @@ export async function saveCompanyToFirestore(company: {
       .toUpperCase()
       .replace(/[^A-Z0-9-]/g, '') || generateCompanyCodeSuggestion(cleanName);
 
-  const cleanTaxId = (company.taxId || '').trim().toUpperCase();
-  const cleanContact = (company.contactName || '').trim();
   const nowIso = new Date().toISOString();
+  const todayIso = nowIso.split('T')[0];
 
   const localResult: CompanyDocument = {
     id: company.id,
     name: cleanName,
+    commercialName: (company.commercialName || '').trim(),
     code: cleanCode,
-    taxId: cleanTaxId,
-    contactName: cleanContact,
+    logoUrl: (company.logoUrl || '').trim(),
+    taxId: (company.taxId || '').trim().toUpperCase(),
+    taxRegime: (company.taxRegime || '').trim(),
+    industry: (company.industry || '').trim(),
+    fiscalAddress: (company.fiscalAddress || '').trim(),
+    contactName: (company.contactName || '').trim(),
+    contactRole: (company.contactRole || '').trim(),
+    contactEmail: (company.contactEmail || '').trim(),
+    contactPhone: (company.contactPhone || '').trim(),
+    startDate: (company.startDate || todayIso).trim(),
+    renewalDate: (company.renewalDate || '').trim(),
+    notes: (company.notes || '').trim(),
     status: company.status === 'inactive' ? 'inactive' : 'active',
     createdBy: company.createdBy || 'demo_socio',
     createdByRole: normalizeRole(company.createdByRole),
@@ -140,9 +303,20 @@ export async function saveCompanyToFirestore(company: {
     const firestorePayload: Record<string, any> = {
       id: localResult.id,
       name: localResult.name,
+      commercialName: localResult.commercialName,
       code: localResult.code,
+      logoUrl: localResult.logoUrl,
       taxId: localResult.taxId,
+      taxRegime: localResult.taxRegime,
+      industry: localResult.industry,
+      fiscalAddress: localResult.fiscalAddress,
       contactName: localResult.contactName,
+      contactRole: localResult.contactRole,
+      contactEmail: localResult.contactEmail,
+      contactPhone: localResult.contactPhone,
+      startDate: localResult.startDate,
+      renewalDate: localResult.renewalDate,
+      notes: localResult.notes,
       status: localResult.status,
       createdBy: localResult.createdBy,
       createdByRole: localResult.createdByRole,
@@ -165,6 +339,32 @@ export async function saveCompanyToFirestore(company: {
   }
 }
 
+function mapDocToCompany(docId: string, d: Record<string, any>): CompanyDocument {
+  return {
+    id: d.id || docId,
+    name: String(d.name || 'Sin nombre'),
+    commercialName: String(d.commercialName || ''),
+    code: String(d.code || docId),
+    logoUrl: String(d.logoUrl || ''),
+    taxId: String(d.taxId || ''),
+    taxRegime: String(d.taxRegime || ''),
+    industry: String(d.industry || ''),
+    fiscalAddress: String(d.fiscalAddress || ''),
+    contactName: String(d.contactName || ''),
+    contactRole: String(d.contactRole || ''),
+    contactEmail: String(d.contactEmail || ''),
+    contactPhone: String(d.contactPhone || ''),
+    startDate: String(d.startDate || ''),
+    renewalDate: String(d.renewalDate || ''),
+    notes: String(d.notes || ''),
+    status: d.status === 'inactive' ? 'inactive' : 'active',
+    createdBy: String(d.createdBy || ''),
+    createdByRole: String(d.createdByRole || ''),
+    createdAt: d.createdAt,
+    updatedAt: d.updatedAt ? String(d.updatedAt) : undefined,
+  };
+}
+
 /**
  * Obtiene el catálogo de empresas desde la colección `companies` de Firestore
  */
@@ -179,19 +379,7 @@ export async function fetchCompaniesFromFirestore(
     trackFirestoreRead(Math.max(1, snap.size));
     const list: CompanyDocument[] = [];
     snap.forEach((docSnap) => {
-      const d = docSnap.data();
-      list.push({
-        id: d.id || docSnap.id,
-        name: String(d.name || 'Sin nombre'),
-        code: String(d.code || docSnap.id),
-        taxId: String(d.taxId || ''),
-        contactName: String(d.contactName || ''),
-        status: d.status === 'inactive' ? 'inactive' : 'active',
-        createdBy: String(d.createdBy || ''),
-        createdByRole: String(d.createdByRole || ''),
-        createdAt: d.createdAt,
-        updatedAt: d.updatedAt ? String(d.updatedAt) : undefined,
-      });
+      list.push(mapDocToCompany(docSnap.id, docSnap.data()));
     });
     return list;
   } catch (err) {
@@ -221,19 +409,7 @@ export function subscribeCompaniesFromFirestore(
       trackFirestoreRead(Math.max(1, snap.size));
       const list: CompanyDocument[] = [];
       snap.forEach((docSnap) => {
-        const d = docSnap.data();
-        list.push({
-          id: d.id || docSnap.id,
-          name: String(d.name || 'Sin nombre'),
-          code: String(d.code || docSnap.id),
-          taxId: String(d.taxId || ''),
-          contactName: String(d.contactName || ''),
-          status: d.status === 'inactive' ? 'inactive' : 'active',
-          createdBy: String(d.createdBy || ''),
-          createdByRole: String(d.createdByRole || ''),
-          createdAt: d.createdAt,
-          updatedAt: d.updatedAt ? String(d.updatedAt) : undefined,
-        });
+        list.push(mapDocToCompany(docSnap.id, docSnap.data()));
       });
       onData(list);
     },

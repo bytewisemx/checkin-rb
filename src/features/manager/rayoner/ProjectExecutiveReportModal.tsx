@@ -1,7 +1,6 @@
 import { useMemo } from 'react';
 import {
   X,
-  FileText,
   FileSpreadsheet,
   Printer,
   Calendar,
@@ -19,6 +18,7 @@ import {
   exportProjectReportToPDF,
 } from '../../../services/reportExportService';
 import { formatHoursToSexagesimal } from '../../../utils/timeFormat';
+import { CompanyLogoBadge } from '../../../components/common/CompanyLogoBadge';
 
 interface ProjectExecutiveReportModalProps {
   isOpen: boolean;
@@ -124,18 +124,30 @@ export function ProjectExecutiveReportModal({
         {/* Cabecera del Recuadro del Informe */}
         <div className="px-6 py-4.5 bg-slate-50 dark:bg-[#0F172A] border-b border-slate-200 dark:border-[#233354] flex flex-col md:flex-row md:items-center justify-between gap-3">
           <div className="flex items-start space-x-3.5">
-            <div className="w-11 h-11 rounded-xl bg-blue-500/10 text-blue-600 dark:text-[#38BDF8] flex items-center justify-center shrink-0 border border-blue-500/20">
-              <FileText className="w-6 h-6" />
-            </div>
+            <CompanyLogoBadge
+              name={client?.name}
+              commercialName={client?.commercialName}
+              logoUrl={client?.logoUrl}
+              size="md"
+              className="mt-0.5"
+            />
             <div>
-              <div className="flex items-center space-x-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <span className="text-[10px] font-mono font-bold uppercase bg-blue-50 dark:bg-[#002D42] text-blue-700 dark:text-[#00E5FF] px-2 py-0.5 rounded border border-blue-200 dark:border-[#00E5FF]/30">
                   {project.code}
                 </span>
                 <span className="text-xs text-slate-500 dark:text-[#94A3B8]">•</span>
                 <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">
-                  {client?.name || 'Cliente Particular'}
+                  {client?.commercialName || client?.name || 'Empresa'}
                 </span>
+                {client?.startDate && (
+                  <>
+                    <span className="text-xs text-slate-500 dark:text-[#94A3B8]">•</span>
+                    <span className="text-[11px] font-mono text-slate-500 dark:text-slate-400">
+                      Inicio: {client.startDate}
+                    </span>
+                  </>
+                )}
               </div>
               <h2 className="text-lg font-heading font-extrabold text-slate-900 dark:text-white mt-0.5">
                 {project.name}

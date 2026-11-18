@@ -16,6 +16,7 @@ import { ProjectTeamAssignmentModal } from './ProjectTeamAssignmentModal';
 import { ProjectTasksDrawerModal } from './ProjectTasksDrawerModal';
 import { ProjectExecutiveReportModal } from './ProjectExecutiveReportModal';
 import { LiveTimerCell } from '../../../components/common/LiveTimerCell';
+import { CompanyLogoBadge } from '../../../components/common/CompanyLogoBadge';
 import { useLiveTeamTimers } from '../../../hooks/useLiveTeamTimers';
 
 interface ProjectsSupervisionTableProps {
@@ -173,9 +174,22 @@ export function ProjectsSupervisionTable({
               type="button"
               data-tour="btn-new-company"
               onClick={() => setIsCompanyModalOpen(true)}
-              className="px-4 py-2 text-xs font-semibold text-slate-800 dark:text-slate-100 bg-white dark:bg-[#101726] border border-slate-300 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 transition cursor-pointer shrink-0"
+              className="btn-corporate-secondary inline-flex items-center justify-center gap-2 px-4 py-2 text-xs font-semibold tracking-wide bg-[#101726] text-slate-100 border border-slate-700 hover:border-blue-600 hover:bg-[#151F33] cursor-pointer shrink-0"
             >
-              + Nueva Empresa
+              <svg
+                className="w-3.5 h-3.5 text-sky-400 shrink-0"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth={2.2}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <line x1="12" y1="5" x2="12" y2="19" />
+                <line x1="5" y1="12" x2="19" y2="12" />
+              </svg>
+              <span>Nueva Empresa</span>
             </button>
           )}
 
@@ -187,15 +201,15 @@ export function ProjectsSupervisionTable({
               setPreselectedClientIdForProject(clients[0]?.id || null);
               setIsProjectModalOpen(true);
             }}
-            className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-blue-700 hover:bg-blue-600 transition cursor-pointer shrink-0"
+            className="inline-flex items-center justify-center gap-2 px-4 py-2 text-xs font-semibold tracking-wide text-white bg-blue-700 hover:bg-blue-600 transition cursor-pointer shrink-0"
           >
-            <Plus className="w-3.5 h-3.5" />
-            Nuevo Proyecto
+            <Plus className="w-3.5 h-3.5 shrink-0" />
+            <span>Nuevo Proyecto</span>
           </button>
         </div>
       </div>
 
-      {/* Franja Sobria de Empresas Registradas (visible cuando hay empresas activas en el catálogo) */}
+      {/* Franja Sobria de Empresas Registradas con Logotipo/Monograma y Fecha de Inicio */}
       {clients.length > 0 && (
         <div className="bg-white dark:bg-[#0B111E] border border-slate-200 dark:border-slate-800 px-4 py-3">
           <div className="flex flex-wrap items-center justify-between gap-2 mb-2.5">
@@ -203,20 +217,39 @@ export function ProjectsSupervisionTable({
               Empresas / Clientes Registrados ({clients.length})
             </span>
           </div>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-2.5">
             {clients.map((company) => (
               <div
                 key={company.id}
-                className="inline-flex items-center gap-2.5 px-3 py-1.5 bg-slate-50 dark:bg-[#101726] border border-slate-200 dark:border-slate-800 text-xs"
+                className="inline-flex items-center gap-3 px-3 py-2 bg-slate-50 dark:bg-[#101726] border border-slate-200 dark:border-slate-800 text-xs"
               >
-                <span className="font-semibold text-slate-900 dark:text-slate-100">
-                  {company.name}
-                </span>
-                {company.code && (
-                  <span className="font-mono text-[10px] text-slate-500 dark:text-slate-400">
-                    {company.code}
-                  </span>
-                )}
+                <CompanyLogoBadge
+                  name={company.name}
+                  commercialName={company.commercialName}
+                  logoUrl={company.logoUrl}
+                  size="sm"
+                />
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold text-slate-900 dark:text-slate-100 truncate max-w-[200px]">
+                      {company.commercialName || company.name}
+                    </span>
+                    {company.code && (
+                      <span className="font-mono text-[10px] text-slate-500 dark:text-slate-400">
+                        {company.code}
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2 text-[10px] text-slate-500 dark:text-slate-400 font-mono">
+                    {company.startDate && <span>Inicio: {company.startDate}</span>}
+                    {company.industry && (
+                      <>
+                        {company.startDate && <span>•</span>}
+                        <span className="font-sans truncate max-w-[140px]">{company.industry}</span>
+                      </>
+                    )}
+                  </div>
+                </div>
                 <button
                   type="button"
                   onClick={() => {
@@ -224,9 +257,10 @@ export function ProjectsSupervisionTable({
                     setPreselectedClientIdForProject(company.id);
                     setIsProjectModalOpen(true);
                   }}
-                  className="text-[11px] font-medium text-blue-700 dark:text-sky-400 hover:underline cursor-pointer"
+                  className="inline-flex items-center gap-1 text-[11px] font-semibold text-blue-700 dark:text-sky-400 hover:underline cursor-pointer shrink-0 pl-1"
                 >
-                  + Proyecto
+                  <Plus className="w-3 h-3 shrink-0" />
+                  <span>Proyecto</span>
                 </button>
               </div>
             ))}
@@ -272,15 +306,24 @@ export function ProjectsSupervisionTable({
                       key={project.id}
                       className="hover:bg-slate-50/50 dark:hover:bg-slate-800/40 transition-colors"
                     >
-                      {/* 1. Proyecto / Cliente */}
+                      {/* 1. Proyecto / Cliente con Logotipo (o Monograma) y Fecha de Inicio */}
                       <td className="p-4">
-                        <div className="flex flex-col">
-                          <span className="font-bold text-slate-900 dark:text-slate-100">
-                            {project.name}
-                          </span>
-                          <span className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">
-                            {client?.name || 'Cliente Particular'} • {project.code}
-                          </span>
+                        <div className="flex items-center gap-3">
+                          <CompanyLogoBadge
+                            name={client?.name}
+                            commercialName={client?.commercialName}
+                            logoUrl={client?.logoUrl}
+                            size="sm"
+                          />
+                          <div className="flex flex-col min-w-0">
+                            <span className="font-bold text-slate-900 dark:text-slate-100 truncate">
+                              {project.name}
+                            </span>
+                            <span className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 truncate">
+                              {client?.commercialName || client?.name || 'Empresa'} • {project.code}
+                              {client?.startDate ? ` • Inicio: ${client.startDate}` : ''}
+                            </span>
+                          </div>
                         </div>
                       </td>
 
@@ -441,13 +484,26 @@ export function ProjectsSupervisionTable({
                         : 'No se encontraron proyectos con los criterios de búsqueda o filtro seleccionados.'}
                     </div>
                     {projects.length === 0 && clients.length === 0 && canCreateCompany && (
-                      <div>
+                      <div className="flex justify-center">
                         <button
                           type="button"
                           onClick={() => setIsCompanyModalOpen(true)}
-                          className="px-3.5 py-1.5 text-xs font-semibold text-white bg-blue-700 hover:bg-blue-600 transition cursor-pointer"
+                          className="btn-corporate-secondary inline-flex items-center justify-center gap-2 px-4 py-2 text-xs font-semibold tracking-wide bg-[#101726] text-slate-100 border border-slate-700 hover:border-blue-600 hover:bg-[#151F33] cursor-pointer"
                         >
-                          + Nueva Empresa
+                          <svg
+                            className="w-3.5 h-3.5 text-sky-400 shrink-0"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth={2.2}
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            aria-hidden="true"
+                          >
+                            <line x1="12" y1="5" x2="12" y2="19" />
+                            <line x1="5" y1="12" x2="19" y2="12" />
+                          </svg>
+                          <span>Nueva Empresa</span>
                         </button>
                       </div>
                     )}

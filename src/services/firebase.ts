@@ -11,6 +11,7 @@ import {
   type User as FirebaseUser
 } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
+import { getStorage } from 'firebase/storage';
 
 // Verificación de credenciales de entorno
 const firebaseConfig = {
@@ -37,6 +38,7 @@ const app = isFirebaseConfigured()
 
 export const auth = app ? getAuth(app) : null;
 export const db = app ? getFirestore(app) : null;
+export const storage = app ? getStorage(app) : null;
 const googleProvider = new GoogleAuthProvider();
 
 /**

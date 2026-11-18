@@ -116,3 +116,30 @@
   cursor: not-allowed;
   transform: perspective(800px) rotateY(0deg);
 }
+
+/* Botón Corporativo Secundario Sobrio (Efecto 3D sutil mediante variables CSS) */
+.btn-corporate-secondary {
+  --btn-depth: 2px;
+  --btn-edge-color: rgba(30, 64, 175, 0.45);
+  font-family: 'Plus Jakarta Sans', 'Space Grotesk', sans-serif;
+  box-shadow: 0 var(--btn-depth) 0 0 var(--btn-edge-color);
+  transition: transform 0.14s ease, box-shadow 0.14s ease, border-color 0.16s ease, background-color 0.16s ease;
+}
+
+.btn-corporate-secondary:hover:not(:disabled) {
+  --btn-edge-color: rgba(37, 99, 235, 0.7);
+  transform: translateY(-1px);
+  box-shadow: 0 calc(var(--btn-depth) + 1px) 0 0 var(--btn-edge-color);
+}
+
+.btn-corporate-secondary:active:not(:disabled) {
+  transform: translateY(1px);
+  box-shadow: 0 0 0 0 var(--btn-edge-color);
+}
+
+.btn-corporate-secondary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}

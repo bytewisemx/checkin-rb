@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { X, Plus, Clock, User, Edit2, ListTodo } from 'lucide-react';
 import { useRayonerStore } from '../../../store/useRayonerStore';
+import { CompanyLogoBadge } from '../../../components/common/CompanyLogoBadge';
 import type { Project, TaskNode } from '../../../types/rayoner';
 
 interface ProjectTasksDrawerModalProps {
@@ -46,18 +47,28 @@ export function ProjectTasksDrawerModal({
       >
         {/* Cabecera del Drawer */}
         <div className="space-y-4">
-          <div className="flex items-start justify-between">
-            <div className="space-y-1">
-              <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-blue-600 dark:text-blue-400">
-                <ListTodo className="w-4 h-4" />
-                <span>Desglose de Tareas</span>
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-start gap-3 min-w-0">
+              <CompanyLogoBadge
+                name={client?.name}
+                commercialName={client?.commercialName}
+                logoUrl={client?.logoUrl}
+                size="md"
+                className="mt-1"
+              />
+              <div className="space-y-1 min-w-0">
+                <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-blue-600 dark:text-blue-400">
+                  <ListTodo className="w-4 h-4 shrink-0" />
+                  <span>Desglose de Tareas</span>
+                </div>
+                <h3 className="text-xl font-bold text-slate-900 dark:text-white truncate">
+                  {project.name}
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  {client?.commercialName || client?.name || 'Empresa'} • {project.code}
+                  {client?.startDate ? ` • Inicio: ${client.startDate}` : ''}
+                </p>
               </div>
-              <h3 className="text-xl font-bold text-slate-900 dark:text-white">
-                {project.name}
-              </h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                {client?.name || 'Cliente'} • {project.code}
-              </p>
             </div>
 
             <button
