@@ -106,11 +106,26 @@ export function useOperationalCatalogSync() {
   const userRole = user?.role;
   const userId = user?.id;
   const userEmail = user?.email;
+  const userTeamIdsKey = [
+    ...(user?.assignedTeams || []),
+    ...((user as any)?.teamIds || []),
+    user?.teamId || '',
+  ]
+    .filter(Boolean)
+    .join(',');
 
   useEffect(() => {
     if (!userRole || !canReadCompanies(userRole)) {
       return;
     }
+
+    const userTeamIds = userTeamIdsKey ? userTeamIdsKey.split(',').filter(Boolean) : [];
+    const scopeIdentity = {
+      id: userId,
+      uid: auth?.currentUser?.uid || null,
+      email: userEmail,
+      teamIds: userTeamIds,
+    };
 
     const unsubCompanies = subscribeCompaniesFromFirestore(userRole, (companies) => {
       useRayonerStore.setState((state) => {
@@ -148,9 +163,13 @@ export function useOperationalCatalogSync() {
       });
     });
 
-    const unsubProjects = subscribeProjectsFromFirestore(userRole, (projects) => {
-      useRayonerStore.setState({ projects });
-    });
+    const unsubProjects = subscribeProjectsFromFirestore(
+      userRole,
+      (projects) => {
+        useRayonerStore.setState({ projects });
+      },
+      scopeIdentity
+    );
 
     const unsubTasks = subscribeTasksFromFirestore(
       userRole,
@@ -180,11 +199,7 @@ export function useOperationalCatalogSync() {
           };
         });
       },
-      {
-        id: userId,
-        uid: auth?.currentUser?.uid || null,
-        email: userEmail,
-      }
+      scopeIdentity
     );
 
     return () => {
@@ -192,5 +207,5 @@ export function useOperationalCatalogSync() {
       unsubProjects();
       unsubTasks();
     };
-  }, [userRole, userId, userEmail]);
+  }, [userRole, userId, userEmail, userTeamIdsKey]);
 }

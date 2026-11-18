@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { doc, setDoc } from 'firebase/firestore';
+import { doc, setDoc, deleteDoc } from 'firebase/firestore';
 import { db, isFirebaseConfigured } from '../services/firebase';
 import {
   saveCompanyToFirestore,
@@ -13,7 +13,7 @@ import {
   updateTaskProgressInFirestore,
   deleteTaskFromFirestore,
 } from '../services/taskService';
-import { trackFirestoreWrite } from '../services/firestoreTelemetry';
+import { trackFirestoreWrite, trackFirestoreDelete } from '../services/firestoreTelemetry';
 import { useNotificationStore } from './useNotificationStore';
 import type {
   ClientGroup,
@@ -305,9 +305,34 @@ export const useRayonerStore = create<RayonerState>()(
           typeof projectData.plannedMinutes === 'number'
             ? Math.max(0, Math.round(projectData.plannedMinutes))
             : Math.max(0, Math.round((projectData.totalBudgetHours || 0) * 60));
+        const leadMember = get().teamMembers.find((m) => m.id === projectData.leadUserId);
+        const teamIds = Array.from(
+          new Set(
+            [
+              ...(projectData.teamIds || []),
+              projectData.teamId || '',
+              leadMember?.teamId || '',
+              ...(leadMember?.assignedTeams || []),
+            ]
+              .map((v) => String(v || '').trim())
+              .filter(Boolean)
+          )
+        );
+        const assignedToIds = Array.from(
+          new Set([
+            ...(projectData.assignedToIds || []),
+            ...(projectData.assignedUserIds || []),
+          ])
+        );
         const normalizedProject: Project = {
           ...projectData,
           id,
+          teamId: teamIds[0] || undefined,
+          teamIds,
+          supervisorId: projectData.supervisorId || projectData.leadUserId || undefined,
+          gerenteId: projectData.gerenteId || undefined,
+          assignedToIds,
+          assignedUserIds: assignedToIds,
           plannedMinutes,
           totalBudgetHours: Number((plannedMinutes / 60).toFixed(4)),
           isActive: projectData.isActive !== false,
@@ -330,9 +355,16 @@ export const useRayonerStore = create<RayonerState>()(
               typeof data.plannedMinutes === 'number'
                 ? Math.max(0, Math.round(data.plannedMinutes))
                 : Math.max(0, Math.round((nextHours || 0) * 60));
+            const assignedToIds = Array.from(
+              new Set([
+                ...(data.assignedToIds ?? data.assignedUserIds ?? p.assignedToIds ?? p.assignedUserIds ?? []),
+              ])
+            );
             updatedProj = {
               ...p,
               ...data,
+              assignedToIds,
+              assignedUserIds: assignedToIds,
               plannedMinutes,
               totalBudgetHours: Number((plannedMinutes / 60).toFixed(4)),
             };
@@ -388,6 +420,30 @@ export const useRayonerStore = create<RayonerState>()(
             ? Math.max(0, Math.round(taskData.plannedMinutes))
             : Math.max(0, Math.round((taskData.plannedHours || 0) * 60));
 
+        const resolvedTeamIds = Array.from(
+          new Set(
+            [
+              ...(taskData.teamIds || []),
+              taskData.teamId || '',
+              ...(projForCompany?.teamIds || []),
+              projForCompany?.teamId || '',
+              memberObj?.teamId || '',
+            ]
+              .map((v) => String(v || '').trim())
+              .filter(Boolean)
+          )
+        );
+        const resolvedAssignedIds = Array.from(
+          new Set(
+            [
+              ...(taskData.assignedToIds || []),
+              unifiedAssigneeId,
+            ]
+              .map((v) => String(v || '').trim())
+              .filter(Boolean)
+          )
+        );
+
         const newTask: TaskNode = {
           ...taskData,
           id,
@@ -396,8 +452,13 @@ export const useRayonerStore = create<RayonerState>()(
           companyId,
           companyName: taskData.companyName || companyObj?.commercialName || companyObj?.name || '',
           projectName: taskData.projectName || projForCompany?.name || '',
+          teamId: resolvedTeamIds[0] || undefined,
+          teamIds: resolvedTeamIds,
+          gerenteId: taskData.gerenteId || projForCompany?.gerenteId || undefined,
+          supervisorId: taskData.supervisorId || projForCompany?.supervisorId || taskData.created_by || undefined,
           assigned_to: unifiedAssigneeId,
           assignedToId: unifiedAssigneeId,
+          assignedToIds: resolvedAssignedIds,
           assignedToEmail: resolvedEmail,
           assignedToName: resolvedName,
           created_by: taskData.created_by || '',
@@ -422,12 +483,16 @@ export const useRayonerStore = create<RayonerState>()(
           companyName: newTask.companyName || '',
           projectId: newTask.projectId || '',
           projectName: newTask.projectName || '',
+          teamId: newTask.teamId || '',
+          teamIds: resolvedTeamIds,
+          gerenteId: newTask.gerenteId || '',
           assignedTo: unifiedAssigneeId,
           assignedToId: unifiedAssigneeId,
+          assignedToIds: resolvedAssignedIds,
           assigned_to: unifiedAssigneeId,
           assignedToEmail: resolvedEmail,
           assignedToName: resolvedName,
-          supervisorId: newTask.created_by || '',
+          supervisorId: newTask.supervisorId || newTask.created_by || '',
           created_by: newTask.created_by || '',
           status: newTask.status || 'pending',
           priority: newTask.priority || 'medium',
@@ -795,19 +860,23 @@ export const useRayonerStore = create<RayonerState>()(
         }));
         broadcastRayonerSync('TIMER_STOPPED', { userId });
 
-        // Actualizar estado en Firestore en active_timers/{userId}
-        if (isFirebaseConfigured() && db) {
+        // Eliminar registro en `active_timers/{userId}` en Firestore (con fallback a isRunning: false)
+        if (isFirebaseConfigured() && db && userId) {
           const timerRef = doc(db, 'active_timers', userId);
-          setDoc(
-            timerRef,
-            {
-              isRunning: false,
-              updatedAt: new Date().toISOString(),
-            },
-            { merge: true }
-          )
-            .then(() => trackFirestoreWrite(1))
-            .catch(console.warn);
+          deleteDoc(timerRef)
+            .then(() => trackFirestoreDelete(1))
+            .catch(() => {
+              setDoc(
+                timerRef,
+                {
+                  isRunning: false,
+                  updatedAt: new Date().toISOString(),
+                },
+                { merge: true }
+              )
+                .then(() => trackFirestoreWrite(1))
+                .catch(console.warn);
+            });
         }
       },
 

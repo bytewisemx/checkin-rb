@@ -16,9 +16,14 @@ export interface TaskDocument {
   companyName?: string;
   projectId?: string;
   projectName?: string;
-  // Identificadores unificados del colaborador asignado
+  // Aislamiento multi-equipo y cadena de mando
+  teamId?: string;
+  teamIds?: string[];
+  gerenteId?: string;
+  // Identificadores unificados del colaborador asignado (multi-usuario `assignedToIds`)
   assignedTo: string;
   assignedToId: string;
+  assignedToIds: string[];
   assigned_to: string;
   assignedToEmail: string;
   assignedToName?: string;
@@ -92,10 +97,10 @@ export function resolveUserIdentityKeys(identity: UserIdentityMatcher): {
 
 /**
  * Determina si una tarea pertenece al usuario dado, comparando de forma unificada
- * `assignedToId`, `assigned_to`, `assignedTo` y `assignedToEmail`.
+ * `assignedToIds` (array), `assignedToId`, `assigned_to`, `assignedTo` y `assignedToEmail`.
  */
 export function doesTaskBelongToUser(
-  task: Pick<TaskNode, 'id' | 'assigned_to' | 'assignedToId' | 'assignedToEmail'> & {
+  task: Pick<TaskNode, 'id' | 'assigned_to' | 'assignedToId' | 'assignedToIds' | 'assignedToEmail'> & {
     assignedTo?: string;
   },
   identity: UserIdentityMatcher,
@@ -104,7 +109,12 @@ export function doesTaskBelongToUser(
   if (assignedTaskIds && assignedTaskIds.has(task.id)) return true;
 
   const { ids, email } = resolveUserIdentityKeys(identity);
-  const taskIds = [task.assignedToId, task.assigned_to, task.assignedTo]
+  const taskIds = [
+    ...(Array.isArray(task.assignedToIds) ? task.assignedToIds : []),
+    task.assignedToId,
+    task.assigned_to,
+    task.assignedTo,
+  ]
     .map((v) => (v || '').trim())
     .filter(Boolean);
 
@@ -143,9 +153,10 @@ export function toIntegerMinutes(value: number | undefined | null): number {
 export async function saveTaskToFirestore(
   task: Omit<
     TaskDocument,
-    'plannedMinutes' | 'loggedMinutes' | 'createdAt' | 'assignedToId' | 'assigned_to' | 'assignedToEmail'
+    'plannedMinutes' | 'loggedMinutes' | 'createdAt' | 'assignedToId' | 'assignedToIds' | 'assigned_to' | 'assignedToEmail'
   > & {
     assignedToId?: string;
+    assignedToIds?: string[];
     assigned_to?: string;
     assignedToEmail?: string;
     plannedMinutes?: number;
@@ -165,8 +176,31 @@ export async function saveTaskToFirestore(
     task.assignedToId ||
     task.assignedTo ||
     task.assigned_to ||
+    (Array.isArray(task.assignedToIds) ? task.assignedToIds[0] : '') ||
     ''
   ).trim();
+
+  const unifiedAssignedIds = Array.from(
+    new Set(
+      [
+        ...(Array.isArray(task.assignedToIds) ? task.assignedToIds : []),
+        unifiedAssignedId,
+      ]
+        .map((v) => String(v || '').trim())
+        .filter(Boolean)
+    )
+  );
+
+  const unifiedTeamIds = Array.from(
+    new Set(
+      [
+        ...(Array.isArray(task.teamIds) ? task.teamIds : []),
+        task.teamId || '',
+      ]
+        .map((v) => String(v || '').trim())
+        .filter(Boolean)
+    )
+  );
 
   const resolvedEmail = (
     task.assignedToEmail ||
@@ -184,8 +218,12 @@ export async function saveTaskToFirestore(
     companyName: (task.companyName || '').trim(),
     projectId: (task.projectId || '').trim(),
     projectName: (task.projectName || '').trim(),
+    teamId: unifiedTeamIds[0] || '',
+    teamIds: unifiedTeamIds,
+    gerenteId: (task.gerenteId || '').trim(),
     assignedTo: unifiedAssignedId,
     assignedToId: unifiedAssignedId,
+    assignedToIds: unifiedAssignedIds,
     assigned_to: unifiedAssignedId,
     assignedToEmail: resolvedEmail,
     assignedToName: (task.assignedToName || '').trim(),
@@ -283,7 +321,34 @@ export async function updateTaskProgressInFirestore(
 }
 
 function mapRawDocToTaskDocument(docId: string, d: Record<string, any>): TaskDocument {
-  const unifiedId = String(d.assignedToId || d.assignedTo || d.assigned_to || '');
+  const unifiedId = String(
+    d.assignedToId ||
+      d.assignedTo ||
+      d.assigned_to ||
+      (Array.isArray(d.assignedToIds) ? d.assignedToIds[0] : '') ||
+      ''
+  );
+  const unifiedIds = Array.from(
+    new Set(
+      [
+        ...(Array.isArray(d.assignedToIds) ? d.assignedToIds : []),
+        unifiedId,
+      ]
+        .map((v) => String(v || '').trim())
+        .filter(Boolean)
+    )
+  );
+  const teamIds = Array.from(
+    new Set(
+      [
+        ...(Array.isArray(d.teamIds) ? d.teamIds : []),
+        typeof d.teamId === 'string' ? d.teamId : '',
+      ]
+        .map((v) => String(v || '').trim())
+        .filter(Boolean)
+    )
+  );
+
   return {
     id: d.id || docId,
     title: String(d.title || d.name || 'Sin título'),
@@ -292,8 +357,12 @@ function mapRawDocToTaskDocument(docId: string, d: Record<string, any>): TaskDoc
     companyName: d.companyName ? String(d.companyName) : '',
     projectId: String(d.projectId || ''),
     projectName: d.projectName ? String(d.projectName) : '',
+    teamId: teamIds[0] || '',
+    teamIds,
+    gerenteId: d.gerenteId ? String(d.gerenteId) : '',
     assignedTo: unifiedId,
     assignedToId: unifiedId,
+    assignedToIds: unifiedIds,
     assigned_to: unifiedId,
     assignedToEmail: String(d.assignedToEmail || DEMO_ID_TO_EMAIL[unifiedId] || '').toLowerCase(),
     assignedToName: d.assignedToName ? String(d.assignedToName) : '',
@@ -321,7 +390,7 @@ function mapRawDocToTaskDocument(docId: string, d: Record<string, any>): TaskDoc
 
 /**
  * Consulta las tareas asignadas a un colaborador específico en Firestore
- * buscando por ID unificado (`assignedToId` / `assignedTo`) y por correo (`assignedToEmail`).
+ * buscando por `assignedToIds` (array-contains), `assignedToId`, `assignedTo` y `assignedToEmail`.
  */
 export async function fetchTasksByAssignee(
   userId: string,
@@ -333,6 +402,7 @@ export async function fetchTasksByAssignee(
   const merged = new Map<string, TaskDocument>();
 
   const queries = [
+    ...ids.map((idVal) => query(collection(db!, 'tasks'), where('assignedToIds', 'array-contains', idVal))),
     ...ids.map((idVal) => query(collection(db!, 'tasks'), where('assignedToId', '==', idVal))),
     ...ids.map((idVal) => query(collection(db!, 'tasks'), where('assignedTo', '==', idVal))),
     ...(email ? [query(collection(db!, 'tasks'), where('assignedToEmail', '==', email))] : []),
@@ -427,6 +497,7 @@ export async function commitShiftTaskAllocationsToFirestore(
         if (actorId) {
           patchPayload.assignedTo = actorId;
           patchPayload.assignedToId = actorId;
+          patchPayload.assignedToIds = [actorId];
           patchPayload.assigned_to = actorId;
         }
         if (expectedDemoEmail) {

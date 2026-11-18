@@ -2,6 +2,8 @@ export interface Team {
   id: string;
   name: string;
   code: string;
+  gerenteId?: string;
+  supervisorId?: string;
   leaderId: string;
   leaderName: string;
   leaderRole?: string;
@@ -21,4 +23,3 @@ export interface TeamMemberInfo {
   photoURL?: string | null;
   status: 'active' | 'inactive' | 'pending';
 }
-

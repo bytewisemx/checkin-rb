@@ -51,6 +51,7 @@ export interface UserProfileDocument {
   hierarchyLevel?: 0 | 1 | 2 | 3 | 4;
   reportsTo?: string | null;
   teamId?: string | null;
+  teamIds?: string[]; // Modelo multi-equipo en producción
   team?: string;
   teamName?: string;
   assignedTeams?: string[];
@@ -111,8 +112,24 @@ export async function updateUserFaceDescriptorInFirestore(
   }
 }
 
+export function normalizeUserTeamIds(input: {
+  teamIds?: string[] | null;
+  assignedTeams?: string[] | null;
+  teamId?: string | null;
+}): string[] {
+  const combined: string[] = [];
+  if (Array.isArray(input.teamIds)) combined.push(...input.teamIds);
+  if (Array.isArray(input.assignedTeams)) combined.push(...input.assignedTeams);
+  if (typeof input.teamId === 'string' && input.teamId.trim()) {
+    combined.push(input.teamId.trim());
+  }
+  return Array.from(
+    new Set(combined.map((v) => String(v || '').trim()).filter(Boolean))
+  );
+}
+
 /**
- * Actualiza los enlaces de cadena de mando jerárquica de un usuario en Firestore (`users/{userId}`)
+ * Actualiza los enlaces de cadena de mando jerárquica y equipos (`teamIds`) de un usuario en Firestore (`users/{userId}`)
  * y sincroniza inmediatamente los almacenes locales.
  */
 export async function updateUserHierarchyInFirestore(
@@ -125,6 +142,7 @@ export async function updateUserHierarchyInFirestore(
     managerId?: string | null;
     socioId?: string | null;
     partnerId?: string | null;
+    teamIds?: string[];
   }
 ): Promise<{ success: boolean; error?: string }> {
   if (!userId) return { success: false, error: 'userId requerido' };
@@ -148,6 +166,12 @@ export async function updateUserHierarchyInFirestore(
     const sId = hierarchy.socioId ?? hierarchy.partnerId ?? null;
     patch.socioId = sId;
     patch.partnerId = sId;
+  }
+  if (hierarchy.teamIds !== undefined) {
+    const cleanTeamIds = normalizeUserTeamIds({ teamIds: hierarchy.teamIds });
+    patch.teamIds = cleanTeamIds;
+    patch.assignedTeams = cleanTeamIds;
+    patch.teamId = cleanTeamIds[0] || null;
   }
 
   // 1. Actualizar en useCheckinStore local inmediatamente
@@ -874,6 +898,10 @@ export async function processLoginAccess(
       team: demoProfile?.team,
       teamName: demoProfile?.teamName,
       teamId: demoProfile?.teamId,
+      teamIds: normalizeUserTeamIds({
+        assignedTeams: demoProfile?.assignedTeams,
+        teamId: demoProfile?.teamId,
+      }),
       assignedTeams: demoProfile?.assignedTeams,
       status: 'active',
       isActive: true,
@@ -967,8 +995,18 @@ export async function saveOrUpdateUserProfile(
   const resolvedRole = normalizeRole(profileData.role || existing?.role || 'Empleado');
   const nowIso = new Date().toISOString();
 
+  const resolvedTeamIds = normalizeUserTeamIds({
+    teamIds: profileData.teamIds,
+    assignedTeams: profileData.assignedTeams ?? existing?.assignedTeams,
+    teamId: profileData.teamId !== undefined ? profileData.teamId : existing?.teamId,
+  });
+
+  // Para usuarios reales el ID de documento es estrictamente su Firebase Auth UID;
+  // solo las 6 cuentas demo mantienen su ID determinístico temporal durante pruebas.
+  const targetDocId = resolveFixedDemoId(cleanEmail) || uid;
+
   const finalDocument: UserProfileDocument = {
-    uid,
+    uid: targetDocId,
     email: cleanEmail,
     name: profileData.name || existing?.name || profileData.firstName || 'Usuario',
     firstName: profileData.firstName || existing?.firstName,
@@ -978,13 +1016,18 @@ export async function saveOrUpdateUserProfile(
     role: resolvedRole,
     team: profileData.team !== undefined ? profileData.team : (existing?.team || 'Sin equipo asignado'),
     teamName: profileData.teamName !== undefined ? profileData.teamName : (existing?.teamName || profileData.team || existing?.team || 'Sin equipo asignado'),
-    teamId: profileData.teamId !== undefined ? profileData.teamId : (existing?.teamId || null),
-    assignedTeams: profileData.assignedTeams || existing?.assignedTeams || [],
+    teamId: resolvedTeamIds[0] || null,
+    teamIds: resolvedTeamIds,
+    assignedTeams: resolvedTeamIds,
     status: profileData.status || existing?.status || 'active',
     isActive: profileData.isActive !== undefined ? profileData.isActive : (existing?.isActive !== undefined ? existing.isActive : true),
     supervisorId: profileData.supervisorId ?? existing?.supervisorId ?? null,
     supervisorName: profileData.supervisorName || existing?.supervisorName,
     supervisorCode: profileData.supervisorCode || existing?.supervisorCode,
+    gerenteId: profileData.gerenteId ?? profileData.managerId ?? existing?.gerenteId ?? null,
+    managerId: profileData.gerenteId ?? profileData.managerId ?? existing?.managerId ?? null,
+    socioId: profileData.socioId ?? profileData.partnerId ?? existing?.socioId ?? null,
+    partnerId: profileData.socioId ?? profileData.partnerId ?? existing?.partnerId ?? null,
     isProfileComplete:
       profileData.isProfileComplete !== undefined
         ? profileData.isProfileComplete
@@ -996,7 +1039,7 @@ export async function saveOrUpdateUserProfile(
   // 1. Sincronizar en el store local de Zustand de forma inmediata
   const { updateProfile } = useCheckinStore.getState();
   updateProfile({
-    id: uid,
+    id: targetDocId,
     name: finalDocument.name,
     lastName: finalDocument.lastName,
     email: finalDocument.email,
@@ -1009,9 +1052,9 @@ export async function saveOrUpdateUserProfile(
     isProfileComplete: finalDocument.isProfileComplete,
   });
 
-  // 2. Persistir en Firestore en segundo plano (no bloquea el hilo ni la UI)
+  // 2. Persistir en Firestore en segundo plano usando estrictamente `users/{targetDocId}` (request.auth.uid para usuarios reales)
   if (isFirebaseConfigured() && db) {
-    const userRef = doc(db, 'users', uid);
+    const userRef = doc(db, 'users', targetDocId);
     withTimeout(setDoc(userRef, finalDocument, { merge: true }), 3000, null).catch((err) => {
       console.warn('[userService] Persistencia de fondo en Firestore diferida:', err);
     });

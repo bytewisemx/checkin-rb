@@ -13,6 +13,13 @@ import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, auth, storage, isFirebaseConfigured, loginWithEmail, registerWithEmail } from './firebase';
 import { normalizeRole, type LegacyOrCurrentRole } from './rbac';
 import { resolveUserIdentityKeys, type UserIdentityMatcher } from './taskService';
+export {
+  saveProjectToFirestore,
+  deleteProjectFromFirestore,
+  subscribeProjectsFromFirestore,
+  assignUsersToProjectInFirestore,
+  type ProjectScopeIdentity,
+} from './projectService';
 import {
   registerActiveListener,
   trackFirestoreDelete,
@@ -20,7 +27,7 @@ import {
   trackFirestoreWrite,
   unregisterActiveListener,
 } from './firestoreTelemetry';
-import type { Project, TaskNode } from '../types/rayoner';
+import type { TaskNode } from '../types/rayoner';
 
 export interface CompanyDocument {
   id: string;
@@ -432,7 +439,7 @@ export function subscribeCompaniesFromFirestore(
   onData: (companies: CompanyDocument[]) => void
 ): () => void {
   if (!canReadCompanies(role) || !isFirebaseConfigured() || !db) {
-    return () => {};
+    return () => { };
   }
 
   const listenerId = 'realtime-companies-catalog';
@@ -459,126 +466,6 @@ export function subscribeCompaniesFromFirestore(
   };
 }
 
-/**
- * Persiste un proyecto en la colección `projects` de Firestore con plannedMinutes en entero estricto.
- */
-export async function saveProjectToFirestore(
-  project: Project & { createdBy?: string }
-): Promise<{ success: boolean; error?: string }> {
-  if (!isFirebaseConfigured() || !db) return { success: true };
-
-  const plannedMinutes =
-    typeof project.plannedMinutes === 'number'
-      ? Math.max(0, Math.round(project.plannedMinutes))
-      : Math.max(0, Math.round((project.totalBudgetHours || 0) * 60));
-
-  try {
-    await setDoc(
-      doc(db, 'projects', project.id),
-      {
-        id: project.id,
-        clientId: project.clientId,
-        companyId: project.clientId,
-        name: project.name.trim(),
-        code: project.code.trim().toUpperCase(),
-        leadUserId: project.leadUserId,
-        supervisorId: project.leadUserId,
-        leadUserName: project.leadUserName,
-        deadline: project.deadline,
-        budgetType: project.budgetType || 'fixed_project',
-        totalBudgetHours: Number((plannedMinutes / 60).toFixed(4)),
-        plannedMinutes,
-        hourlyRate: Number(project.hourlyRate || 0),
-        currency: project.currency || 'MXN',
-        notes: project.notes || '',
-        isActive: project.isActive !== false,
-        assignedUserIds: Array.isArray(project.assignedUserIds) ? project.assignedUserIds : [],
-        assignedUserEmails: Array.isArray(project.assignedUserEmails)
-          ? project.assignedUserEmails.map((e) => e.trim().toLowerCase()).filter(Boolean)
-          : [],
-        createdBy: project.createdBy || 'system',
-        updatedAt: new Date().toISOString(),
-        createdAt: serverTimestamp(),
-      },
-      { merge: true }
-    );
-    trackFirestoreWrite(1);
-    return { success: true };
-  } catch (err: any) {
-    console.warn('[companyService] Error al guardar proyecto en Firestore:', err);
-    return { success: false, error: err?.message };
-  }
-}
-
-export async function deleteProjectFromFirestore(projectId: string): Promise<boolean> {
-  if (!isFirebaseConfigured() || !db) return true;
-  try {
-    await deleteDoc(doc(db, 'projects', projectId));
-    trackFirestoreDelete(1);
-    return true;
-  } catch (err) {
-    console.warn('[companyService] Error al eliminar proyecto en Firestore:', err);
-    return false;
-  }
-}
-
-/**
- * Suscripción en tiempo real a `projects` en Firestore (bloqueado para RH)
- */
-export function subscribeProjectsFromFirestore(
-  role: LegacyOrCurrentRole | null | undefined,
-  onData: (projects: Project[]) => void
-): () => void {
-  if (!canReadCompanies(role) || !isFirebaseConfigured() || !db) {
-    return () => {};
-  }
-
-  const listenerId = 'realtime-projects-catalog';
-  registerActiveListener(listenerId, 'projects');
-
-  const unsubscribe = onSnapshot(
-    collection(db, 'projects'),
-    (snap) => {
-      trackFirestoreRead(Math.max(1, snap.size));
-      const list: Project[] = [];
-      snap.forEach((docSnap) => {
-        const d = docSnap.data();
-        const plannedMin =
-          typeof d.plannedMinutes === 'number'
-            ? Math.round(d.plannedMinutes)
-            : Math.round((Number(d.totalBudgetHours) || 0) * 60);
-        list.push({
-          id: d.id || docSnap.id,
-          clientId: String(d.clientId || d.companyId || ''),
-          name: String(d.name || 'Proyecto'),
-          code: String(d.code || docSnap.id),
-          leadUserId: String(d.leadUserId || d.supervisorId || 'demo_supervisor'),
-          leadUserName: String(d.leadUserName || 'Supervisor Prueba'),
-          deadline: String(d.deadline || ''),
-          budgetType: d.budgetType || 'fixed_project',
-          totalBudgetHours: Number((plannedMin / 60).toFixed(4)),
-          plannedMinutes: plannedMin,
-          hourlyRate: Number(d.hourlyRate || 0),
-          currency: String(d.currency || 'MXN'),
-          notes: String(d.notes || ''),
-          isActive: d.isActive !== false,
-          assignedUserIds: Array.isArray(d.assignedUserIds) ? d.assignedUserIds : [],
-          assignedUserEmails: Array.isArray(d.assignedUserEmails) ? d.assignedUserEmails : [],
-        });
-      });
-      onData(list);
-    },
-    (err) => {
-      console.warn('[companyService] Error en suscripción real-time projects:', err);
-    }
-  );
-
-  return () => {
-    unsubscribe();
-    unregisterActiveListener(listenerId);
-  };
-}
-
 function mapDocToTaskNode(docId: string, d: Record<string, any>): TaskNode {
   const plannedMin =
     typeof d.plannedMinutes === 'number'
@@ -589,7 +476,33 @@ function mapDocToTaskNode(docId: string, d: Record<string, any>): TaskNode {
       ? Math.max(0, Math.round(d.loggedMinutes))
       : 0;
   const title = String(d.title || d.name || 'Tarea');
-  const unifiedAssigneeId = String(d.assignedToId || d.assignedTo || d.assigned_to || '');
+  const unifiedAssigneeId = String(
+    d.assignedToId ||
+      d.assignedTo ||
+      d.assigned_to ||
+      (Array.isArray(d.assignedToIds) ? d.assignedToIds[0] : '') ||
+      ''
+  );
+  const assignedToIds = Array.from(
+    new Set(
+      [
+        ...(Array.isArray(d.assignedToIds) ? d.assignedToIds : []),
+        unifiedAssigneeId,
+      ]
+        .map((v) => String(v || '').trim())
+        .filter(Boolean)
+    )
+  );
+  const teamIds = Array.from(
+    new Set(
+      [
+        ...(Array.isArray(d.teamIds) ? d.teamIds : []),
+        typeof d.teamId === 'string' ? d.teamId : '',
+      ]
+        .map((v) => String(v || '').trim())
+        .filter(Boolean)
+    )
+  );
 
   return {
     id: d.id || docId,
@@ -599,8 +512,13 @@ function mapDocToTaskNode(docId: string, d: Record<string, any>): TaskNode {
     projectName: d.projectName ? String(d.projectName) : undefined,
     companyId: d.companyId ? String(d.companyId) : undefined,
     companyName: d.companyName ? String(d.companyName) : undefined,
+    teamId: teamIds[0] || undefined,
+    teamIds,
+    gerenteId: d.gerenteId ? String(d.gerenteId) : undefined,
+    supervisorId: d.supervisorId ? String(d.supervisorId) : undefined,
     assigned_to: unifiedAssigneeId,
     assignedToId: unifiedAssigneeId,
+    assignedToIds,
     assignedToEmail: d.assignedToEmail ? String(d.assignedToEmail).toLowerCase() : undefined,
     assignedToName: d.assignedToName ? String(d.assignedToName) : undefined,
     created_by: String(d.supervisorId || d.created_by || ''),
@@ -626,32 +544,102 @@ function mapDocToTaskNode(docId: string, d: Record<string, any>): TaskNode {
 
 /**
  * Suscripción en tiempo real a `tasks` en Firestore (bloqueado para RH).
- * - Para TI / Socio / Gerente / Supervisor: escucha la colección `tasks`.
- * - Para Colaborador: escucha mediante consultas `where(...)` paralelas por
- *   `assignedToId`, `assignedTo`, `assigned_to` y `assignedToEmail` deduplicadas en vivo,
- *   cumpliendo con las reglas de seguridad de Firestore sin discrepancias uid/demo/email.
+ * - TI / Socio: Visibilidad global en todos los equipos.
+ * - Gerente: Aislado por `gerenteId` y sus `teamIds`.
+ * - Supervisor: Aislado por `supervisorId` / `created_by` y sus `teamIds`.
+ * - Colaborador: Aislado por `assignedToIds` (array-contains), `assignedToId`, `assignedTo`,
+ *   `assigned_to` y `assignedToEmail`.
  */
 export function subscribeTasksFromFirestore(
   role: LegacyOrCurrentRole | null | undefined,
   onData: (tasks: TaskNode[]) => void,
-  userIdentity?: UserIdentityMatcher
+  userIdentity?: UserIdentityMatcher & { teamIds?: string[] }
 ): () => void {
   if (!canReadCompanies(role) || !isFirebaseConfigured() || !db) {
-    return () => {};
+    return () => { };
   }
 
   const normRole = normalizeRole(role ?? undefined);
 
-  // Flujo especializado para Colaborador: múltiples queries filtradas (assignedToId / assignedTo / assigned_to / assignedToEmail)
-  if (normRole === 'Colaborador' && userIdentity) {
-    const { ids, email } = resolveUserIdentityKeys({
-      ...userIdentity,
-      uid: userIdentity.uid || auth?.currentUser?.uid || null,
-    });
+  // TI y Socio: lectura global sin filtro de equipo
+  if (normRole === 'TI' || normRole === 'Socio' || !userIdentity) {
+    const listenerId = 'realtime-tasks-global';
+    registerActiveListener(listenerId, 'tasks');
 
-    const queryDefs: Array<{ key: string; q: ReturnType<typeof query> }> = [];
+    const unsubscribe = onSnapshot(
+      collection(db, 'tasks'),
+      (snap) => {
+        trackFirestoreRead(Math.max(1, snap.size));
+        const list: TaskNode[] = [];
+        snap.forEach((docSnap) => {
+          list.push(mapDocToTaskNode(docSnap.id, docSnap.data() as Record<string, any>));
+        });
+        onData(list);
+      },
+      (err) => {
+        console.warn('[companyService] Error en suscripción real-time tasks:', err);
+      }
+    );
 
+    return () => {
+      unsubscribe();
+      unregisterActiveListener(listenerId);
+    };
+  }
+
+  const { ids, email } = resolveUserIdentityKeys({
+    ...userIdentity,
+    uid: userIdentity.uid || auth?.currentUser?.uid || null,
+  });
+  const teamIds = Array.from(
+    new Set((userIdentity.teamIds || []).map((t) => String(t || '').trim()).filter(Boolean))
+  );
+
+  const queryDefs: Array<{ key: string; q: ReturnType<typeof query> }> = [];
+
+  if (normRole === 'Gerente') {
     ids.forEach((idVal) => {
+      queryDefs.push({
+        key: `gerenteId:${idVal}`,
+        q: query(collection(db!, 'tasks'), where('gerenteId', '==', idVal)),
+      });
+    });
+    if (teamIds.length > 0) {
+      queryDefs.push({
+        key: `gerenteTeams:${teamIds.slice(0, 10).join(',')}`,
+        q: query(
+          collection(db!, 'tasks'),
+          where('teamIds', 'array-contains-any', teamIds.slice(0, 10))
+        ),
+      });
+    }
+  } else if (normRole === 'Supervisor') {
+    ids.forEach((idVal) => {
+      queryDefs.push({
+        key: `supervisorId:${idVal}`,
+        q: query(collection(db!, 'tasks'), where('supervisorId', '==', idVal)),
+      });
+      queryDefs.push({
+        key: `created_by:${idVal}`,
+        q: query(collection(db!, 'tasks'), where('created_by', '==', idVal)),
+      });
+    });
+    if (teamIds.length > 0) {
+      queryDefs.push({
+        key: `supervisorTeams:${teamIds.slice(0, 10).join(',')}`,
+        q: query(
+          collection(db!, 'tasks'),
+          where('teamIds', 'array-contains-any', teamIds.slice(0, 10))
+        ),
+      });
+    }
+  } else {
+    // Colaborador: estrictamente tareas asignadas (array `assignedToIds` + campos unificados)
+    ids.forEach((idVal) => {
+      queryDefs.push({
+        key: `assignedToIds:${idVal}`,
+        q: query(collection(db!, 'tasks'), where('assignedToIds', 'array-contains', idVal)),
+      });
       queryDefs.push({
         key: `assignedToId:${idVal}`,
         q: query(collection(db!, 'tasks'), where('assignedToId', '==', idVal)),
@@ -672,82 +660,58 @@ export function subscribeTasksFromFirestore(
         q: query(collection(db!, 'tasks'), where('assignedToEmail', '==', email)),
       });
     }
-
-    if (queryDefs.length === 0) {
-      onData([]);
-      return () => {};
-    }
-
-    const bucketByQuery = new Map<string, Map<string, TaskNode>>();
-    const unsubscribers: Array<() => void> = [];
-
-    const emitMerged = () => {
-      const merged = new Map<string, TaskNode>();
-      bucketByQuery.forEach((taskMap) => {
-        taskMap.forEach((task, id) => {
-          merged.set(id, task);
-        });
-      });
-      onData(Array.from(merged.values()));
-    };
-
-    queryDefs.forEach(({ key, q }) => {
-      const listenerId = `realtime-tasks-collab-${key}`;
-      registerActiveListener(listenerId, 'tasks');
-      bucketByQuery.set(key, new Map());
-
-      const unsub = onSnapshot(
-        q,
-        (snap) => {
-          trackFirestoreRead(Math.max(1, snap.size));
-          const nextMap = new Map<string, TaskNode>();
-          snap.forEach((docSnap) => {
-            nextMap.set(
-              docSnap.id,
-              mapDocToTaskNode(docSnap.id, docSnap.data() as Record<string, any>)
-            );
-          });
-          bucketByQuery.set(key, nextMap);
-          emitMerged();
-        },
-        (err) => {
-          console.warn(`[companyService] Sub-suscripción colaborador (${key}) omitida:`, err);
-        }
-      );
-
-      unsubscribers.push(() => {
-        unsub();
-        unregisterActiveListener(listenerId);
-      });
-    });
-
-    return () => {
-      unsubscribers.forEach((fn) => fn());
-    };
   }
 
-  // Flujo global para TI, Socio, Gerente y Supervisor
-  const listenerId = 'realtime-tasks-catalog';
-  registerActiveListener(listenerId, 'tasks');
+  if (queryDefs.length === 0) {
+    onData([]);
+    return () => { };
+  }
 
-  const unsubscribe = onSnapshot(
-    collection(db, 'tasks'),
-    (snap) => {
-      trackFirestoreRead(Math.max(1, snap.size));
-      const list: TaskNode[] = [];
-      snap.forEach((docSnap) => {
-        list.push(mapDocToTaskNode(docSnap.id, docSnap.data()));
+  const bucketByQuery = new Map<string, Map<string, TaskNode>>();
+  const unsubscribers: Array<() => void> = [];
+
+  const emitMerged = () => {
+    const merged = new Map<string, TaskNode>();
+    bucketByQuery.forEach((taskMap) => {
+      taskMap.forEach((task, id) => {
+        merged.set(id, task);
       });
-      onData(list);
-    },
-    (err) => {
-      console.warn('[companyService] Error en suscripción real-time tasks:', err);
-    }
-  );
+    });
+    onData(Array.from(merged.values()));
+  };
+
+  queryDefs.forEach(({ key, q }) => {
+    const listenerId = `realtime-tasks-${normRole.toLowerCase()}-${key}`;
+    registerActiveListener(listenerId, 'tasks');
+    bucketByQuery.set(key, new Map());
+
+    const unsub = onSnapshot(
+      q,
+      (snap) => {
+        trackFirestoreRead(Math.max(1, snap.size));
+        const nextMap = new Map<string, TaskNode>();
+        snap.forEach((docSnap) => {
+          nextMap.set(
+            docSnap.id,
+            mapDocToTaskNode(docSnap.id, docSnap.data() as Record<string, any>)
+          );
+        });
+        bucketByQuery.set(key, nextMap);
+        emitMerged();
+      },
+      (err) => {
+        console.warn(`[companyService] Sub-suscripción tasks (${key}) omitida:`, err);
+      }
+    );
+
+    unsubscribers.push(() => {
+      unsub();
+      unregisterActiveListener(listenerId);
+    });
+  });
 
   return () => {
-    unsubscribe();
-    unregisterActiveListener(listenerId);
+    unsubscribers.forEach((fn) => fn());
   };
 }
 

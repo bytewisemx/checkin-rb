@@ -84,13 +84,15 @@ export async function fetchTeamsFromFirestore(): Promise<Team[]> {
           id: docSnap.id,
           name,
           code: data.code || generateTeamCode(name),
-          leaderId: data.leaderId || '',
+          gerenteId: data.gerenteId || data.parentLeaderId || '',
+          supervisorId: data.supervisorId || data.leaderId || '',
+          leaderId: data.leaderId || data.supervisorId || '',
           leaderName: data.leaderName || '',
           leaderRole: data.leaderRole || 'Supervisor',
-          memberIds: Array.isArray(data.memberIds) ? data.memberIds : [],
+          memberIds: Array.isArray(data.memberIds) ? Array.from(new Set(data.memberIds)) : [],
           status: data.status === 'inactive' ? 'inactive' : 'active',
           description: data.description || '',
-          parentLeaderId: data.parentLeaderId || '',
+          parentLeaderId: data.parentLeaderId || data.gerenteId || '',
           createdAt: data.createdAt || new Date().toISOString(),
           updatedAt: data.updatedAt || new Date().toISOString(),
         });
@@ -110,12 +112,15 @@ export async function fetchTeamsFromFirestore(): Promise<Team[]> {
         id: 'team-prueba-01',
         name: 'Equipo Prueba',
         code: 'EQ-PRU-01',
-        leaderId: 'admin-99',
+        gerenteId: 'demo_gerente',
+        supervisorId: 'demo_supervisor',
+        leaderId: 'demo_supervisor',
         leaderName: 'Supervisor Prueba',
         leaderRole: 'Supervisor',
-        memberIds: [],
+        memberIds: ['demo_colaborador', 'demo_supervisor', 'demo_gerente'],
         status: 'active',
         description: 'Equipo de operaciones y entorno de pruebas corporativas',
+        parentLeaderId: 'demo_gerente',
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };
@@ -131,10 +136,17 @@ export async function fetchTeamsFromFirestore(): Promise<Team[]> {
 }
 
 /**
- * Guarda o actualiza un equipo en Firestore
+ * Guarda o actualiza un equipo en Firestore con el esquema multi-equipo completo:
+ * `name`, `code`, `gerenteId`, `supervisorId`, `memberIds` (array de UIDs) y `status`.
  */
 export async function saveTeamToFirestore(team: Team): Promise<boolean> {
   if (!isFirebaseConfigured() || !db) return false;
+
+  const cleanMemberIds = Array.from(
+    new Set((team.memberIds || []).map((m) => String(m || '').trim()).filter(Boolean))
+  );
+  const supervisorId = (team.supervisorId || team.leaderId || '').trim();
+  const gerenteId = (team.gerenteId || team.parentLeaderId || '').trim();
 
   try {
     const teamRef = doc(db, 'teams', team.id);
@@ -144,13 +156,15 @@ export async function saveTeamToFirestore(team: Team): Promise<boolean> {
         id: team.id,
         name: team.name,
         code: team.code,
-        leaderId: team.leaderId,
+        gerenteId,
+        supervisorId,
+        leaderId: team.leaderId || supervisorId,
         leaderName: team.leaderName,
         leaderRole: team.leaderRole || 'Supervisor',
-        memberIds: team.memberIds || [],
+        memberIds: cleanMemberIds,
         status: team.status || 'active',
         description: team.description || '',
-        parentLeaderId: team.parentLeaderId || '',
+        parentLeaderId: gerenteId,
         createdAt: team.createdAt,
         updatedAt: new Date().toISOString(),
       },
@@ -244,10 +258,14 @@ export async function cascadeDeleteTeam(
         const uTeam = (data.team || '').trim().toLowerCase();
         const uTeamName = (data.teamName || '').trim().toLowerCase();
         const uEquipo = (data.equipo || '').trim().toLowerCase();
-        const uAssigned = Array.isArray(data.assignedTeams) ? data.assignedTeams : [];
+        const uTeamIds = Array.isArray(data.teamIds) ? data.teamIds : [];
+        const uAssigned = Array.isArray(data.assignedTeams)
+          ? Array.from(new Set([...uTeamIds, ...data.assignedTeams]))
+          : uTeamIds;
 
         const isDirectMatch =
           uTeamId === teamId ||
+          uTeamIds.includes(teamId) ||
           (targetName && (uTeam === targetName || uTeamName === targetName || uEquipo === targetName));
 
         const isInAssignedTeams = uAssigned.some(
@@ -258,7 +276,7 @@ export async function cascadeDeleteTeam(
           affectedUsersCount++;
           const userRef = doc(firestore, 'users', uDoc.id);
 
-          // Si el usuario tiene múltiples equipos asignados (ej. rol RH)
+          // Si el usuario tiene múltiples equipos asignados (multi-equipo)
           if (uAssigned.length > 0) {
             const remainingTeams = uAssigned.filter(
               (t: string) => t !== teamId && (!targetName || t.trim().toLowerCase() !== targetName)
@@ -266,18 +284,20 @@ export async function cascadeDeleteTeam(
 
             if (remainingTeams.length > 0) {
               // Sigue activo con los equipos restantes
-              const nextTeamName = remainingTeams[0];
+              const nextTeamId = remainingTeams[0];
               batch.update(userRef, {
+                teamIds: remainingTeams,
                 assignedTeams: remainingTeams,
-                team: isDirectMatch ? nextTeamName : (data.team || nextTeamName),
-                teamName: isDirectMatch ? nextTeamName : (data.teamName || nextTeamName),
-                teamId: isDirectMatch ? null : (data.teamId || null),
+                team: isDirectMatch ? nextTeamId : (data.team || nextTeamId),
+                teamName: isDirectMatch ? nextTeamId : (data.teamName || nextTeamId),
+                teamId: isDirectMatch ? nextTeamId : (data.teamId || nextTeamId),
                 updatedAt: new Date().toISOString(),
               });
             } else {
               // Se quedó con 0 equipos -> Inhabilitado
               batch.update(userRef, {
                 teamId: null,
+                teamIds: [],
                 teamName: 'Sin equipo asignado',
                 team: 'Sin equipo asignado',
                 equipo: 'Sin equipo asignado',
@@ -288,9 +308,10 @@ export async function cascadeDeleteTeam(
               });
             }
           } else {
-            // Usuario estándar (Colaborador, Supervisor, Gerente, Socio) -> Inhabilitado
+            // Usuario sin equipos restantes -> Inhabilitado
             batch.update(userRef, {
               teamId: null,
+              teamIds: [],
               teamName: 'Sin equipo asignado',
               team: 'Sin equipo asignado',
               equipo: 'Sin equipo asignado',
@@ -331,27 +352,28 @@ export async function deleteTeamFromFirestore(teamId: string, teamName?: string)
 }
 
 /**
- * Asignación / Desasignación Atómica y Dual de Equipo para un Usuario:
- * 1. Actualiza Firestore users/{uid} simultáneamente: teamId, teamName, team, assignedTeams, updatedAt
- * 2. Remueve de memberIds del equipo anterior en la colección 'teams'
- * 3. Agrega a memberIds del nuevo equipo en la colección 'teams'
- * 4. Actualiza en memoria useCheckinStore y useRayonerStore
+ * Asignación Multi-Equipo Atómica para un Usuario (`users/{uid}` <-> `teams/{teamId}`):
+ * Actualiza `teamIds` (array de IDs), `assignedTeams`, `teamId`, `supervisorId`, `gerenteId`
+ * y sincroniza el arreglo `memberIds` en todos los equipos afectados dentro de un único `writeBatch`.
  */
-export async function syncUserTeamAssignment(
+export async function syncUserMultiTeamAssignment(
   userId: string,
-  selectedTeam: Team | null,
+  selectedTeams: Team[],
   teamsList?: Team[]
 ): Promise<void> {
   const firestore = db;
   const isOnline = isFirebaseConfigured() && Boolean(firestore);
+  const validTeams = (selectedTeams || []).filter(Boolean);
+  const primaryTeam = validTeams[0] || null;
+  const nextTeamIds = Array.from(new Set(validTeams.map((t) => t.id)));
 
   // 1. Sincronización en stores locales (useCheckinStore y useRayonerStore)
   try {
     const checkinState = useCheckinStore.getState();
     checkinState.assignUserTeam(
       userId,
-      selectedTeam ? selectedTeam.name : 'Sin equipo asignado',
-      selectedTeam ? selectedTeam.id : undefined
+      primaryTeam ? primaryTeam.name : 'Sin equipo asignado',
+      primaryTeam ? primaryTeam.id : undefined
     );
 
     const rayonerState = useRayonerStore.getState();
@@ -360,9 +382,10 @@ export async function syncUserTeamAssignment(
         m.id === userId
           ? {
               ...m,
-              team: selectedTeam ? selectedTeam.name : 'Sin equipo asignado',
-              teamId: selectedTeam ? selectedTeam.id : undefined,
-              status: selectedTeam ? ('active' as const) : ('inactive' as const),
+              team: primaryTeam ? primaryTeam.name : 'Sin equipo asignado',
+              teamId: primaryTeam ? primaryTeam.id : undefined,
+              assignedTeams: nextTeamIds,
+              status: primaryTeam ? ('active' as const) : ('inactive' as const),
             }
           : m
       );
@@ -374,43 +397,43 @@ export async function syncUserTeamAssignment(
 
   // 2. Actualización atómica en Firestore
   if (isOnline && firestore) {
+    const userPatch: Record<string, any> = {
+      teamId: primaryTeam ? primaryTeam.id : null,
+      teamIds: nextTeamIds,
+      teamName: primaryTeam ? primaryTeam.name : 'Sin equipo asignado',
+      team: primaryTeam ? primaryTeam.name : 'Sin equipo asignado',
+      assignedTeams: nextTeamIds,
+      status: nextTeamIds.length > 0 ? 'active' : 'inactive',
+      isActive: nextTeamIds.length > 0,
+      accessRevoked: nextTeamIds.length === 0,
+      updatedAt: new Date().toISOString(),
+    };
+    if (primaryTeam?.supervisorId || primaryTeam?.leaderId) {
+      userPatch.supervisorId = primaryTeam.supervisorId || primaryTeam.leaderId;
+    }
+    if (primaryTeam?.gerenteId || primaryTeam?.parentLeaderId) {
+      userPatch.gerenteId = primaryTeam.gerenteId || primaryTeam.parentLeaderId;
+    }
+
     try {
       const batch = writeBatch(firestore);
-
-      // A. Actualizar documento users/{userId}
       const userRef = doc(firestore, 'users', userId);
-      batch.set(
-        userRef,
-        {
-          teamId: selectedTeam ? selectedTeam.id : null,
-          teamName: selectedTeam ? selectedTeam.name : 'Sin equipo asignado',
-          team: selectedTeam ? selectedTeam.name : 'Sin equipo asignado',
-          assignedTeams: selectedTeam ? [selectedTeam.id] : [],
-          status: selectedTeam ? 'active' : 'inactive',
-          isActive: Boolean(selectedTeam),
-          accessRevoked: !selectedTeam,
-          updatedAt: new Date().toISOString(),
-        },
-        { merge: true }
-      );
+      batch.set(userRef, userPatch, { merge: true });
 
-      // B. Si se proporciona teamsList (o la colección teams):
-      // Remover al usuario del arreglo memberIds de cualquier otro equipo y agregarlo al nuevo equipo
       if (teamsList && teamsList.length > 0) {
+        const targetIdSet = new Set(nextTeamIds);
         teamsList.forEach((t) => {
-          const isTarget = selectedTeam && t.id === selectedTeam.id;
+          const isTarget = targetIdSet.has(t.id);
           const currentMembers = Array.isArray(t.memberIds) ? t.memberIds : [];
           const hasUser = currentMembers.includes(userId);
 
           if (isTarget && !hasUser) {
-            const teamRef = doc(firestore, 'teams', t.id);
-            batch.update(teamRef, {
-              memberIds: [...currentMembers, userId],
+            batch.update(doc(firestore, 'teams', t.id), {
+              memberIds: Array.from(new Set([...currentMembers, userId])),
               updatedAt: new Date().toISOString(),
             });
           } else if (!isTarget && hasUser) {
-            const teamRef = doc(firestore, 'teams', t.id);
-            batch.update(teamRef, {
+            batch.update(doc(firestore, 'teams', t.id), {
               memberIds: currentMembers.filter((mId) => mId !== userId),
               updatedAt: new Date().toISOString(),
             });
@@ -420,28 +443,24 @@ export async function syncUserTeamAssignment(
 
       await batch.commit();
     } catch (err) {
-      console.warn('[teamService] Error en actualización batch de equipo:', err);
-      // Fallback puntual a setDoc users
+      console.warn('[teamService] Error en actualización batch de equipos:', err);
       try {
-        const userRef = doc(firestore, 'users', userId);
-        await setDoc(
-          userRef,
-          {
-            teamId: selectedTeam ? selectedTeam.id : null,
-            teamName: selectedTeam ? selectedTeam.name : 'Sin equipo asignado',
-            team: selectedTeam ? selectedTeam.name : 'Sin equipo asignado',
-            assignedTeams: selectedTeam ? [selectedTeam.id] : [],
-            status: selectedTeam ? 'active' : 'inactive',
-            isActive: Boolean(selectedTeam),
-            accessRevoked: !selectedTeam,
-            updatedAt: new Date().toISOString(),
-          },
-          { merge: true }
-        );
+        await setDoc(doc(firestore, 'users', userId), userPatch, { merge: true });
       } catch (fallbackErr) {
         console.warn('[teamService] Error en fallback setDoc user:', fallbackErr);
       }
     }
   }
+}
+
+/**
+ * Asignación / Desasignación de un equipo principal (retrocompatible sobre el modelo multi-equipo `teamIds`).
+ */
+export async function syncUserTeamAssignment(
+  userId: string,
+  selectedTeam: Team | null,
+  teamsList?: Team[]
+): Promise<void> {
+  await syncUserMultiTeamAssignment(userId, selectedTeam ? [selectedTeam] : [], teamsList);
 }
 

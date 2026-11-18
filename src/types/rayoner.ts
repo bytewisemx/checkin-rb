@@ -41,6 +41,10 @@ export interface Project {
   code: string;
   leadUserId: string;
   leadUserName: string;
+  gerenteId?: string;
+  supervisorId?: string;
+  teamId?: string;
+  teamIds?: string[];
   deadline: string; // ISO date YYYY-MM-DD
   budgetType: BudgetType;
   totalBudgetHours: number;
@@ -49,6 +53,7 @@ export interface Project {
   currency: string;
   notes?: string;
   isActive: boolean;
+  assignedToIds?: string[];
   assignedUserIds?: string[];
   assignedUserEmails?: string[];
 }
@@ -58,12 +63,17 @@ export interface TaskNode {
   title?: string;            // Esquema DB: título de la tarea
   name: string;              // Sincronizado con title
   assigned_to?: string;      // Compatibilidad: ID del colaborador
-  assignedToId?: string;     // ID unificado del colaborador (uid / demo_colaborador)
+  assignedToId?: string;     // ID unificado del colaborador principal (uid / demo_colaborador)
+  assignedToIds?: string[];  // Array de UIDs asignados (modelo multi-usuario)
   assignedToEmail?: string;  // Correo del colaborador en minúsculas
   assignedToName?: string;   // Nombre legible del colaborador
   companyId?: string;        // ID de la empresa vinculada
   companyName?: string;      // Nombre de la empresa vinculada
   projectName?: string;      // Nombre del proyecto vinculado
+  teamId?: string;           // Equipo principal
+  teamIds?: string[];        // Array de equipos vinculados
+  gerenteId?: string;        // Gerente responsable de la línea
+  supervisorId?: string;     // Supervisor responsable
   created_by?: string;       // ID del emisor / supervisor
   status?: TaskStatusType;   // 'pending' | 'in_progress' | 'completed' | 'progress' | 'review'
   created_at?: string;       // TIMESTAMP ISO
