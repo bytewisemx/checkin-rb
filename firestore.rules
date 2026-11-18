@@ -9,17 +9,23 @@ service cloud.firestore {
     // Nivel 2: Gerente (Línea Operativa) || RH (Lateral - Solo Asistencias/Tiempos)
     // Nivel 3: Supervisor (Reporta a Gerente)
     // Nivel 4: Colaborador (Base Operativa - Reporta a Supervisor)
+    //
+    // Optimización crítica:
+    // - Cero llamadas `get()`/`exists()` en cascada (evita exceder límite de 10 lecturas)
+    // - Cero `.lower()` sin verificar `is string` (evita crashes silenciosos por null)
     // =========================================================
     function isAuthenticated() {
       return request.auth != null;
     }
 
-    function hasAuthEmail() {
-      return isAuthenticated() && 'email' in request.auth.token && request.auth.token.email != null;
+    function safeLower(val) {
+      return val is string ? val.lower() : '';
     }
 
     function getAuthEmailLower() {
-      return hasAuthEmail() ? request.auth.token.email.lower() : '';
+      return isAuthenticated() && 'email' in request.auth.token
+        ? safeLower(request.auth.token.email)
+        : '';
     }
 
     function getDemoDocIdByEmail() {
@@ -33,19 +39,31 @@ service cloud.firestore {
         : '';
     }
 
+    function getDemoRoleByEmail() {
+      let em = getAuthEmailLower();
+      return em == 'ti.root@russellbedford.mx' ? 'ti'
+        : em == 'socio.prueba@russellbedford.mx' ? 'socio'
+        : em == 'gerente.prueba@russellbedford.mx' ? 'gerente'
+        : em == 'rh.prueba@russellbedford.mx' ? 'rh'
+        : em == 'supervisor.prueba@russellbedford.mx' ? 'supervisor'
+        : em == 'colaborador.prueba@russellbedford.mx' ? 'colaborador'
+        : '';
+    }
+
     function getEffectiveUid() {
       let demoId = getDemoDocIdByEmail();
       return demoId != '' ? demoId : request.auth.uid;
     }
 
-    function getUserRole() {
-      let effUid = getEffectiveUid();
-      return ('role' in request.auth.token && request.auth.token.role != null)
-        ? request.auth.token.role
-        : (exists(/databases/$(database)/documents/users/$(effUid))
-            ? get(/databases/$(database)/documents/users/$(effUid)).data.get('role', 'colaborador')
+    // Resuelve el rol en minúsculas con 0 lecturas para cuentas demo y máx. 1 lectura para usuarios reales
+    function getUserRoleLower() {
+      let demoRole = getDemoRoleByEmail();
+      return demoRole != ''
+        ? demoRole
+        : ('role' in request.auth.token && request.auth.token.role is string
+            ? request.auth.token.role.lower()
             : (exists(/databases/$(database)/documents/users/$(request.auth.uid))
-                ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', 'colaborador')
+                ? safeLower(get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', 'colaborador'))
                 : 'colaborador'));
     }
 
@@ -53,68 +71,32 @@ service cloud.firestore {
       let effUid = getEffectiveUid();
       return exists(/databases/$(database)/documents/users/$(effUid))
         ? get(/databases/$(database)/documents/users/$(effUid)).data.get('teamId', null)
-        : (exists(/databases/$(database)/documents/users/$(request.auth.uid))
-            ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('teamId', null)
-            : null);
+        : null;
     }
 
+    // Roles sin cascada (máx. 1 evaluación de getUserRoleLower por llamada)
     function isTI() {
-      let r = getUserRole();
-      return isAuthenticated() && (
-        r == 'TI' ||
-        r == 'ti' ||
-        getAuthEmailLower() == 'ti.root@russellbedford.mx'
-      );
+      return isAuthenticated() && getUserRoleLower() == 'ti';
     }
 
     function isSocio() {
-      let r = getUserRole();
-      return isAuthenticated() && (
-        r == 'Socio' ||
-        r == 'socio' ||
-        getAuthEmailLower() == 'socio.prueba@russellbedford.mx' ||
-        isTI()
-      );
+      return isAuthenticated() && getUserRoleLower() in ['ti', 'socio'];
     }
 
     function isGerente() {
-      let r = getUserRole();
-      return isAuthenticated() && (
-        r == 'Gerente' ||
-        r == 'gerente' ||
-        getAuthEmailLower() == 'gerente.prueba@russellbedford.mx' ||
-        isSocio()
-      );
+      return isAuthenticated() && getUserRoleLower() in ['ti', 'socio', 'gerente'];
     }
 
     function isSupervisor() {
-      let r = getUserRole();
-      return isAuthenticated() && (
-        r == 'Supervisor' ||
-        r == 'supervisor' ||
-        getAuthEmailLower() == 'supervisor.prueba@russellbedford.mx' ||
-        isGerente()
-      );
+      return isAuthenticated() && getUserRoleLower() in ['ti', 'socio', 'gerente', 'supervisor'];
     }
 
     function isRH() {
-      let r = getUserRole();
-      return isAuthenticated() && (
-        r == 'RH' ||
-        r == 'rh' ||
-        getAuthEmailLower() == 'rh.prueba@russellbedford.mx'
-      );
+      return isAuthenticated() && getUserRoleLower() == 'rh';
     }
 
     function isEmpleado() {
-      let r = getUserRole();
-      return isAuthenticated() && !isRH() && (
-        r == 'Empleado' ||
-        r == 'empleado' ||
-        r == 'Colaborador' ||
-        r == 'colaborador' ||
-        getAuthEmailLower() == 'colaborador.prueba@russellbedford.mx'
-      );
+      return isAuthenticated() && getUserRoleLower() in ['empleado', 'colaborador'];
     }
 
     function isOwner(userId) {
@@ -126,8 +108,10 @@ service cloud.firestore {
 
     function isDemoAccount() {
       let em = getAuthEmailLower();
-      return em.matches('.*\\.prueba@russellbedford\\.mx') ||
-             em == 'ti.root@russellbedford.mx';
+      return em != '' && (
+        em.matches('.*\\.prueba@russellbedford\\.mx') ||
+        em == 'ti.root@russellbedford.mx'
+      );
     }
 
     function matchesUserRecord(data) {
@@ -136,8 +120,8 @@ service cloud.firestore {
       return data != null && (
         data.get('userId', '') == request.auth.uid ||
         data.get('userId', '') == effUid ||
-        (em != '' && data.get('userEmail', '').lower() == em) ||
-        (em != '' && data.get('email', '').lower() == em)
+        (em != '' && safeLower(data.get('userEmail', '')) == em) ||
+        (em != '' && safeLower(data.get('email', '')) == em)
       );
     }
 
@@ -151,7 +135,7 @@ service cloud.firestore {
         data.get('assignedTo', '') == effUid ||
         data.get('assigned_to', '') == request.auth.uid ||
         data.get('assigned_to', '') == effUid ||
-        (em != '' && data.get('assignedToEmail', '').lower() == em)
+        (em != '' && safeLower(data.get('assignedToEmail', '')) == em)
       );
     }
 
@@ -191,7 +175,7 @@ service cloud.firestore {
           resource.data.get('supervisor_id', '') == getEffectiveUid() ||
           (getUserTeamId() != null && resource.data.get('teamId', '') == getUserTeamId())
         )) ||
-        (getAuthEmailLower() != '' && resource.data.get('email', '').lower() == getAuthEmailLower()) ||
+        (getAuthEmailLower() != '' && safeLower(resource.data.get('email', '')) == getAuthEmailLower()) ||
         resource.data.get('uid', '') == request.auth.uid
       );
 
@@ -219,13 +203,13 @@ service cloud.firestore {
     match /companies/{companyId} {
       allow read: if isAuthenticated() && !isRH();
       allow create, update: if isAuthenticated() && !isRH() && isGerente();
-      allow delete: if isAuthenticated() && !isRH() && (isSocio() || isTI());
+      allow delete: if isAuthenticated() && !isRH() && isSocio();
     }
 
     match /clients/{clientId} {
       allow read: if isAuthenticated() && !isRH();
       allow create, update: if isAuthenticated() && !isRH() && isGerente();
-      allow delete: if isAuthenticated() && !isRH() && (isSocio() || isTI());
+      allow delete: if isAuthenticated() && !isRH() && isSocio();
     }
 
     // =========================================================
@@ -238,38 +222,37 @@ service cloud.firestore {
     // =========================================================
     match /tasks/{taskId} {
       allow read: if isAuthenticated() && !isRH() && (
-        isSocio() ||
         isGerente() ||
         (isSupervisor() && (
+          isDemoAccount() ||
           resource.data.get('supervisorId', '') == request.auth.uid ||
           resource.data.get('supervisorId', '') == getEffectiveUid() ||
           resource.data.get('created_by', '') == request.auth.uid ||
           resource.data.get('created_by', '') == getEffectiveUid() ||
-          (getUserTeamId() != null && resource.data.get('teamId', '') == getUserTeamId()) ||
-          isDemoAccount()
+          (getUserTeamId() != null && resource.data.get('teamId', '') == getUserTeamId())
         )) ||
         (isEmpleado() && (
-          isAssignedToTaskData(resource.data) ||
-          isDemoAccount()
+          isDemoAccount() ||
+          isAssignedToTaskData(resource.data)
         ))
       );
 
       allow create: if isAuthenticated() && !isRH() && (
         isSupervisor() ||
         (isEmpleado() && (
+          isDemoAccount() ||
           isAssignedToTaskData(request.resource.data) ||
-          request.resource.data.get('isExtraordinary', false) == true ||
-          isDemoAccount()
+          request.resource.data.get('isExtraordinary', false) == true
         ))
       );
 
       allow update: if isAuthenticated() && !isRH() && (
         isSupervisor() ||
         (isEmpleado() && (
+          isDemoAccount() ||
           isAssignedToTaskData(resource.data) ||
           isAssignedToTaskData(request.resource.data) ||
-          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['loggedMinutes', 'status', 'completedAt', 'updatedAt']) ||
-          isDemoAccount()
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['loggedMinutes', 'status', 'completedAt', 'updatedAt'])
         ))
       );
 
@@ -297,32 +280,27 @@ service cloud.firestore {
     // =========================================================
     match /attendance/{attendanceId} {
       allow read: if isAuthenticated() && (
-        isTI() ||
-        isSocio() ||
-        isRH() ||
         isGerente() ||
-        (isSupervisor() && (
-          (getUserTeamId() != null && resource.data.get('teamId', '') == getUserTeamId()) ||
-          isDemoAccount()
-        )) ||
-        matchesUserRecord(resource.data) ||
-        isDemoAccount()
+        isRH() ||
+        isDemoAccount() ||
+        (isSupervisor() && getUserTeamId() != null && resource.data.get('teamId', '') == getUserTeamId()) ||
+        matchesUserRecord(resource.data)
       );
 
       allow create: if isAuthenticated() && (
         isTI() ||
         isRH() ||
-        matchesUserRecord(request.resource.data) ||
-        isDemoAccount()
+        isDemoAccount() ||
+        matchesUserRecord(request.resource.data)
       );
 
       allow update: if isAuthenticated() && (
         isTI() ||
         isRH() ||
         isSupervisor() ||
+        isDemoAccount() ||
         matchesUserRecord(resource.data) ||
-        matchesUserRecord(request.resource.data) ||
-        isDemoAccount()
+        matchesUserRecord(request.resource.data)
       );
 
       allow delete: if isTI();
@@ -333,42 +311,36 @@ service cloud.firestore {
     // =========================================================
     match /checkins/{checkinId} {
       allow read: if isAuthenticated() && (
-        isTI() || isSocio() || isRH() || isSupervisor() ||
-        matchesUserRecord(resource.data) ||
-        isDemoAccount()
+        isSupervisor() || isRH() || isDemoAccount() ||
+        matchesUserRecord(resource.data)
       );
       allow create: if isAuthenticated() && (
-        isTI() || isSupervisor() ||
-        matchesUserRecord(request.resource.data) ||
-        isDemoAccount()
+        isSupervisor() || isDemoAccount() ||
+        matchesUserRecord(request.resource.data)
       );
       allow update: if isAuthenticated() && (
-        isTI() || isSupervisor() ||
+        isSupervisor() || isDemoAccount() ||
         matchesUserRecord(resource.data) ||
-        matchesUserRecord(request.resource.data) ||
-        isDemoAccount()
+        matchesUserRecord(request.resource.data)
       );
       allow delete: if isTI();
     }
 
     match /time_logs/{logId} {
       allow read: if isAuthenticated() && (
-        isTI() || isSocio() || isRH() || isSupervisor() ||
-        matchesUserRecord(resource.data) ||
-        isDemoAccount()
+        isSupervisor() || isRH() || isDemoAccount() ||
+        matchesUserRecord(resource.data)
       );
       allow create: if isAuthenticated() && !isRH() && (
-        isTI() || isSupervisor() ||
-        matchesUserRecord(request.resource.data) ||
-        isDemoAccount()
+        isSupervisor() || isDemoAccount() ||
+        matchesUserRecord(request.resource.data)
       );
       allow update: if isAuthenticated() && !isRH() && (
-        isTI() || isSupervisor() ||
+        isSupervisor() || isDemoAccount() ||
         matchesUserRecord(resource.data) ||
-        matchesUserRecord(request.resource.data) ||
-        isDemoAccount()
+        matchesUserRecord(request.resource.data)
       );
-      allow delete: if isAuthenticated() && !isRH() && (isTI() || isSupervisor());
+      allow delete: if isAuthenticated() && !isRH() && isSupervisor();
     }
 
     match /active_timers/{userId} {
@@ -376,9 +348,9 @@ service cloud.firestore {
       allow create, update, delete: if isAuthenticated() && (
         isOwner(userId) ||
         isSupervisor() ||
+        isDemoAccount() ||
         matchesUserRecord(resource != null ? resource.data : null) ||
-        matchesUserRecord(request.resource != null ? request.resource.data : null) ||
-        isDemoAccount()
+        matchesUserRecord(request.resource != null ? request.resource.data : null)
       );
     }
 
@@ -398,23 +370,23 @@ service cloud.firestore {
     match /notifications/{notificationId} {
       allow read: if isAuthenticated() && !isRH() && (
         isTI() ||
+        isDemoAccount() ||
         resource.data.get('recipient_id', '') == request.auth.uid ||
         resource.data.get('recipient_id', '') == getEffectiveUid() ||
         resource.data.get('sender_id', '') == request.auth.uid ||
-        resource.data.get('sender_id', '') == getEffectiveUid() ||
-        isDemoAccount()
+        resource.data.get('sender_id', '') == getEffectiveUid()
       );
       allow create: if isAuthenticated() && !isRH();
       allow update, delete: if isAuthenticated() && (
         isTI() ||
+        isDemoAccount() ||
         resource.data.get('recipient_id', '') == request.auth.uid ||
-        resource.data.get('recipient_id', '') == getEffectiveUid() ||
-        isDemoAccount()
+        resource.data.get('recipient_id', '') == getEffectiveUid()
       );
     }
 
     match /audit_logs/{logId} {
-      allow read: if isAuthenticated() && (isTI() || isSocio() || isGerente() || isRH() || isDemoAccount());
+      allow read: if isAuthenticated() && (isGerente() || isRH() || isDemoAccount());
       allow write: if isAuthenticated();
     }
   }
