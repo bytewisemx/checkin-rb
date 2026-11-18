@@ -58,6 +58,16 @@ export interface Project {
   assignedUserEmails?: string[];
 }
 
+export interface TaskNote {
+  id: string;
+  text: string;
+  linkUrl?: string;
+  authorId: string;
+  authorName: string;
+  authorRole?: string;
+  createdAt: string;
+}
+
 export interface TaskNode {
   id: string;
   title?: string;            // Esquema DB: título de la tarea
@@ -92,6 +102,7 @@ export interface TaskNode {
   locationAddress?: string;
   locationRadiusMeters?: number;
   supervisorReviewNote?: string;
+  notes?: TaskNote[];
   isExtraordinary?: boolean;
   extraordinaryCategory?: string;
 }

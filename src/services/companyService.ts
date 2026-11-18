@@ -535,6 +535,20 @@ function mapDocToTaskNode(docId: string, d: Record<string, any>): TaskNode {
     isBillable: d.isBillable !== false,
     isActive: d.isActive !== false,
     description: d.description ? String(d.description) : undefined,
+    supervisorReviewNote: d.supervisorReviewNote ? String(d.supervisorReviewNote) : undefined,
+    notes: Array.isArray(d.notes)
+      ? d.notes
+          .filter((n: any) => n && typeof n.text === 'string' && n.text.trim())
+          .map((n: any) => ({
+            id: String(n.id || `note-${Date.now()}`),
+            text: String(n.text).trim(),
+            linkUrl: n.linkUrl ? String(n.linkUrl).trim() : undefined,
+            authorId: String(n.authorId || ''),
+            authorName: String(n.authorName || 'Usuario'),
+            authorRole: n.authorRole ? String(n.authorRole) : undefined,
+            createdAt: String(n.createdAt || new Date().toISOString()),
+          }))
+      : [],
     created_at: d.createdAt ? String(d.createdAt) : undefined,
     completed_at: d.completedAt ? String(d.completedAt) : null,
     isExtraordinary: Boolean(d.isExtraordinary),

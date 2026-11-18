@@ -12,6 +12,7 @@ import {
   saveTaskToFirestore,
   updateTaskProgressInFirestore,
   deleteTaskFromFirestore,
+  addTaskNoteInFirestore,
 } from '../services/taskService';
 import { trackFirestoreWrite, trackFirestoreDelete } from '../services/firestoreTelemetry';
 import { useNotificationStore } from './useNotificationStore';
@@ -25,6 +26,7 @@ import type {
   ActiveWorker,
   TeamMember,
   TaskStatusType,
+  TaskNote,
 } from '../types/rayoner';
 import type { UserRole } from '../services/rbac';
 
@@ -74,6 +76,16 @@ interface RayonerState {
   addTask: (task: Omit<TaskNode, 'id'>, notifyAssignee?: boolean) => string;
   addSubtask: (parentTaskId: string, name: string, plannedHours?: number) => string;
   updateTask: (id: string, data: Partial<TaskNode>) => void;
+  addTaskNote: (
+    taskId: string,
+    note: {
+      text: string;
+      linkUrl?: string;
+      authorId: string;
+      authorName: string;
+      authorRole?: string;
+    }
+  ) => void;
   toggleTaskActive: (id: string) => void;
   deleteTask: (id: string) => void;
   copyTask: (taskId: string) => void;
@@ -656,6 +668,43 @@ export const useRayonerStore = create<RayonerState>()(
         });
 
         broadcastRayonerSync('TASK_UPDATED', { taskId: id });
+      },
+
+      addTaskNote: (
+        taskId: string,
+        note: {
+          text: string;
+          linkUrl?: string;
+          authorId: string;
+          authorName: string;
+          authorRole?: string;
+        }
+      ) => {
+        const noteId = `note-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+        const nowIso = new Date().toISOString();
+        const newNote: TaskNote = {
+          id: noteId,
+          text: note.text.trim(),
+          linkUrl: note.linkUrl?.trim() || undefined,
+          authorId: note.authorId,
+          authorName: note.authorName,
+          authorRole: note.authorRole,
+          createdAt: nowIso,
+        };
+
+        set((state) => ({
+          tasks: state.tasks.map((t) =>
+            t.id === taskId
+              ? {
+                  ...t,
+                  notes: [newNote, ...(t.notes || [])],
+                }
+              : t
+          ),
+        }));
+
+        void addTaskNoteInFirestore(taskId, newNote);
+        broadcastRayonerSync('TASK_NOTE_ADDED', { taskId, note: newNote });
       },
 
       toggleTaskActive: (id) => {

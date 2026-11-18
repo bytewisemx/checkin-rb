@@ -1,15 +1,14 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Search, X } from 'lucide-react';
 import { useCheckinStore } from '../../store/useCheckinStore';
 import { useRayonerStore } from '../../store/useRayonerStore';
-import { useGamificationStore } from '../../store/useGamificationStore';
 import { useOperationalCatalogSync } from '../../hooks/useLiveTeamTimers';
 import { doesTaskBelongToUser } from '../../services/taskService';
 import { formatMinutesSexagesimal } from '../../services/attendanceService';
 import { auth } from '../../services/firebase';
 import { CompanyLogoBadge } from '../../components/common/CompanyLogoBadge';
 import type { TaskNode } from '../../types/rayoner';
-import { EditTaskTimeModal } from './EditTaskTimeModal';
+import { TaskDetailDrawer } from './TaskDetailDrawer';
 import { FinalizeTaskModal } from './FinalizeTaskModal';
 import { UserCalendarView } from './UserCalendarView';
 import { CreateExtraordinaryTaskModal } from './CreateExtraordinaryTaskModal';
@@ -17,13 +16,11 @@ import { CreateExtraordinaryTaskModal } from './CreateExtraordinaryTaskModal';
 type TabType = 'board' | 'calendar';
 type SortOrder = 'none' | 'asc' | 'desc';
 
-// 4 etapas del flujo de trabajo corporativo (estilo sobrio y homogéneo)
 const STAGES: {
   id: 'pending' | 'progress' | 'review' | 'completed';
   title: string;
   subtitle: string;
   dot: string;
-  isSupervisorOnly?: boolean;
 }[] = [
   {
     id: 'pending',
@@ -34,15 +31,14 @@ const STAGES: {
   {
     id: 'progress',
     title: 'En Proceso',
-    subtitle: 'Tareas iniciadas y pausadas',
+    subtitle: 'Actividades en desarrollo',
     dot: 'bg-blue-700',
   },
   {
     id: 'review',
     title: 'En Revisión',
-    subtitle: 'Retornadas por el supervisor',
+    subtitle: 'Esperando visto bueno del supervisor',
     dot: 'bg-slate-500',
-    isSupervisorOnly: true,
   },
   {
     id: 'completed',
@@ -55,51 +51,51 @@ const STAGES: {
 export function KanbanBoard() {
   useOperationalCatalogSync();
   const { user, addToast } = useCheckinStore();
-  const { 
-    tasks, 
-    projects, 
-    clients, 
-    assignments, 
+  const {
+    tasks,
+    projects,
+    clients,
+    assignments,
     userTaskActualHours,
     teamMembers,
     activeWorkers,
     moveTaskStatus,
-    updateTaskActualHours,
     finalizeTaskWithHours,
-    startWorkerTimer,
     stopWorkerTimer,
-    addExtraordinaryTask
+    addExtraordinaryTask,
+    addTaskNote,
   } = useRayonerStore();
 
-  // Reducción exclusiva a 2 pestañas: 'board' (Tablero) y 'calendar' (Calendario)
   const [activeTab, setActiveTab] = useState<TabType>('board');
-
-  // Filtros de Empresas/Clientes y Orden
   const [selectedClientId, setSelectedClientId] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [sortOrder, setSortOrder] = useState<SortOrder>('none');
 
-  // Estado del Modal de Ajuste de Horas
-  const [editingTask, setEditingTask] = useState<TaskNode | null>(null);
+  // Estado del Drawer de Detalle y Bitácora
+  const [selectedTaskForDetail, setSelectedTaskForDetail] = useState<TaskNode | null>(null);
 
-  // Estado del Modal de Confirmación y Últimos Ajustes para Finalizar Tarea
+  // Estado del Modal de Confirmación para Finalizar Tarea
   const [finalizingTask, setFinalizingTask] = useState<TaskNode | null>(null);
 
-  // Estado del Modal para Crear Tareas Extraordinarias (Sin Empresa)
+  // Modal para Tareas Extraordinarias Sin Empresa
   const [isExtraordinaryModalOpen, setIsExtraordinaryModalOpen] = useState(false);
 
-  // Identificador de usuario activo
+  // Contador de segundos en vivo para re-renderizado suave del cronómetro activo
+  const [liveClockTick, setLiveClockTick] = useState<number>(0);
+
   const currentUserId = user?.id || '';
 
-  // Perfil del colaborador en Rayoner
   const currentMember = useMemo(() => {
     if (!user) return null;
-    return teamMembers.find(
-      m => m.id === currentUserId || (user.email && m.email.toLowerCase() === user.email.toLowerCase())
-    ) || null;
+    return (
+      teamMembers.find(
+        (m) =>
+          m.id === currentUserId ||
+          (user.email && m.email.toLowerCase() === user.email.toLowerCase())
+      ) || null
+    );
   }, [teamMembers, currentUserId, user]);
 
-  // Identidad unificada del colaborador (id de perfil, uid Firebase, memberId y correo)
   const userIdentity = useMemo(
     () => ({
       id: currentUserId,
@@ -110,7 +106,45 @@ export function KanbanBoard() {
     [currentUserId, currentMember?.id, currentMember?.email, user?.email]
   );
 
-  // Tareas asignadas al usuario actual (unificación por assignedToId, assigned_to, assignedToEmail y assignments)
+  // Trabajador activo corriendo en vivo en este momento
+  const myActiveWorker = useMemo(() => {
+    return (
+      activeWorkers.find(
+        (w) =>
+          w.isRunning !== false &&
+          ((currentUserId && w.userId === currentUserId) ||
+            (currentMember && w.userId === currentMember.id) ||
+            (auth?.currentUser?.uid && w.userId === auth.currentUser.uid))
+      ) || null
+    );
+  }, [activeWorkers, currentUserId, currentMember]);
+
+  // Cronómetro reactivo: actualiza cada segundo cuando hay un timer en curso
+  useEffect(() => {
+    if (!myActiveWorker) return;
+    const interval = setInterval(() => {
+      setLiveClockTick((prev) => (prev + 1) % 1000000);
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [myActiveWorker]);
+
+  // Calcula los segundos acumulados en vivo por la tarea activa
+  const computeActiveLiveSeconds = (taskId: string): number => {
+    // Referencia intencional para reaccionar al tick del reloj en vivo
+    if (liveClockTick < 0) return 0;
+    if (!myActiveWorker || myActiveWorker.taskId !== taskId) return 0;
+    const startedMs = myActiveWorker.startedAtMs || (
+      typeof myActiveWorker.startedAt === 'number'
+        ? myActiveWorker.startedAt
+        : myActiveWorker.startedAt
+        ? new Date(myActiveWorker.startedAt).getTime()
+        : Date.now()
+    );
+    const elapsedSinceStart = Math.max(0, Math.floor((Date.now() - startedMs) / 1000));
+    return (myActiveWorker.accumulatedSeconds || 0) + elapsedSinceStart;
+  };
+
+  // Tareas asignadas al usuario actual
   const userAssignedTasks = useMemo(() => {
     if (!user && !currentMember) return [];
     const userAssignments = assignments.filter(
@@ -123,7 +157,7 @@ export function KanbanBoard() {
     return tasks.filter((t) => doesTaskBelongToUser(t, userIdentity, assignedTaskIds));
   }, [tasks, assignments, currentUserId, currentMember, user, userIdentity]);
 
-  // Empresas/Clientes asignados al colaborador (incluyendo las de sus tareas y companyId directo)
+  // Empresas asignadas al colaborador
   const assignedClients = useMemo(() => {
     const clientIds = new Set<string>();
 
@@ -144,7 +178,6 @@ export function KanbanBoard() {
     return clients.filter((c) => clientIds.has(c.id) && c.id !== 'cli-extraordinario');
   }, [clients, currentMember, userAssignedTasks, projects]);
 
-  // Horas asignadas a una tarea específica para el colaborador (fallback a plannedHours real de Firestore)
   const getTaskAllocatedHours = (taskId: string): number => {
     const asg = assignments.find(
       (a) =>
@@ -160,7 +193,6 @@ export function KanbanBoard() {
     return taskObj?.plannedHours || 0;
   };
 
-  // Horas reales invertidas en una tarea por el colaborador
   const getTaskUserActualHours = (taskId: string): number => {
     if (!currentUserId && !currentMember) return 0;
     const userKey = currentUserId ? `${taskId}_${currentUserId}` : '';
@@ -177,59 +209,52 @@ export function KanbanBoard() {
     return 0;
   };
 
-  // Regla de Negocio: Clasificación efectiva de la columna según el estado del sistema
+  // Clasificación efectiva de columna:
+  // - completed -> Finalizadas
+  // - review -> En Revisión
+  // - Activa en timer O con horas reales O status progress/in_progress -> En Proceso
+  // - Sin tiempo y no iniciada -> Nueva Tarea Asignada
   const getEffectiveColumnId = (task: TaskNode): 'pending' | 'progress' | 'review' | 'completed' => {
-    // 1. Si la tarea fue finalizada
-    if (task.status === 'completed') {
-      return 'completed';
-    }
+    if (task.status === 'completed') return 'completed';
+    if (task.status === 'review') return 'review';
 
-    // 2. Si fue retornada por el supervisor tras terminarla
-    if (task.status === 'review') {
-      return 'review';
-    }
-
-    // 3. Si la tarea está iniciada o pausada (trabajando activamente o con tiempo acumulado > 0)
-    const isWorkingOnIt = activeWorkers.some(
-      w => (w.userId === currentUserId || w.userId === currentMember?.id) && w.taskId === task.id
-    );
+    const isWorkingOnIt = myActiveWorker?.taskId === task.id;
     const userActual = getTaskUserActualHours(task.id);
-    const isStartedOrPaused = isWorkingOnIt || userActual > 0 || task.status === 'progress' || task.status === 'in_progress';
+    const isStarted =
+      isWorkingOnIt ||
+      userActual > 0 ||
+      task.status === 'progress' ||
+      task.status === 'in_progress';
 
-    if (isStartedOrPaused) {
-      return 'progress';
-    }
-
-    // 4. Nueva tarea asignada (permanece aquí si aún no ha sido iniciada)
+    if (isStarted) return 'progress';
     return 'pending';
   };
 
-  // Tareas filtradas por Empresa/Cliente, extraordinarias y búsqueda
   const filteredTasks = useMemo(() => {
     let result = [...userAssignedTasks];
 
-    // Filtro por Empresa/Cliente o Extraordinarias
     if (selectedClientId === 'extraordinary') {
-      result = result.filter(t => t.isExtraordinary || t.projectId === 'prj-extraordinario');
+      result = result.filter((t) => t.isExtraordinary || t.projectId === 'prj-extraordinario');
     } else if (selectedClientId !== 'all') {
       const projectIdsForClient = new Set(
-        projects.filter(p => p.clientId === selectedClientId).map(p => p.id)
+        projects.filter((p) => p.clientId === selectedClientId).map((p) => p.id)
       );
       result = result.filter(
-        t => projectIdsForClient.has(t.projectId) || t.companyId === selectedClientId
+        (t) => projectIdsForClient.has(t.projectId) || t.companyId === selectedClientId
       );
     }
 
-    // Filtro de texto
     if (searchTerm.trim()) {
       const query = searchTerm.toLowerCase();
-      result = result.filter(t => {
-        const proj = projects.find(p => p.id === t.projectId);
-        const cli = clients.find(c => c.id === (proj?.clientId || t.companyId));
+      result = result.filter((t) => {
+        const proj = projects.find((p) => p.id === t.projectId);
+        const cli = clients.find((c) => c.id === (proj?.clientId || t.companyId));
         return (
           t.name.toLowerCase().includes(query) ||
           (t.description && t.description.toLowerCase().includes(query)) ||
-          (cli && (cli.name.toLowerCase().includes(query) || (cli.commercialName || '').toLowerCase().includes(query))) ||
+          (cli &&
+            (cli.name.toLowerCase().includes(query) ||
+              (cli.commercialName || '').toLowerCase().includes(query))) ||
           (t.companyName && t.companyName.toLowerCase().includes(query)) ||
           (proj && proj.name.toLowerCase().includes(query)) ||
           (t.projectName && t.projectName.toLowerCase().includes(query))
@@ -237,7 +262,6 @@ export function KanbanBoard() {
       });
     }
 
-    // Orden
     if (sortOrder === 'asc') {
       result.sort((a, b) => a.name.localeCompare(b.name));
     } else if (sortOrder === 'desc') {
@@ -247,120 +271,88 @@ export function KanbanBoard() {
     return result;
   }, [userAssignedTasks, selectedClientId, searchTerm, sortOrder, projects, clients]);
 
-  // Acción 1: Iniciar Trabajo en Tarea (pasa automáticamente a En Proceso)
-  const handleStartWorkingOnTask = (task: TaskNode) => {
-    const project = projects.find(p => p.id === task.projectId);
-    const client = clients.find(c => c.id === (project?.clientId || task.companyId));
-
-    // Iniciar cronómetro de trabajador en Rayoner
-    startWorkerTimer({
-      userId: currentUserId,
-      userName: currentMember?.name || user?.name || 'Colaborador',
-      taskId: task.id,
-      taskName: task.name,
-      projectName: project?.name || task.projectName || 'Proyecto',
-      clientName: client?.commercialName || client?.name || task.companyName || 'Empresa',
-      startedAtMs: Date.now(),
-      currentDurationStr: '00:00:01',
-    });
-
-    localStorage.setItem('rb_active_task_id', task.id);
-    if (currentUserId) {
-      localStorage.setItem(`rb_active_task_id_${currentUserId}`, task.id);
-    }
-    moveTaskStatus(task.id, 'progress');
-    // Registrar cambio y trabajo de tarea en tiempo real para gamificación mensual
-    useGamificationStore.getState().recordTaskSwitch();
-    addToast(`Iniciaste trabajo en "${task.name}". Tarea en columna "En Proceso"`, 'success');
-  };
-
-  // Acción 2: Pausar trabajo (permanece en columna "En Proceso")
-  const handlePauseWorkOnTask = (task: TaskNode) => {
-    stopWorkerTimer(currentUserId);
-    localStorage.removeItem('rb_active_task_id');
-    moveTaskStatus(task.id, 'progress');
-    addToast(`Pausaste trabajo en "${task.name}". Permanece en "En Proceso"`, 'info');
-  };
-
-  // Acción para Crear y Autoasignar Tarea Extraordinaria (Sin Empresa Vinculada)
-  const handleCreateExtraordinaryTask = (data: {
-    name: string;
-    description: string;
-    plannedHours: number;
-    category: string;
-  }) => {
-    addExtraordinaryTask({
-      name: data.name,
-      description: data.description,
-      plannedHours: data.plannedHours,
-      category: data.category,
-      userId: currentUserId,
-      userName: currentMember?.name || user?.name || 'Colaborador',
-    });
-    addToast(`Tarea extraordinaria "${data.name}" agregada a "Nueva Tarea Asignada"`, 'success');
-  };
-
-  // Acción 3: Guardar ajuste de horas
-  const handleSaveHours = (newHours: number) => {
-    if (!editingTask) return;
-    updateTaskActualHours(editingTask.id, currentUserId, newHours);
-    useGamificationStore.getState().recordManualEdit();
-    addToast(
-      `Tiempo invertido ajustado a ${formatMinutesSexagesimal(Math.round(newHours * 60))} en "${editingTask.name}".`,
-      'success'
-    );
-    setEditingTask(null);
-  };
-
-  // Acción 4: Finalizar tarea desde EditTaskTimeModal con horas ajustadas
-  const handleFinalizeTask = (finalHours: number) => {
-    if (!editingTask) return;
-    stopWorkerTimer(currentUserId);
-    localStorage.removeItem('rb_active_task_id');
-    finalizeTaskWithHours(editingTask.id, currentUserId, finalHours, currentMember?.name || user?.name);
-    addToast(
-      `Tarea "${editingTask.name}" finalizada con ${formatMinutesSexagesimal(Math.round(finalHours * 60))} imputados.`,
-      'success'
-    );
-    setEditingTask(null);
-  };
-
-  // Acción 5: Abrir recuadro de últimos ajustes y confirmación de finalización
+  // Acción única de la columna En Proceso: Finalizar Tarea
   const handleOpenFinalizeModal = (task: TaskNode) => {
     setFinalizingTask(task);
   };
 
-  // Acción 6: Confirmar y finalizar definitivamente desde FinalizeTaskModal
   const handleConfirmFinalizeTask = (finalHours: number) => {
     if (!finalizingTask) return;
-    stopWorkerTimer(currentUserId);
-    localStorage.removeItem('rb_active_task_id');
-    finalizeTaskWithHours(finalizingTask.id, currentUserId, finalHours, currentMember?.name || user?.name);
+    const isCurrentActive = myActiveWorker?.taskId === finalizingTask.id;
+    if (isCurrentActive) {
+      stopWorkerTimer(currentUserId);
+      localStorage.removeItem('rb_active_task_id');
+      if (currentUserId) {
+        localStorage.removeItem(`rb_active_task_id_${currentUserId}`);
+      }
+    }
+
+    // Al finalizar por el colaborador, pasa a "review" para validación del supervisor
+    finalizeTaskWithHours(
+      finalizingTask.id,
+      currentUserId,
+      finalHours,
+      currentMember?.name || user?.name
+    );
+    moveTaskStatus(
+      finalizingTask.id,
+      'review',
+      currentUserId,
+      currentMember?.name || user?.name
+    );
+
     addToast(
-      `Tarea "${finalizingTask.name}" finalizada con ${formatMinutesSexagesimal(Math.round(finalHours * 60))} imputados.`,
+      `Tarea "${finalizingTask.name}" enviada a "En Revisión" para el supervisor (${formatMinutesSexagesimal(
+        Math.round(finalHours * 60)
+      )} reportados).`,
       'success'
     );
     setFinalizingTask(null);
   };
 
-  // -------------------------
-  // RENDERIZADO DE TABLERO (Diseño Abierto y Minimalista)
-  // -------------------------
+  const handleAddNoteToTask = (noteData: { text: string; linkUrl?: string }) => {
+    if (!selectedTaskForDetail) return;
+    addTaskNote(selectedTaskForDetail.id, {
+      text: noteData.text,
+      linkUrl: noteData.linkUrl,
+      authorId: currentUserId,
+      authorName: currentMember?.name || user?.name || 'Colaborador',
+      authorRole: currentMember?.roleTitle || 'Colaborador',
+    });
+    addToast('Nota registrada en la bitácora.', 'success');
+  };
+
+  // Mantener actualizado el objeto de tarea seleccionado si cambian las notas en el store
+  const activeDetailTaskLive = useMemo(() => {
+    if (!selectedTaskForDetail) return null;
+    return tasks.find((t) => t.id === selectedTaskForDetail.id) || selectedTaskForDetail;
+  }, [selectedTaskForDetail, tasks]);
+
+  const detailCompany = useMemo(() => {
+    if (!activeDetailTaskLive) return null;
+    const proj = projects.find((p) => p.id === activeDetailTaskLive.projectId);
+    return (
+      clients.find((c) => c.id === (proj?.clientId || activeDetailTaskLive.companyId)) || null
+    );
+  }, [activeDetailTaskLive, projects, clients]);
+
+  const detailProject = useMemo(() => {
+    if (!activeDetailTaskLive) return null;
+    return projects.find((p) => p.id === activeDetailTaskLive.projectId) || null;
+  }, [activeDetailTaskLive, projects]);
+
   const renderBoard = () => {
     return (
       <div className="flex-1 flex flex-col p-6 space-y-6">
-        
-        {/* Banner Explicativo Minimalista de Reglas de Negocio */}
+        {/* Banner Explicativo de Fuente Única de Tiempo */}
         <div className="py-2 px-1 text-xs text-slate-600">
           <span className="font-medium text-slate-700">
-            <strong className="text-slate-900">Organización del Tablero:</strong> En <em>Nueva Tarea Asignada</em> están tus tareas no iniciadas. Al comenzar o pausar pasan a <em>En Proceso</em>. La columna <em>En Revisión</em> contiene tareas retornadas por el supervisor.
+            <strong className="text-slate-900">Control de Tiempo Unificado:</strong> Tu actividad en curso se controla desde el selector de tarea de tu asistencia. Las tareas pasan a <em>En Proceso</em> automáticamente al cronometrar y a <em>En Revisión</em> al finalizar.
           </span>
         </div>
 
-        {/* Barra Superior: Empresas Asignadas y Controles (Sin Cajas Anidadas) */}
+        {/* Barra Superior: Filtros y Acciones */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 py-2 px-1">
-          
-          {/* Selector de Empresa / Cliente Asignado y Tareas Extraordinarias */}
           <div className="flex items-center space-x-3 flex-wrap gap-y-2">
             <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
               Empresa Asignada:
@@ -374,14 +366,13 @@ export function KanbanBoard() {
             >
               <option value="all">Todas mis empresas asignadas ({assignedClients.length})</option>
               <option value="extraordinary">Actividades Extraordinarias (Sin empresa asignada)</option>
-              {assignedClients.map(c => (
+              {assignedClients.map((c) => (
                 <option key={c.id} value={c.id}>
-                  {c.name}
+                  {c.commercialName || c.name}
                 </option>
               ))}
             </select>
 
-            {/* Botón para crear una Tarea Extraordinaria rápida */}
             <button
               id="btn-extra-task"
               data-tour="btn-new-task"
@@ -394,7 +385,6 @@ export function KanbanBoard() {
             </button>
           </div>
 
-          {/* Buscador y Orden (Únicos iconos permitidos: Search y X en buscador) */}
           <div className="flex items-center space-x-3">
             <div className="relative flex-1 sm:w-64">
               <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
@@ -416,7 +406,9 @@ export function KanbanBoard() {
             </div>
 
             <button
-              onClick={() => setSortOrder(prev => prev === 'asc' ? 'desc' : prev === 'desc' ? 'none' : 'asc')}
+              onClick={() =>
+                setSortOrder((prev) => (prev === 'asc' ? 'desc' : prev === 'desc' ? 'none' : 'asc'))
+              }
               className={`px-3 py-1.5 rounded-md border text-xs font-semibold transition-colors cursor-pointer ${
                 sortOrder !== 'none'
                   ? 'bg-blue-50 text-blue-900 border-blue-300'
@@ -426,18 +418,17 @@ export function KanbanBoard() {
               {sortOrder === 'asc' ? 'Orden: A-Z' : sortOrder === 'desc' ? 'Orden: Z-A' : 'Ordenar'}
             </button>
           </div>
-
         </div>
 
-        {/* Mensaje amigable cuando el colaborador no tiene tareas asignadas */}
+        {/* Mensaje de bienvenida si no hay tareas asignadas */}
         {userAssignedTasks.length === 0 && (
           <div className="mb-4 p-4 bg-slate-50 border border-slate-200 rounded-lg text-slate-600 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
               <p className="text-xs font-semibold text-slate-800">
-                Aún no tienes proyectos o tareas asignadas
+                Aún no tienes tareas asignadas en tu tablero
               </p>
               <p className="text-xs text-slate-500 mt-0.5">
-                Tu tiempo se contabiliza como jornada general hasta que tu supervisor te asigne una actividad o crees una extraordinaria.
+                Tu jornada se contabiliza como tiempo general. Puedes registrar una actividad extraordinaria con el botón superior.
               </p>
             </div>
             <button
@@ -453,8 +444,7 @@ export function KanbanBoard() {
         <div className="flex-1 overflow-x-auto pb-4">
           <div className="flex space-x-6 items-start min-h-[550px] min-w-[1240px]">
             {STAGES.map((stage) => {
-              // Filtrado según la columna efectiva calculada por el estado real del sistema
-              const columnTasks = filteredTasks.filter(t => getEffectiveColumnId(t) === stage.id);
+              const columnTasks = filteredTasks.filter((t) => getEffectiveColumnId(t) === stage.id);
 
               return (
                 <div
@@ -463,16 +453,11 @@ export function KanbanBoard() {
                   data-tour={stage.id === 'progress' ? 'board-column-progress' : undefined}
                   className="flex-1 min-w-[290px] max-w-[330px] flex flex-col"
                 >
-                  {/* Cabecera Desencapsulada de la Columna (Sin Cajas ni Bordes Rígidos) */}
+                  {/* Cabecera Desencapsulada de la Columna */}
                   <div className="flex items-center justify-between mb-4 px-1">
                     <div className="flex items-center space-x-2">
                       <span className={`w-2 h-2 rounded-full ${stage.dot}`} />
                       <h3 className="font-semibold text-slate-900 text-sm tracking-tight">{stage.title}</h3>
-                      {stage.isSupervisorOnly && (
-                        <span className="text-[10px] text-slate-400 font-normal">
-                          (Supervisor)
-                        </span>
-                      )}
                     </div>
                     <span className="text-xs font-medium text-slate-400">
                       {columnTasks.length}
@@ -482,30 +467,33 @@ export function KanbanBoard() {
                   {/* Tarjetas de la Columna */}
                   <div className="space-y-3 min-h-[220px]">
                     {columnTasks.map((task) => {
-                      const project = projects.find(p => p.id === task.projectId);
-                      const client = clients.find(c => c.id === (project?.clientId || task.companyId));
+                      const project = projects.find((p) => p.id === task.projectId);
+                      const client = clients.find((c) => c.id === (project?.clientId || task.companyId));
                       const displayCompanyName =
                         client?.commercialName || client?.name || task.companyName || 'Empresa';
                       const displayProjectName = project?.name || task.projectName || 'Proyecto';
                       const allocatedHours = getTaskAllocatedHours(task.id);
                       const actualHours = getTaskUserActualHours(task.id);
                       const allocatedMinutes = Math.max(0, Math.round(allocatedHours * 60));
-                      const actualMinutes = Math.max(0, Math.round(actualHours * 60));
+                      const storedActualMinutes = Math.max(0, Math.round(actualHours * 60));
 
-                      const percentConsumed = allocatedMinutes > 0
-                        ? Math.round((actualMinutes / allocatedMinutes) * 100)
-                        : 0;
+                      const isCurrentlyActive = myActiveWorker?.taskId === task.id;
+                      const runningSeconds = isCurrentlyActive ? computeActiveLiveSeconds(task.id) : 0;
+                      const liveMinutes = Math.floor(runningSeconds / 60);
+                      const totalActualMinutes = storedActualMinutes + liveMinutes;
 
-                      const isCurrentlyActive = activeWorkers.some(
-                        w => ((currentUserId && w.userId === currentUserId) || (currentMember && w.userId === currentMember.id)) && w.taskId === task.id
-                      );
+                      const percentConsumed =
+                        allocatedMinutes > 0
+                          ? Math.round((totalActualMinutes / allocatedMinutes) * 100)
+                          : 0;
 
                       return (
                         <div
                           key={task.id}
-                          className={`bg-white rounded-md p-4 border transition-all space-y-3 ${
-                            isCurrentlyActive 
-                              ? 'ring-2 ring-blue-700/30 border-blue-600 bg-blue-50/10 shadow-xs' 
+                          onClick={() => setSelectedTaskForDetail(task)}
+                          className={`bg-white rounded-md p-4 border transition-all space-y-3 cursor-pointer ${
+                            isCurrentlyActive
+                              ? 'border-blue-600 ring-2 ring-blue-700/20 bg-blue-50/10 shadow-xs'
                               : 'border-slate-200 hover:border-slate-300 shadow-2xs'
                           }`}
                         >
@@ -531,16 +519,21 @@ export function KanbanBoard() {
 
                             <div className="flex items-center space-x-1.5 shrink-0">
                               {isCurrentlyActive && (
-                                <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-semibold tracking-wider bg-blue-700 text-white">
-                                  EN VIVO
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[9px] font-semibold tracking-wider bg-blue-700 text-white shadow-2xs">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                                  <span>EN VIVO</span>
                                 </span>
                               )}
                               {task.priority && (
-                                <span className={`text-[10px] font-medium uppercase tracking-wider ${
-                                  task.priority === 'urgent' ? 'text-rose-700' :
-                                  task.priority === 'high' ? 'text-amber-700' :
-                                  'text-slate-500'
-                                }`}>
+                                <span
+                                  className={`text-[10px] font-medium uppercase tracking-wider ${
+                                    task.priority === 'urgent'
+                                      ? 'text-rose-700'
+                                      : task.priority === 'high'
+                                      ? 'text-amber-700'
+                                      : 'text-slate-500'
+                                  }`}
+                                >
                                   {task.priority === 'urgent'
                                     ? 'Urgente'
                                     : task.priority === 'high'
@@ -555,9 +548,13 @@ export function KanbanBoard() {
 
                           {/* Nombre de la Tarea y Subtítulo */}
                           <div>
-                            <h4 className={`font-semibold text-sm leading-snug ${
-                              task.status === 'completed' ? 'text-slate-400 line-through' : 'text-slate-900'
-                            }`}>
+                            <h4
+                              className={`font-semibold text-sm leading-snug ${
+                                task.status === 'completed'
+                                  ? 'text-slate-400 line-through'
+                                  : 'text-slate-900'
+                              }`}
+                            >
                               {task.name}
                             </h4>
                             <div className="text-xs text-slate-500 mt-1 truncate">
@@ -566,9 +563,7 @@ export function KanbanBoard() {
                                   {task.extraordinaryCategory || 'Actividad Extraordinaria'}
                                 </span>
                               ) : (
-                                <span className="truncate">
-                                  {displayProjectName}
-                                </span>
+                                <span className="truncate">{displayProjectName}</span>
                               )}
                             </div>
                             {task.locationMode && (
@@ -580,14 +575,14 @@ export function KanbanBoard() {
                             )}
                           </div>
 
-                          {/* Alerta de Revisión Solicitada por el Supervisor */}
-                          {stage.id === 'review' && (
-                            <div className="border-l-2 border-amber-500 pl-3 py-1 text-xs text-amber-900 space-y-0.5">
+                          {/* Alerta de Retorno por el Supervisor */}
+                          {stage.id === 'review' && task.supervisorReviewNote && (
+                            <div className="border-l-2 border-amber-500 pl-3 py-1 text-xs text-amber-900 space-y-0.5 bg-amber-50/50">
                               <span className="font-semibold text-amber-900 block">
                                 Retornada por el Supervisor
                               </span>
                               <p className="text-[11px] text-amber-800 leading-relaxed">
-                                {task.supervisorReviewNote || 'Favor de revisar los entregables correspondientes.'}
+                                {task.supervisorReviewNote}
                               </p>
                             </div>
                           )}
@@ -595,11 +590,25 @@ export function KanbanBoard() {
                           {/* Avance en Tiempo: Presupuesto vs Invertido en formato sexagesimal (Xh Ym) */}
                           <div className="space-y-1.5 pt-1">
                             <div className="flex items-center justify-between text-xs">
-                              <span className="text-slate-500">Avance de tiempo:</span>
+                              <span className="text-slate-500">
+                                {isCurrentlyActive ? (
+                                  <span className="text-blue-700 font-semibold flex items-center gap-1">
+                                    <span>En curso ahora:</span>
+                                    <span className="font-mono">
+                                      {formatMinutesSexagesimal(liveMinutes)}
+                                    </span>
+                                  </span>
+                                ) : (
+                                  'Avance de tiempo:'
+                                )}
+                              </span>
                               <span className="font-mono font-medium text-slate-800">
-                                {formatMinutesSexagesimal(actualMinutes)}{' '}
+                                {formatMinutesSexagesimal(totalActualMinutes)}{' '}
                                 <span className="text-slate-400 font-normal">
-                                  / {allocatedMinutes > 0 ? formatMinutesSexagesimal(allocatedMinutes) : 'Sin estimación'}
+                                  /{' '}
+                                  {allocatedMinutes > 0
+                                    ? formatMinutesSexagesimal(allocatedMinutes)
+                                    : 'Sin estimación'}
                                 </span>
                               </span>
                             </div>
@@ -611,10 +620,10 @@ export function KanbanBoard() {
                                   task.status === 'completed'
                                     ? 'bg-slate-400'
                                     : percentConsumed > 100
-                                      ? 'bg-rose-600'
-                                      : 'bg-blue-700'
+                                    ? 'bg-rose-600'
+                                    : 'bg-blue-700'
                                 }`}
-                                style={{ width: `${Math.min(100, percentConsumed || 5)}%` }}
+                                style={{ width: `${Math.min(100, percentConsumed || 4)}%` }}
                               />
                             </div>
 
@@ -624,101 +633,43 @@ export function KanbanBoard() {
                             </div>
                           </div>
 
-                          {/* Acciones Contextuales (Solo Texto Limpio, Sin Iconos) */}
-                          <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
-                            
-                            {/* Botón para Ajustar Horas Invertidas */}
-                            {stage.id === 'completed' || task.status === 'completed' ? (
-                              <span 
-                                className="text-xs text-slate-400 select-none"
-                                title="El tiempo de esta tarea ya no puede modificarse por encontrarse finalizada"
-                              >
-                                Tiempo Bloqueado
-                              </span>
-                            ) : (
+                          {/* Pie de la Tarjeta con Acción Única Sobria */}
+                          <div className="pt-2.5 border-t border-slate-100 flex items-center justify-between text-xs">
+                            <span className="text-[11px] text-slate-400 font-mono">
+                              {task.notes && task.notes.length > 0
+                                ? `${task.notes.length} notas en bitácora`
+                                : 'Clic para ver detalle'}
+                            </span>
+
+                            {/* En Proceso: Acción Única -> Finalizar */}
+                            {stage.id === 'progress' && (
                               <button
                                 type="button"
-                                onClick={() => setEditingTask(task)}
-                                className="px-2.5 py-1 text-xs font-medium text-slate-600 hover:text-slate-900 border border-slate-200 hover:border-slate-300 rounded transition cursor-pointer"
-                                title="Ajustar tiempo invertido"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleOpenFinalizeModal(task);
+                                }}
+                                className="px-3 py-1 text-xs font-semibold text-white bg-blue-700 hover:bg-blue-600 transition rounded shadow-2xs cursor-pointer"
+                                title="Finalizar tarea y enviar a revisión del supervisor"
                               >
-                                Ajustar Tiempo
+                                Finalizar
                               </button>
                             )}
 
-                            {/* Controles Específicos por Columna (Solo Texto Limpio) */}
-                            <div className="flex items-center space-x-1.5">
-                              
-                              {/* 1. Columna Nueva Tarea Asignada: Comenzar a Trabajar */}
-                              {stage.id === 'pending' && (
-                                <button
-                                  type="button"
-                                  onClick={() => handleStartWorkingOnTask(task)}
-                                  className="px-3 py-1 text-xs font-semibold text-white bg-blue-700 hover:bg-blue-800 transition rounded cursor-pointer"
-                                  title="Iniciar trabajo en esta tarea (pasa a En Proceso)"
-                                >
-                                  Comenzar
-                                </button>
-                              )}
+                            {/* En Revisión: Tarjeta de solo lectura */}
+                            {stage.id === 'review' && (
+                              <span className="text-[11px] font-medium text-slate-500 bg-slate-50 px-2 py-0.5 rounded">
+                                En Revisión
+                              </span>
+                            )}
 
-                              {/* 2. Columna En Revisión: Atender y Trabajar */}
-                              {stage.id === 'review' && (
-                                <button
-                                  id="btn-reject-task"
-                                  type="button"
-                                  onClick={() => handleStartWorkingOnTask(task)}
-                                  className="px-3 py-1 text-xs font-semibold text-white bg-blue-700 hover:bg-blue-800 transition rounded cursor-pointer"
-                                  title="Atender observación o devolver a revisión"
-                                >
-                                  Devolver / Atender
-                                </button>
-                              )}
-
-                              {/* 3. Columna En Proceso: Si está activa -> Pausar; si está pausada -> Reanudar; y botón Finalizar */}
-                              {stage.id === 'progress' && (
-                                <>
-                                  {isCurrentlyActive ? (
-                                    <button
-                                      type="button"
-                                      onClick={() => handlePauseWorkOnTask(task)}
-                                      className="px-2.5 py-1 text-xs font-medium text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 transition rounded cursor-pointer"
-                                      title="Pausar trabajo (permanece en En Proceso)"
-                                    >
-                                      Pausar
-                                    </button>
-                                  ) : (
-                                    <button
-                                      type="button"
-                                      onClick={() => handleStartWorkingOnTask(task)}
-                                      className="px-3 py-1 text-xs font-semibold text-white bg-blue-700 hover:bg-blue-800 transition rounded cursor-pointer"
-                                      title="Reanudar trabajo en esta tarea iniciada"
-                                    >
-                                      Reanudar
-                                    </button>
-                                  )}
-
-                                  <button
-                                    type="button"
-                                    onClick={() => handleOpenFinalizeModal(task)}
-                                    className="px-2.5 py-1 text-xs font-medium text-slate-800 bg-slate-100 hover:bg-slate-200 border border-slate-200 transition rounded cursor-pointer"
-                                    title="Finalizar tarea y dar últimos ajustes de tiempo"
-                                  >
-                                    Finalizar
-                                  </button>
-                                </>
-                              )}
-
-                              {/* 4. Columna Finalizada: Badge de Completada */}
-                              {stage.id === 'completed' && (
-                                <span className="px-2.5 py-0.5 text-xs font-medium text-slate-600 bg-slate-50 rounded">
-                                  Finalizada
-                                </span>
-                              )}
-
-                            </div>
-
+                            {/* Finalizadas: Tarjeta de solo lectura */}
+                            {stage.id === 'completed' && (
+                              <span className="text-[11px] font-medium text-slate-500 bg-slate-50 px-2 py-0.5 rounded">
+                                Concluida
+                              </span>
+                            )}
                           </div>
-
                         </div>
                       );
                     })}
@@ -734,18 +685,14 @@ export function KanbanBoard() {
             })}
           </div>
         </div>
-
       </div>
     );
   };
 
   return (
     <div className="w-full mt-4 animate-fade-in flex flex-col min-h-[75vh] bg-white rounded-md shadow-2xs border border-slate-200 overflow-hidden">
-      
-      {/* 1. Header con ÚNICAMENTE las 2 Pestañas: Tablero y Calendario (Sin Iconos Redundantes) */}
+      {/* Selector de Pestañas Editorial */}
       <div className="flex items-center justify-between border-b border-slate-200 px-6 sm:px-8 py-2 bg-slate-50/60">
-        
-        {/* Selector de Pestañas Limpio y Minimalista */}
         <div className="flex items-center space-x-6">
           <button
             onClick={() => setActiveTab('board')}
@@ -779,40 +726,57 @@ export function KanbanBoard() {
         {/* Indicador del Colaborador */}
         <div className="hidden sm:flex items-center space-x-2 text-xs text-slate-600 bg-white px-3 py-1.5 rounded-md border border-slate-200 shadow-2xs">
           <span className="w-2 h-2 rounded-full bg-blue-700" />
-          <span className="font-semibold text-slate-800">{currentMember?.name || user?.name || 'Colaborador'}</span>
+          <span className="font-semibold text-slate-800">
+            {currentMember?.name || user?.name || 'Colaborador'}
+          </span>
           <span className="text-slate-300">•</span>
           <span className="text-slate-500">{userAssignedTasks.length} tareas asignadas</span>
         </div>
-
       </div>
 
-      {/* 2. Contenido de la Pestaña Activa */}
+      {/* Contenido */}
       {activeTab === 'board' ? renderBoard() : <UserCalendarView />}
 
-      {/* 3. Modal para Editar Tiempo Invertido */}
-      {editingTask && (
-        <EditTaskTimeModal
-          isOpen={Boolean(editingTask)}
-          onClose={() => setEditingTask(null)}
-          task={editingTask}
-          clientName={
-            editingTask.isExtraordinary || editingTask.projectId === 'prj-extraordinario'
-              ? 'Actividad Extraordinaria'
-              : (clients.find(c => c.id === projects.find(p => p.id === editingTask.projectId)?.clientId)?.name || 'Empresa')
+      {/* Drawer de Detalle Completo y Bitácora de Avances */}
+      {selectedTaskForDetail && (
+        <TaskDetailDrawer
+          isOpen={Boolean(selectedTaskForDetail)}
+          onClose={() => setSelectedTaskForDetail(null)}
+          task={activeDetailTaskLive}
+          companyName={
+            detailCompany?.commercialName ||
+            detailCompany?.name ||
+            activeDetailTaskLive?.companyName ||
+            'Empresa'
           }
           projectName={
-            editingTask.isExtraordinary || editingTask.projectId === 'prj-extraordinario'
-              ? (editingTask.extraordinaryCategory || 'Tareas Extraordinarias e Imprevistas')
-              : (projects.find(p => p.id === editingTask.projectId)?.name || 'Proyecto')
+            detailProject?.name || activeDetailTaskLive?.projectName || 'Proyecto'
           }
-          currentHours={getTaskUserActualHours(editingTask.id)}
-          allocatedHours={getTaskAllocatedHours(editingTask.id)}
-          onSaveHours={handleSaveHours}
-          onFinalizeTask={handleFinalizeTask}
+          companyLogoUrl={detailCompany?.logoUrl}
+          allocatedMinutes={
+            activeDetailTaskLive
+              ? Math.max(0, Math.round(getTaskAllocatedHours(activeDetailTaskLive.id) * 60))
+              : 0
+          }
+          actualMinutes={
+            activeDetailTaskLive
+              ? Math.max(0, Math.round(getTaskUserActualHours(activeDetailTaskLive.id) * 60))
+              : 0
+          }
+          isCurrentlyActive={myActiveWorker?.taskId === activeDetailTaskLive?.id}
+          activeSecondsRunning={
+            activeDetailTaskLive ? computeActiveLiveSeconds(activeDetailTaskLive.id) : 0
+          }
+          onAddNote={handleAddNoteToTask}
+          onFinalizeTask={() => {
+            if (activeDetailTaskLive) {
+              handleOpenFinalizeModal(activeDetailTaskLive);
+            }
+          }}
         />
       )}
 
-      {/* 4. Recuadro Modal para Confirmar Finalización y Últimos Ajustes de Tiempo */}
+      {/* Modal para Confirmar Finalización y Últimos Ajustes de Tiempo */}
       {finalizingTask && (
         <FinalizeTaskModal
           isOpen={Boolean(finalizingTask)}
@@ -821,12 +785,17 @@ export function KanbanBoard() {
           clientName={
             finalizingTask.isExtraordinary || finalizingTask.projectId === 'prj-extraordinario'
               ? 'Actividad Extraordinaria'
-              : (clients.find(c => c.id === projects.find(p => p.id === finalizingTask.projectId)?.clientId)?.name || 'Empresa')
+              : clients.find(
+                  (c) =>
+                    c.id ===
+                    (projects.find((p) => p.id === finalizingTask.projectId)?.clientId ||
+                      finalizingTask.companyId)
+                )?.name || 'Empresa'
           }
           projectName={
             finalizingTask.isExtraordinary || finalizingTask.projectId === 'prj-extraordinario'
-              ? (finalizingTask.extraordinaryCategory || 'Tareas Extraordinarias e Imprevistas')
-              : (projects.find(p => p.id === finalizingTask.projectId)?.name || 'Proyecto')
+              ? finalizingTask.extraordinaryCategory || 'Tareas Extraordinarias e Imprevistas'
+              : projects.find((p) => p.id === finalizingTask.projectId)?.name || 'Proyecto'
           }
           currentHours={getTaskUserActualHours(finalizingTask.id)}
           allocatedHours={getTaskAllocatedHours(finalizingTask.id)}
@@ -834,15 +803,27 @@ export function KanbanBoard() {
         />
       )}
 
-      {/* 5. Modal para Crear y Registrar Tareas Extraordinarias Sin Empresa */}
+      {/* Modal para Crear y Registrar Tareas Extraordinarias Sin Empresa */}
       {isExtraordinaryModalOpen && (
         <CreateExtraordinaryTaskModal
           isOpen={isExtraordinaryModalOpen}
           onClose={() => setIsExtraordinaryModalOpen(false)}
-          onSubmit={handleCreateExtraordinaryTask}
+          onSubmit={(data) => {
+            addExtraordinaryTask({
+              name: data.name,
+              description: data.description,
+              plannedHours: data.plannedHours,
+              category: data.category,
+              userId: currentUserId,
+              userName: currentMember?.name || user?.name || 'Colaborador',
+            });
+            addToast(
+              `Tarea extraordinaria "${data.name}" agregada a "Nueva Tarea Asignada".`,
+              'success'
+            );
+          }}
         />
       )}
-
     </div>
   );
 }

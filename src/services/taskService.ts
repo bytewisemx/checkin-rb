@@ -1,4 +1,4 @@
-import { collection, doc, getDocs, query, setDoc, where, deleteDoc, writeBatch } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, query, setDoc, where, deleteDoc, writeBatch } from 'firebase/firestore';
 import { db, auth, isFirebaseConfigured, loginWithEmail, registerWithEmail } from './firebase';
 import { validateShiftTimeDistribution } from './attendanceService';
 import {
@@ -6,7 +6,7 @@ import {
   trackFirestoreRead,
   trackFirestoreWrite,
 } from './firestoreTelemetry';
-import type { TaskNode } from '../types/rayoner';
+import type { TaskNode, TaskNote } from '../types/rayoner';
 
 export interface TaskDocument {
   id: string;
@@ -37,6 +37,7 @@ export interface TaskDocument {
   locationMode?: 'office' | 'client_site';
   locationAddress?: string;
   locationRadiusMeters?: number;
+  notes?: TaskNote[];
   isBillable?: boolean;
   isActive?: boolean;
   isExtraordinary?: boolean;
@@ -137,8 +138,50 @@ export function doesTaskBelongToUser(
 }
 
 /**
- * Normaliza cualquier valor numérico (horas o minutos) a un entero no negativo
+ * Agrega una nota o evidencia a la bitácora de una tarea en Firestore y la sincroniza en el estado local.
  */
+export async function addTaskNoteInFirestore(
+  taskId: string,
+  note: Omit<TaskNote, 'id' | 'createdAt'> & { id?: string; createdAt?: string }
+): Promise<TaskNote | null> {
+  const noteId = note.id || `note-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+  const nowIso = note.createdAt || new Date().toISOString();
+  const newNote: TaskNote = {
+    id: noteId,
+    text: note.text.trim(),
+    linkUrl: note.linkUrl?.trim() || undefined,
+    authorId: note.authorId || '',
+    authorName: note.authorName || 'Usuario',
+    authorRole: note.authorRole || undefined,
+    createdAt: nowIso,
+  };
+
+  if (!isFirebaseConfigured() || !db || !taskId) {
+    return newNote;
+  }
+
+  try {
+    const taskRef = doc(db, 'tasks', taskId);
+    const snap = await getDoc(taskRef);
+    const existingNotes: TaskNote[] =
+      snap.exists() && Array.isArray(snap.data()?.notes) ? snap.data().notes : [];
+
+    const updatedNotes = [newNote, ...existingNotes];
+    await setDoc(
+      taskRef,
+      {
+        notes: updatedNotes,
+        updatedAt: nowIso,
+      },
+      { merge: true }
+    );
+    trackFirestoreWrite(1);
+    return newNote;
+  } catch (err) {
+    console.warn('[taskService] Error al agregar nota en Firestore:', err);
+    return newNote;
+  }
+}
 export function toIntegerMinutes(value: number | undefined | null): number {
   const num = Number(value);
   if (!Number.isFinite(num) || num < 0) return 0;
@@ -379,6 +422,19 @@ function mapRawDocToTaskDocument(docId: string, d: Record<string, any>): TaskDoc
     locationAddress: d.locationAddress ? String(d.locationAddress) : '',
     locationRadiusMeters:
       typeof d.locationRadiusMeters === 'number' ? Math.round(d.locationRadiusMeters) : 150,
+    notes: Array.isArray(d.notes)
+      ? d.notes
+          .filter((n: any) => n && typeof n.text === 'string' && n.text.trim())
+          .map((n: any) => ({
+            id: String(n.id || `note-${Date.now()}`),
+            text: String(n.text).trim(),
+            linkUrl: n.linkUrl ? String(n.linkUrl).trim() : undefined,
+            authorId: String(n.authorId || ''),
+            authorName: String(n.authorName || 'Usuario'),
+            authorRole: n.authorRole ? String(n.authorRole) : undefined,
+            createdAt: String(n.createdAt || new Date().toISOString()),
+          }))
+      : [],
     isBillable: d.isBillable !== false,
     isActive: d.isActive !== false,
     isExtraordinary: Boolean(d.isExtraordinary),
