@@ -18,8 +18,12 @@ service cloud.firestore {
       return isAuthenticated() && 'email' in request.auth.token && request.auth.token.email != null;
     }
 
+    function getAuthEmailLower() {
+      return hasAuthEmail() ? request.auth.token.email.lower() : '';
+    }
+
     function getDemoDocIdByEmail() {
-      let em = hasAuthEmail() ? request.auth.token.email : '';
+      let em = getAuthEmailLower();
       return em == 'ti.root@russellbedford.mx' ? 'demo_ti'
         : em == 'socio.prueba@russellbedford.mx' ? 'demo_socio'
         : em == 'gerente.prueba@russellbedford.mx' ? 'demo_gerente'
@@ -59,7 +63,7 @@ service cloud.firestore {
       return isAuthenticated() && (
         r == 'TI' ||
         r == 'ti' ||
-        (hasAuthEmail() && request.auth.token.email == 'ti.root@russellbedford.mx')
+        getAuthEmailLower() == 'ti.root@russellbedford.mx'
       );
     }
 
@@ -68,7 +72,7 @@ service cloud.firestore {
       return isAuthenticated() && (
         r == 'Socio' ||
         r == 'socio' ||
-        (hasAuthEmail() && request.auth.token.email == 'socio.prueba@russellbedford.mx') ||
+        getAuthEmailLower() == 'socio.prueba@russellbedford.mx' ||
         isTI()
       );
     }
@@ -78,7 +82,7 @@ service cloud.firestore {
       return isAuthenticated() && (
         r == 'Gerente' ||
         r == 'gerente' ||
-        (hasAuthEmail() && request.auth.token.email == 'gerente.prueba@russellbedford.mx') ||
+        getAuthEmailLower() == 'gerente.prueba@russellbedford.mx' ||
         isSocio()
       );
     }
@@ -88,19 +92,8 @@ service cloud.firestore {
       return isAuthenticated() && (
         r == 'Supervisor' ||
         r == 'supervisor' ||
-        (hasAuthEmail() && request.auth.token.email == 'supervisor.prueba@russellbedford.mx') ||
+        getAuthEmailLower() == 'supervisor.prueba@russellbedford.mx' ||
         isGerente()
-      );
-    }
-
-    function isEmpleado() {
-      let r = getUserRole();
-      return isAuthenticated() && (
-        r == 'Empleado' ||
-        r == 'empleado' ||
-        r == 'Colaborador' ||
-        r == 'colaborador' ||
-        (hasAuthEmail() && request.auth.token.email == 'colaborador.prueba@russellbedford.mx')
       );
     }
 
@@ -109,7 +102,18 @@ service cloud.firestore {
       return isAuthenticated() && (
         r == 'RH' ||
         r == 'rh' ||
-        (hasAuthEmail() && request.auth.token.email == 'rh.prueba@russellbedford.mx')
+        getAuthEmailLower() == 'rh.prueba@russellbedford.mx'
+      );
+    }
+
+    function isEmpleado() {
+      let r = getUserRole();
+      return isAuthenticated() && !isRH() && (
+        r == 'Empleado' ||
+        r == 'empleado' ||
+        r == 'Colaborador' ||
+        r == 'colaborador' ||
+        getAuthEmailLower() == 'colaborador.prueba@russellbedford.mx'
       );
     }
 
@@ -121,9 +125,33 @@ service cloud.firestore {
     }
 
     function isDemoAccount() {
-      return hasAuthEmail() && (
-        request.auth.token.email.matches('.*\\.prueba@russellbedford\\.mx') ||
-        request.auth.token.email == 'ti.root@russellbedford.mx'
+      let em = getAuthEmailLower();
+      return em.matches('.*\\.prueba@russellbedford\\.mx') ||
+             em == 'ti.root@russellbedford.mx';
+    }
+
+    function matchesUserRecord(data) {
+      let effUid = getEffectiveUid();
+      let em = getAuthEmailLower();
+      return data != null && (
+        data.get('userId', '') == request.auth.uid ||
+        data.get('userId', '') == effUid ||
+        (em != '' && data.get('userEmail', '').lower() == em) ||
+        (em != '' && data.get('email', '').lower() == em)
+      );
+    }
+
+    function isAssignedToTaskData(data) {
+      let effUid = getEffectiveUid();
+      let em = getAuthEmailLower();
+      return data != null && (
+        data.get('assignedToId', '') == request.auth.uid ||
+        data.get('assignedToId', '') == effUid ||
+        data.get('assignedTo', '') == request.auth.uid ||
+        data.get('assignedTo', '') == effUid ||
+        data.get('assigned_to', '') == request.auth.uid ||
+        data.get('assigned_to', '') == effUid ||
+        (em != '' && data.get('assignedToEmail', '').lower() == em)
       );
     }
 
@@ -141,12 +169,6 @@ service cloud.firestore {
 
     // =========================================================
     // 1. Colección `users` (Cadena de Mando y Permisos)
-    //    - TI (0): Control total de roles, módulos y organigrama
-    //    - Socio (1): Visibilidad global sobre toda la estructura
-    //    - Gerente (2): Visibilidad sobre su línea (gerenteId/managerId == uid)
-    //    - RH (2 Lateral): Lectura global básica de personal
-    //    - Supervisor (3): Lectura de colaboradores bajo su mando (supervisorId == uid)
-    //    - Colaborador (4): Lee su propio perfil y actualiza únicamente su faceDescriptor
     // =========================================================
     match /users/{userId} {
       allow read: if isAuthenticated() && (
@@ -157,15 +179,19 @@ service cloud.firestore {
         isDemoAccount() ||
         (isGerente() && (
           resource.data.get('gerenteId', '') == request.auth.uid ||
+          resource.data.get('gerenteId', '') == getEffectiveUid() ||
           resource.data.get('managerId', '') == request.auth.uid ||
+          resource.data.get('managerId', '') == getEffectiveUid() ||
           (getUserTeamId() != null && resource.data.get('teamId', '') == getUserTeamId())
         )) ||
         (isSupervisor() && (
           resource.data.get('supervisorId', '') == request.auth.uid ||
+          resource.data.get('supervisorId', '') == getEffectiveUid() ||
           resource.data.get('supervisor_id', '') == request.auth.uid ||
+          resource.data.get('supervisor_id', '') == getEffectiveUid() ||
           (getUserTeamId() != null && resource.data.get('teamId', '') == getUserTeamId())
         )) ||
-        (hasAuthEmail() && resource.data.get('email', '') == request.auth.token.email) ||
+        (getAuthEmailLower() != '' && resource.data.get('email', '').lower() == getAuthEmailLower()) ||
         resource.data.get('uid', '') == request.auth.uid
       );
 
@@ -187,7 +213,7 @@ service cloud.firestore {
     // =========================================================
     // 2. Colecciones `companies` y `clients` (Empresas / Clientes)
     //    - TI, Socio, Gerente: creación y gestión de empresas/clientes
-    //    - Supervisor y Colaborador: lectura operativa
+    //    - Supervisor y Colaborador: lectura operativa (nombre/logotipo en proyectos)
     //    - RH (Nivel 2 Lateral): BLOQUEO ESTRICTO (403)
     // =========================================================
     match /companies/{companyId} {
@@ -204,24 +230,12 @@ service cloud.firestore {
 
     // =========================================================
     // 3. Colección `tasks` (Tareas y Tiempos en minutos enteros)
-    //    - Socio / TI: Global
-    //    - Gerente / Supervisor: Su línea jerárquica
-    //    - Colaborador: Sus tareas asignadas (por assignedToId / assignedTo / assigned_to / assignedToEmail)
+    //    - Socio / TI / Gerente: Global
+    //    - Supervisor: Su línea jerárquica
+    //    - Colaborador: Lee sus tareas asignadas, actualiza tiempo invertido / estado
+    //      al cerrar jornada y puede registrar tareas extraordinarias propias
     //    - RH (Nivel 2 Lateral): BLOQUEO ESTRICTO (403)
     // =========================================================
-    function isAssignedToTaskData(data) {
-      let effUid = getEffectiveUid();
-      return (
-        data.get('assignedToId', '') == request.auth.uid ||
-        data.get('assignedToId', '') == effUid ||
-        data.get('assignedTo', '') == request.auth.uid ||
-        data.get('assignedTo', '') == effUid ||
-        data.get('assigned_to', '') == request.auth.uid ||
-        data.get('assigned_to', '') == effUid ||
-        (hasAuthEmail() && data.get('assignedToEmail', '') == request.auth.token.email)
-      );
-    }
-
     match /tasks/{taskId} {
       allow read: if isAuthenticated() && !isRH() && (
         isSocio() ||
@@ -234,17 +248,29 @@ service cloud.firestore {
           (getUserTeamId() != null && resource.data.get('teamId', '') == getUserTeamId()) ||
           isDemoAccount()
         )) ||
-        (isEmpleado() && isAssignedToTaskData(resource.data))
+        (isEmpleado() && (
+          isAssignedToTaskData(resource.data) ||
+          isDemoAccount()
+        ))
       );
 
       allow create: if isAuthenticated() && !isRH() && (
         isSupervisor() ||
-        (isEmpleado() && isAssignedToTaskData(request.resource.data))
+        (isEmpleado() && (
+          isAssignedToTaskData(request.resource.data) ||
+          request.resource.data.get('isExtraordinary', false) == true ||
+          isDemoAccount()
+        ))
       );
 
       allow update: if isAuthenticated() && !isRH() && (
         isSupervisor() ||
-        (isEmpleado() && isAssignedToTaskData(resource.data))
+        (isEmpleado() && (
+          isAssignedToTaskData(resource.data) ||
+          isAssignedToTaskData(request.resource.data) ||
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['loggedMinutes', 'status', 'completedAt', 'updatedAt']) ||
+          isDemoAccount()
+        ))
       );
 
       allow delete: if isAuthenticated() && !isRH() && isSupervisor();
@@ -252,17 +278,22 @@ service cloud.firestore {
 
     // =========================================================
     // 4. Colección `projects` - BLOQUEO ESTRICTO A RH (403)
+    //    - Colaborador: lectura y actualización en cascada solo de tiempos acumulados
     // =========================================================
     match /projects/{projectId} {
       allow read: if isAuthenticated() && !isRH();
-      allow write: if isAuthenticated() && !isRH() && isSupervisor();
+      allow create, delete: if isAuthenticated() && !isRH() && isSupervisor();
+      allow update: if isAuthenticated() && !isRH() && (
+        isSupervisor() ||
+        (isEmpleado() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['loggedMinutes', 'actualHours', 'updatedAt']))
+      );
     }
 
     // =========================================================
     // 5. Colección `attendance` (Asistencias, Biometría y Tiempos)
-    //    - TI, Socio y RH (Nivel 2 Lateral): Lectura global consolidada
-    //    - Gerente / Supervisor: Su línea/equipo
-    //    - Colaborador: Crea y consulta sus propios registros
+    //    - TI, Socio, Gerente y RH: Lectura consolidada
+    //    - Supervisor: Su línea/equipo
+    //    - Colaborador: Crea y actualiza sus propios registros (UID real o demo_*)
     // =========================================================
     match /attendance/{attendanceId} {
       allow read: if isAuthenticated() && (
@@ -274,13 +305,14 @@ service cloud.firestore {
           (getUserTeamId() != null && resource.data.get('teamId', '') == getUserTeamId()) ||
           isDemoAccount()
         )) ||
-        resource.data.get('userId', '') == request.auth.uid
+        matchesUserRecord(resource.data) ||
+        isDemoAccount()
       );
 
       allow create: if isAuthenticated() && (
         isTI() ||
         isRH() ||
-        request.resource.data.get('userId', '') == request.auth.uid ||
+        matchesUserRecord(request.resource.data) ||
         isDemoAccount()
       );
 
@@ -288,7 +320,8 @@ service cloud.firestore {
         isTI() ||
         isRH() ||
         isSupervisor() ||
-        resource.data.get('userId', '') == request.auth.uid ||
+        matchesUserRecord(resource.data) ||
+        matchesUserRecord(request.resource.data) ||
         isDemoAccount()
       );
 
@@ -301,27 +334,50 @@ service cloud.firestore {
     match /checkins/{checkinId} {
       allow read: if isAuthenticated() && (
         isTI() || isSocio() || isRH() || isSupervisor() ||
-        resource.data.get('userId', '') == request.auth.uid ||
+        matchesUserRecord(resource.data) ||
         isDemoAccount()
       );
-      allow write: if isAuthenticated() && (
+      allow create: if isAuthenticated() && (
         isTI() || isSupervisor() ||
-        (resource != null && resource.data.get('userId', '') == request.auth.uid) ||
-        (request.resource != null && request.resource.data.get('userId', '') == request.auth.uid) ||
+        matchesUserRecord(request.resource.data) ||
         isDemoAccount()
       );
+      allow update: if isAuthenticated() && (
+        isTI() || isSupervisor() ||
+        matchesUserRecord(resource.data) ||
+        matchesUserRecord(request.resource.data) ||
+        isDemoAccount()
+      );
+      allow delete: if isTI();
     }
 
     match /time_logs/{logId} {
       allow read: if isAuthenticated() && (
         isTI() || isSocio() || isRH() || isSupervisor() ||
-        resource.data.get('userId', '') == request.auth.uid ||
+        matchesUserRecord(resource.data) ||
         isDemoAccount()
       );
-      allow write: if isAuthenticated() && !isRH() && (
+      allow create: if isAuthenticated() && !isRH() && (
         isTI() || isSupervisor() ||
-        (resource != null && resource.data.get('userId', '') == request.auth.uid) ||
-        (request.resource != null && request.resource.data.get('userId', '') == request.auth.uid) ||
+        matchesUserRecord(request.resource.data) ||
+        isDemoAccount()
+      );
+      allow update: if isAuthenticated() && !isRH() && (
+        isTI() || isSupervisor() ||
+        matchesUserRecord(resource.data) ||
+        matchesUserRecord(request.resource.data) ||
+        isDemoAccount()
+      );
+      allow delete: if isAuthenticated() && !isRH() && (isTI() || isSupervisor());
+    }
+
+    match /active_timers/{userId} {
+      allow read: if isAuthenticated();
+      allow create, update, delete: if isAuthenticated() && (
+        isOwner(userId) ||
+        isSupervisor() ||
+        matchesUserRecord(resource != null ? resource.data : null) ||
+        matchesUserRecord(request.resource != null ? request.resource.data : null) ||
         isDemoAccount()
       );
     }
@@ -339,23 +395,21 @@ service cloud.firestore {
       allow write: if isAuthenticated() && (isSupervisor() || isDemoAccount());
     }
 
-    match /active_timers/{userId} {
-      allow read: if isAuthenticated();
-      allow write: if isAuthenticated() && (
-        isOwner(userId) || isSupervisor() || isDemoAccount()
-      );
-    }
-
     match /notifications/{notificationId} {
       allow read: if isAuthenticated() && !isRH() && (
         isTI() ||
         resource.data.get('recipient_id', '') == request.auth.uid ||
+        resource.data.get('recipient_id', '') == getEffectiveUid() ||
         resource.data.get('sender_id', '') == request.auth.uid ||
+        resource.data.get('sender_id', '') == getEffectiveUid() ||
         isDemoAccount()
       );
       allow create: if isAuthenticated() && !isRH();
       allow update, delete: if isAuthenticated() && (
-        isTI() || resource.data.get('recipient_id', '') == request.auth.uid
+        isTI() ||
+        resource.data.get('recipient_id', '') == request.auth.uid ||
+        resource.data.get('recipient_id', '') == getEffectiveUid() ||
+        isDemoAccount()
       );
     }
 

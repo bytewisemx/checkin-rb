@@ -2299,7 +2299,12 @@ export const useCheckinStore = create<CheckinState>()(
             timestampMs: secureTimeMs,
           },
           Math.max(0, Math.round(durationMinutes)),
-          'completed'
+          'completed',
+          {
+            userId: user.id,
+            userEmail: user.email,
+            userName: `${user.name} ${user.lastName || ''}`.trim(),
+          }
         );
       },
 

@@ -1158,13 +1158,19 @@ export const useRayonerStore = create<RayonerState>()(
       addExtraordinaryTask: (taskData) => {
         const newTaskId = `tsk-extra-${Date.now()}`;
         const nowIso = new Date().toISOString();
-        const supervisorId = taskData.supervisorId || 'admin-99';
+        const supervisorId = taskData.supervisorId || 'demo_supervisor';
+        const memberObj = get().teamMembers.find((m) => m.id === taskData.userId);
+        const resolvedEmail = (memberObj?.email || '').trim().toLowerCase();
+        const plannedMin = Math.max(15, Math.round((taskData.plannedHours || 1) * 60));
 
         const newTask: TaskNode = {
           id: newTaskId,
           title: taskData.name,
           name: taskData.name,
           assigned_to: taskData.userId,
+          assignedToId: taskData.userId,
+          assignedToEmail: resolvedEmail,
+          assignedToName: taskData.userName || memberObj?.name || 'Colaborador',
           created_by: supervisorId,
           status: 'pending',
           created_at: nowIso,
@@ -1173,7 +1179,9 @@ export const useRayonerStore = create<RayonerState>()(
           parentTaskId: null,
           description:
             taskData.description || 'Tarea extraordinaria no asociada a ninguna empresa asignada.',
-          plannedHours: taskData.plannedHours || 5,
+          plannedHours: Number((plannedMin / 60).toFixed(4)),
+          plannedMinutes: plannedMin,
+          loggedMinutes: 0,
           priority: 'medium',
           isBillable: false,
           isActive: true,
@@ -1187,8 +1195,8 @@ export const useRayonerStore = create<RayonerState>()(
           taskId: newTaskId,
           userId: taskData.userId,
           userName: taskData.userName,
-          userRoleTitle: 'Empleado',
-          allocatedHours: taskData.plannedHours || 5,
+          userRoleTitle: 'Colaborador',
+          allocatedHours: newTask.plannedHours,
           blockOnLimit: false,
         };
 
@@ -1197,18 +1205,28 @@ export const useRayonerStore = create<RayonerState>()(
           assignments: [...state.assignments, newAssignment],
         }));
 
-        // Persistir tarea extraordinaria en colección `tasks` de Firestore (en minutos enteros)
+        // Persistir tarea extraordinaria en colección `tasks` de Firestore (identificadores unificados y minutos enteros)
         void saveTaskToFirestore({
           id: newTaskId,
           title: taskData.name,
+          description: newTask.description || '',
           companyId: '',
+          companyName: 'Extraordinaria',
           projectId: 'prj-extraordinario',
+          projectName: 'Tareas Extraordinarias',
           assignedTo: taskData.userId,
+          assignedToId: taskData.userId,
+          assigned_to: taskData.userId,
+          assignedToEmail: resolvedEmail,
+          assignedToName: newTask.assignedToName || '',
           supervisorId,
+          created_by: supervisorId,
           status: 'pending',
           priority: 'medium',
-          plannedMinutes: Math.round((taskData.plannedHours || 1) * 60),
+          plannedMinutes: plannedMin,
           loggedMinutes: 0,
+          isExtraordinary: true,
+          extraordinaryCategory: newTask.extraordinaryCategory || 'Tarea Extraordinaria',
           createdAt: nowIso,
         });
 

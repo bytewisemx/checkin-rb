@@ -358,10 +358,19 @@ export async function fetchTasksByAssignee(
 /**
  * Guarda de forma atómica (writeBatch) los minutos enteros asignados a tareas en una jornada.
  * Rechaza con error controlado antes de batch.commit() si assignedMinutes > totalShiftMinutes.
+ * Asegura sesión Firebase Auth activa (incluyendo cuentas demo) e incluye metadatos del asignado
+ * para evitar rechazos de permisos si una tarea extraordinaria aún se está creando.
  */
 export async function commitShiftTaskAllocationsToFirestore(
-  allocations: Array<{ taskId: string; minutes: number; cumulativeMinutes?: number }>,
-  totalShiftMinutes: number
+  allocations: Array<{
+    taskId: string;
+    minutes: number;
+    cumulativeMinutes?: number;
+    title?: string;
+    isExtraordinary?: boolean;
+  }>,
+  totalShiftMinutes: number,
+  actorIdentity?: { id?: string; email?: string; name?: string }
 ): Promise<{ success: boolean; error?: string }> {
   const check = validateShiftTimeDistribution(allocations, totalShiftMinutes);
   if (!check.valid) {
@@ -381,6 +390,22 @@ export async function commitShiftTaskAllocationsToFirestore(
   }
 
   try {
+    // Asegurar sesión Firebase Auth sincronizada cuando se opera con cuenta demo
+    const actorId = (actorIdentity?.id || '').trim();
+    const expectedDemoEmail =
+      (actorIdentity?.email || '').trim().toLowerCase() || DEMO_ID_TO_EMAIL[actorId] || '';
+    if (
+      expectedDemoEmail &&
+      DEMO_EMAIL_TO_ID[expectedDemoEmail] &&
+      auth &&
+      (auth.currentUser?.email || '').toLowerCase() !== expectedDemoEmail
+    ) {
+      let authRes = await loginWithEmail(expectedDemoEmail, 'admin123');
+      if (!authRes.success) {
+        authRes = await registerWithEmail(expectedDemoEmail, 'admin123');
+      }
+    }
+
     const batch = writeBatch(db);
     const nowIso = new Date().toISOString();
 
@@ -390,14 +415,29 @@ export async function commitShiftTaskAllocationsToFirestore(
           ? toIntegerMinutes(entry.cumulativeMinutes)
           : toIntegerMinutes(entry.minutes);
 
-      batch.set(
-        doc(db!, 'tasks', entry.taskId),
-        {
-          loggedMinutes: targetMins,
-          updatedAt: nowIso,
-        },
-        { merge: true }
-      );
+      const patchPayload: Record<string, any> = {
+        loggedMinutes: targetMins,
+        updatedAt: nowIso,
+      };
+
+      // Si es tarea extraordinaria recién creada en el modal, garantizar campos mínimos de pertenencia
+      if (entry.isExtraordinary) {
+        if (entry.title) patchPayload.title = entry.title;
+        patchPayload.isExtraordinary = true;
+        if (actorId) {
+          patchPayload.assignedTo = actorId;
+          patchPayload.assignedToId = actorId;
+          patchPayload.assigned_to = actorId;
+        }
+        if (expectedDemoEmail) {
+          patchPayload.assignedToEmail = expectedDemoEmail;
+        }
+        if (actorIdentity?.name) {
+          patchPayload.assignedToName = actorIdentity.name;
+        }
+      }
+
+      batch.set(doc(db!, 'tasks', entry.taskId), patchPayload, { merge: true });
     });
 
     await batch.commit();

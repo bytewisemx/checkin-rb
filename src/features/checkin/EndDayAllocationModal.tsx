@@ -8,8 +8,10 @@ import {
 import {
   fetchTasksByAssignee,
   commitShiftTaskAllocationsToFirestore,
+  doesTaskBelongToUser,
   type TaskDocument,
 } from '../../services/taskService';
+import { auth } from '../../services/firebase';
 import { TimeDistributionBar } from './TimeDistributionBar';
 
 interface EndDayAllocationModalProps {
@@ -68,13 +70,13 @@ export function EndDayAllocationModal({
     return Math.max(0, Math.round(workedDurationMinutes || 0));
   }, [workedDurationMinutes]);
 
-  // Al abrir el modal, consultar tareas vinculadas al userId en Firestore (sin datos mock)
+  // Al abrir el modal, consultar tareas vinculadas al userId/email en Firestore (sin datos mock)
   useEffect(() => {
-    if (!isOpen || !user?.id) return;
+    if (!isOpen || (!user?.id && !user?.email)) return;
     let mounted = true;
     setIsLoadingRemote(true);
 
-    void fetchTasksByAssignee(user.id)
+    void fetchTasksByAssignee(user?.id || '', user?.email)
       .then((list) => {
         if (mounted) {
           setRemoteTasks(list);
@@ -87,14 +89,26 @@ export function EndDayAllocationModal({
     return () => {
       mounted = false;
     };
-  }, [isOpen, user?.id]);
+  }, [isOpen, user?.id, user?.email]);
 
   // Tareas estrictamente vinculadas al usuario logueado (sin fallbacks ni datos ficticios)
   const availableTasks = useMemo<DisplayTaskItem[]>(() => {
-    if (!user?.id) return [];
+    if (!user?.id && !user?.email) return [];
+
+    const identity = {
+      id: user?.id || null,
+      uid: auth?.currentUser?.uid || null,
+      email: user?.email || null,
+    };
 
     const assignedTaskIds = new Set(
-      assignments.filter((a) => a.userId === user.id).map((a) => a.taskId)
+      assignments
+        .filter(
+          (a) =>
+            (user?.id && a.userId === user.id) ||
+            (auth?.currentUser?.uid && a.userId === auth.currentUser.uid)
+        )
+        .map((a) => a.taskId)
     );
 
     const merged = new Map<string, DisplayTaskItem>();
@@ -102,24 +116,27 @@ export function EndDayAllocationModal({
     // 1. Tareas locales del usuario actual
     tasks.forEach((t) => {
       const belongsToUser =
-        t.assigned_to === user.id ||
-        assignedTaskIds.has(t.id) ||
-        (t.isExtraordinary && t.created_by === user.id);
+        doesTaskBelongToUser(t, identity, assignedTaskIds) ||
+        (t.isExtraordinary && t.created_by === user?.id);
 
       if (belongsToUser && t.isActive !== false && t.status !== 'completed') {
         const proj = projects.find((p) => p.id === t.projectId);
-        const cli = clients.find((c) => c.id === proj?.clientId);
+        const cli = clients.find((c) => c.id === (proj?.clientId || t.companyId));
         merged.set(t.id, {
           id: t.id,
           title: t.title || t.name,
-          companyName: t.isExtraordinary ? 'Extraordinaria' : cli?.name || 'Empresa',
-          projectName: t.isExtraordinary ? 'Sin proyecto' : proj?.name || 'Proyecto',
+          companyName: t.isExtraordinary
+            ? 'Extraordinaria'
+            : cli?.commercialName || cli?.name || t.companyName || 'Empresa',
+          projectName: t.isExtraordinary
+            ? 'Sin proyecto'
+            : proj?.name || t.projectName || 'Proyecto',
           isExtraordinary: Boolean(t.isExtraordinary),
         });
       }
     });
 
-    // 2. Fusionar tareas remotas de Firestore para este userId
+    // 2. Fusionar tareas remotas de Firestore para este usuario
     remoteTasks.forEach((rt) => {
       if (rt.status !== 'completed' && !merged.has(rt.id)) {
         const cli = clients.find((c) => c.id === rt.companyId);
@@ -127,15 +144,19 @@ export function EndDayAllocationModal({
         merged.set(rt.id, {
           id: rt.id,
           title: rt.title,
-          companyName: cli?.name || (rt.companyId ? 'Empresa' : 'Extraordinaria'),
-          projectName: proj?.name || 'Actividad asignada',
-          isExtraordinary: !rt.companyId,
+          companyName:
+            cli?.commercialName ||
+            cli?.name ||
+            rt.companyName ||
+            (rt.companyId ? 'Empresa' : 'Extraordinaria'),
+          projectName: proj?.name || rt.projectName || 'Actividad asignada',
+          isExtraordinary: Boolean(rt.isExtraordinary) || !rt.companyId,
         });
       }
     });
 
     return Array.from(merged.values());
-  }, [user?.id, tasks, assignments, remoteTasks, projects, clients]);
+  }, [user?.id, user?.email, tasks, assignments, remoteTasks, projects, clients]);
 
   // Inicializar distribución al abrir el modal
   useEffect(() => {
@@ -305,15 +326,25 @@ export function EndDayAllocationModal({
     setIsSaving(true);
     try {
       const commitRes = await commitShiftTaskAllocationsToFirestore(
-        entries.map((e) => ({
-          taskId: e.taskId,
-          minutes: e.minutes,
-          cumulativeMinutes: Math.max(
-            0,
-            Math.round((taskActualHours[e.taskId] || 0) * 60) + e.minutes
-          ),
-        })),
-        totalShiftMinutes
+        entries.map((e) => {
+          const item = availableTasks.find((t) => t.id === e.taskId);
+          return {
+            taskId: e.taskId,
+            minutes: e.minutes,
+            cumulativeMinutes: Math.max(
+              0,
+              Math.round((taskActualHours[e.taskId] || 0) * 60) + e.minutes
+            ),
+            title: item?.title,
+            isExtraordinary: item?.isExtraordinary,
+          };
+        }),
+        totalShiftMinutes,
+        {
+          id: user?.id,
+          email: user?.email,
+          name: `${user?.name || ''} ${user?.lastName || ''}`.trim() || user?.email,
+        }
       );
 
       if (!commitRes.success) {

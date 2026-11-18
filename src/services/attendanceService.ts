@@ -136,7 +136,8 @@ export async function saveAttendanceCheckOutToFirestore(
   attendanceId: string,
   checkOut: AttendanceCheckOutNode,
   totalMinutes: number,
-  status: AttendanceStatus = 'completed'
+  status: AttendanceStatus = 'completed',
+  actorIdentity?: { userId?: string; userEmail?: string; userName?: string }
 ): Promise<boolean> {
   if (!isFirebaseConfigured() || !db || !attendanceId) return true;
 
@@ -144,6 +145,9 @@ export async function saveAttendanceCheckOutToFirestore(
     await setDoc(
       doc(db, 'attendance', attendanceId),
       {
+        ...(actorIdentity?.userId ? { userId: actorIdentity.userId } : {}),
+        ...(actorIdentity?.userEmail ? { userEmail: actorIdentity.userEmail.toLowerCase() } : {}),
+        ...(actorIdentity?.userName ? { userName: actorIdentity.userName } : {}),
         checkOut: {
           timestamp: checkOut.timestamp,
           timestampMs: Math.round(checkOut.timestampMs),
