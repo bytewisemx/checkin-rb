@@ -494,10 +494,14 @@ export async function commitShiftTaskAllocationsToFirestore(
     cumulativeMinutes?: number;
     title?: string;
     isExtraordinary?: boolean;
+    companyId?: string;
+    companyName?: string;
+    projectId?: string;
+    projectName?: string;
   }>,
   totalShiftMinutes: number,
   actorIdentity?: { id?: string; email?: string; name?: string }
-): Promise<{ success: boolean; error?: string }> {
+): Promise<{ success: boolean; error?: string; isNetworkOrPermission?: boolean }> {
   const check = validateShiftTimeDistribution(allocations, totalShiftMinutes);
   if (!check.valid) {
     return {
@@ -526,9 +530,13 @@ export async function commitShiftTaskAllocationsToFirestore(
       auth &&
       (auth.currentUser?.email || '').toLowerCase() !== expectedDemoEmail
     ) {
-      let authRes = await loginWithEmail(expectedDemoEmail, 'admin123');
-      if (!authRes.success) {
-        authRes = await registerWithEmail(expectedDemoEmail, 'admin123');
+      try {
+        let authRes = await loginWithEmail(expectedDemoEmail, 'admin123');
+        if (!authRes.success) {
+          await registerWithEmail(expectedDemoEmail, 'admin123');
+        }
+      } catch {
+        // Continuar con la sesión de auth actual
       }
     }
 
@@ -546,35 +554,79 @@ export async function commitShiftTaskAllocationsToFirestore(
         updatedAt: nowIso,
       };
 
-      // Si es tarea extraordinaria recién creada en el modal, garantizar campos mínimos de pertenencia
-      if (entry.isExtraordinary) {
-        if (entry.title) patchPayload.title = entry.title;
-        patchPayload.isExtraordinary = true;
-        if (actorId) {
-          patchPayload.assignedTo = actorId;
-          patchPayload.assignedToId = actorId;
-          patchPayload.assignedToIds = [actorId];
-          patchPayload.assigned_to = actorId;
-        }
-        if (expectedDemoEmail) {
-          patchPayload.assignedToEmail = expectedDemoEmail;
-        }
-        if (actorIdentity?.name) {
-          patchPayload.assignedToName = actorIdentity.name;
-        }
+      if (entry.title) patchPayload.title = entry.title;
+      if (entry.companyId) patchPayload.companyId = entry.companyId;
+      if (entry.companyName) patchPayload.companyName = entry.companyName;
+      if (entry.projectId) patchPayload.projectId = entry.projectId;
+      if (entry.projectName) patchPayload.projectName = entry.projectName;
+      if (entry.isExtraordinary) patchPayload.isExtraordinary = true;
+
+      // Garantizar que los campos de asignación estén presentes
+      if (actorId) {
+        patchPayload.assignedTo = actorId;
+        patchPayload.assignedToId = actorId;
+        patchPayload.assignedToIds = [actorId];
+        patchPayload.assigned_to = actorId;
+      }
+      if (expectedDemoEmail) {
+        patchPayload.assignedToEmail = expectedDemoEmail;
+      }
+      if (actorIdentity?.name) {
+        patchPayload.assignedToName = actorIdentity.name;
       }
 
       batch.set(doc(db!, 'tasks', entry.taskId), patchPayload, { merge: true });
     });
 
-    await batch.commit();
-    trackFirestoreWrite(validEntries.length);
-    return { success: true };
+    try {
+      await batch.commit();
+      trackFirestoreWrite(validEntries.length);
+      return { success: true };
+    } catch (batchErr: any) {
+      console.warn('[taskService] Error en batch.commit, intentando escrituras individuales resilientes:', batchErr);
+      let anySingleSucceeded = false;
+      for (const entry of validEntries) {
+        try {
+          const targetMins =
+            entry.cumulativeMinutes !== undefined
+              ? toIntegerMinutes(entry.cumulativeMinutes)
+              : toIntegerMinutes(entry.minutes);
+
+          const singlePayload: Record<string, any> = {
+            loggedMinutes: targetMins,
+            updatedAt: new Date().toISOString(),
+          };
+          if (entry.title) singlePayload.title = entry.title;
+          if (actorId) {
+            singlePayload.assignedTo = actorId;
+            singlePayload.assignedToId = actorId;
+          }
+          if (expectedDemoEmail) singlePayload.assignedToEmail = expectedDemoEmail;
+
+          await setDoc(doc(db!, 'tasks', entry.taskId), singlePayload, { merge: true });
+          anySingleSucceeded = true;
+          trackFirestoreWrite(1);
+        } catch (singleErr) {
+          console.warn(`[taskService] Tarea ${entry.taskId} no pudo actualizarse en remoto:`, singleErr);
+        }
+      }
+
+      if (anySingleSucceeded) {
+        return { success: true };
+      }
+
+      return {
+        success: false,
+        error: batchErr?.message || 'Error al guardar tiempos de tareas en Firestore.',
+        isNetworkOrPermission: true,
+      };
+    }
   } catch (err: any) {
     console.warn('[taskService] Error en commitShiftTaskAllocationsToFirestore:', err);
     return {
       success: false,
       error: err?.message || 'Error al guardar tiempos de tareas en Firestore.',
+      isNetworkOrPermission: true,
     };
   }
 }

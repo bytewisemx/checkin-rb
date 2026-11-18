@@ -4,8 +4,6 @@ import { useRayonerStore } from '../../store/useRayonerStore';
 import { getEffectiveModules } from '../../services/rbac';
 import {
   MapPin,
-  Play,
-  RefreshCw,
   ScanFace,
   ShieldCheck,
   Lock,
@@ -19,6 +17,7 @@ import { EndDayAllocationModal } from './EndDayAllocationModal';
 import { FacialEnrollmentModal } from './FacialEnrollmentModal';
 import { FacialCheckinModal } from './FacialCheckinModal';
 import { SessionRegularizationModal } from './SessionRegularizationModal';
+import { TactileShiftTimer } from './TactileShiftTimer';
 import {
   computeElapsedShiftMinutes,
   MAX_CONTINUOUS_SHIFT_MINUTES,
@@ -199,17 +198,11 @@ export function CheckinPanel() {
     return null;
   }, [activeCheckin, hasPendingRegularization]);
 
-  const { durationStr, isOverTime, secondsElapsed } = useImmutableTimer(
+  const { durationStr, secondsElapsed } = useImmutableTimer(
     activeCheckin?.checkInTimeMs || null,
     activeCheckin?.pauses || [],
     maxEndMs
   );
-
-  // Escala de jornada laboral: 10 horas (36,000 segundos) • Círculo ampliado de 420px (r = 185, circunferencia = 1162.39)
-  const TOTAL_WORK_SECONDS = 10 * 3600;
-  const CIRCUMFERENCE = 1162.39;
-  const progressRatio = Math.min(secondsElapsed / TOTAL_WORK_SECONDS, 1);
-  const strokeDashoffset = CIRCUMFERENCE * (1 - progressRatio);
 
   const isCurrentlyPaused = Boolean(
     activeCheckin &&
@@ -601,219 +594,43 @@ export function CheckinPanel() {
           </div>
         )}
 
-        {!activeCheckin ? (
-          <div className="flex flex-col items-center justify-center space-y-8 animate-fade-in">
-            {/* Botón de Inicio Play Minimalista Estilizado */}
-            <button
-              id="btn-play-checkin"
-              data-tour="checkin-biometric-btn"
-              onClick={handlePlayButtonClick}
-              disabled={isLocating}
-              className="group relative flex items-center justify-center p-8 sm:p-10 rounded-full transition-all duration-300 active:scale-95 hover:scale-105 disabled:opacity-75 disabled:hover:scale-100 disabled:active:scale-100 cursor-pointer focus:outline-hidden"
-              aria-label="Iniciar Jornada"
-              title="Iniciar Jornada"
-            >
-              {/* Resplandor y halo sutil de fondo al hover */}
-              <div className="absolute inset-0 rounded-full bg-slate-200/50 dark:bg-slate-800/40 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
+        {/* Control Principal Táctil 3D de Jornada (En reposo: Botón Play Táctil 3D / Activo: Anillo de 12h y cronómetro) */}
+        <div className="w-full flex flex-col items-center justify-center animate-fade-in py-2">
+          <TactileShiftTimer
+            isActive={Boolean(activeCheckin && activeCheckin.status !== 'completed')}
+            isPaused={isCurrentlyPaused}
+            elapsedMinutes={Math.min(720, Math.floor(secondsElapsed / 60))}
+            targetMinutes={720}
+            formattedTime={durationStr}
+            activeTaskTitle={activeTask?.name}
+            activeClientName={activeClient?.name}
+            isLocating={isLocating}
+            onStartShift={handlePlayButtonClick}
+            onEndShift={handleEndButtonClick}
+            onTogglePause={handlePauseToggle}
+            onOpenTaskSelector={() => setIsStartTaskModalOpen(true)}
+          />
 
-              {/* Triángulo equilátero estilizado idéntico a la referencia visual */}
-              <svg 
-                className="w-32 h-32 sm:w-40 sm:h-40 text-[#0B253A] dark:text-white drop-shadow-[2px_14px_22px_rgba(11,37,58,0.32)] dark:drop-shadow-[2px_14px_22px_rgba(0,0,0,0.7)] transition-all duration-300 select-none" 
-                viewBox="0 0 100 100" 
-                fill="none"
+          {/* Regularización pendiente si la jornada superó el límite */}
+          {hasPendingRegularization && (
+            <div className="flex flex-col items-center gap-2 mt-4 mb-2">
+              <button
+                type="button"
+                onClick={() => setIsRegularizationModalOpen(true)}
+                className="px-6 py-2.5 bg-blue-700 hover:bg-blue-800 text-white font-semibold text-xs sm:text-sm rounded-xl shadow-md transition-all active:scale-95 cursor-pointer flex items-center gap-2"
               >
-                <path 
-                  d="M 32 30.5
-                     A 7 7 0 0 1 42.5 24.5
-                     L 75.5 44
-                     A 7 7 0 0 1 75.5 56
-                     L 42.5 75.5
-                     A 7 7 0 0 1 32 69.5
-                     Z"
-                  stroke="currentColor" 
-                  strokeWidth="6.5" 
-                  strokeLinejoin="round" 
-                  strokeLinecap="round"
-                  fill="none"
-                />
-              </svg>
-
-              {isLocating && (
-                <div className="absolute inset-0 flex items-center justify-center z-20 bg-white/70 dark:bg-slate-900/70 rounded-full backdrop-blur-xs">
-                  <RefreshCw className="w-12 h-12 text-blue-600 dark:text-sky-400 animate-spin" />
-                </div>
-              )}
-            </button>
-
-            <div className="text-center space-y-1.5">
-              <p className="text-xs font-heading font-bold uppercase tracking-[0.25em] text-slate-800 dark:text-[#F8FAFC]">
-                {isLocating ? 'Obteniendo ubicación...' : 'Presiona para Iniciar'}
+                <Clock className="w-4 h-4" />
+                <span>Regularizar Hora de Salida Real</span>
+              </button>
+              <p className="text-[11px] text-blue-800/80 dark:text-blue-300/80 font-medium">
+                • Jornada congelada a las 23:59 hrs. Define tu hora de salida para habilitar nueva jornada.
               </p>
-              {!hasTasksModule && (
-                <p className="text-[11px] text-slate-500 dark:text-[#94A3B8]">
-                  Modo exclusivo de Entrada / Salida (Módulo de tareas deshabilitado por TI)
-                </p>
-              )}
             </div>
-          </div>
-        ) : (
-          <div className="flex flex-col items-center justify-center w-full max-w-2xl animate-fade-in py-2">
-            {/* Círculo Ampliado y Dinámico (viewBox 420x420, r=185) */}
-            <div className="relative w-84 h-84 sm:w-96 sm:h-96 md:w-[420px] md:h-[420px] flex items-center justify-center">
-              <svg className="w-full h-full transform -rotate-90" viewBox="0 0 420 420">
-                {/* Pista base */}
-                <circle
-                  cx="210"
-                  cy="210"
-                  r="185"
-                  className="text-slate-100 dark:text-slate-800"
-                  stroke="currentColor"
-                  strokeWidth="6"
-                  fill="transparent"
-                />
-                {/* Progreso activo (azul institucional / estado de pausa o exceso) */}
-                <circle
-                  id="progress-circle"
-                  cx="210"
-                  cy="210"
-                  r="185"
-                  className={`transition-all duration-1000 ease-linear ${
-                    isCurrentlyPaused
-                      ? 'text-amber-500'
-                      : isOverTime
-                      ? 'text-rose-500'
-                      : 'text-blue-600 dark:text-[#38BDF8]'
-                  }`}
-                  stroke="currentColor"
-                  strokeWidth="6"
-                  strokeLinecap="round"
-                  fill="transparent"
-                  strokeDasharray="1162.39"
-                  strokeDashoffset={strokeDashoffset}
-                />
-              </svg>
+          )}
 
-              {/* Información Central Integrada (Sin recuadros) */}
-              <div className="absolute flex flex-col items-center text-center px-6 max-w-full">
-                {/* Tiempo Principal con Tipografía Limpia Tabular */}
-                <div
-                  id="timer-display"
-                  data-tour="active-timer-display"
-                  className={`text-6xl sm:text-7xl font-extrabold tracking-tight font-sans tabular-nums mb-3 ${
-                    isOverTime && !isCurrentlyPaused
-                      ? 'text-rose-500'
-                      : 'text-slate-900 dark:text-white'
-                  }`}
-                >
-                  {durationStr}
-                </div>
-
-                {/* Tarea Activa o Estado de Jornada General */}
-                <div className="flex flex-col items-center p-2 rounded-xl max-w-[320px]">
-                  {activeTask ? (
-                    <button
-                      id="btn-trigger-task-modal"
-                      type="button"
-                      onClick={() => setIsStartTaskModalOpen(true)}
-                      className="group flex flex-col items-center hover:bg-slate-100/60 dark:hover:bg-slate-800/60 rounded-lg p-1.5 transition-colors cursor-pointer"
-                      title="Clic para cambiar de tarea"
-                    >
-                      <div className="flex items-center gap-1.5 text-sm font-semibold text-slate-700 dark:text-slate-300 group-hover:text-blue-600 dark:group-hover:text-[#38BDF8] transition-colors">
-                        <span className="truncate">{activeTask.name}</span>
-                        <svg
-                          className="w-3.5 h-3.5 text-slate-400 group-hover:text-blue-600 dark:group-hover:text-[#38BDF8] shrink-0 transition-transform group-hover:rotate-180"
-                          fill="none"
-                          viewBox="0 0 24 24"
-                          stroke="currentColor"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth="2"
-                            d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-                          />
-                        </svg>
-                      </div>
-                      {activeClient && (
-                        <span className="text-xs text-slate-400 dark:text-slate-500 font-normal truncate mt-0.5">
-                          {activeClient.name} {activeProject ? `• ${activeProject.name}` : ''}
-                        </span>
-                      )}
-                    </button>
-                  ) : (
-                    <div className="flex flex-col items-center text-center">
-                      <span className="text-sm font-semibold text-slate-700 dark:text-slate-300">
-                        Jornada General (Sin tarea específica asignada)
-                      </span>
-                      <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1 max-w-[280px] leading-tight">
-                        Aún no tienes proyectos o tareas asignadas. Tu tiempo se contabiliza como jornada general hasta que se te asigne una actividad o crees una en un proyecto.
-                      </p>
-                      {hasTasksModule && userAssignedTasks.length > 0 && (
-                        <button
-                          type="button"
-                          onClick={() => setIsStartTaskModalOpen(true)}
-                          className="mt-2 text-xs font-semibold text-blue-600 dark:text-[#38BDF8] hover:underline cursor-pointer"
-                        >
-                          Vincular una tarea asignada
-                        </button>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* Controles Inferiores Minimalistas */}
-            {hasPendingRegularization ? (
-              <div className="flex flex-col items-center gap-2 mt-8 mb-4">
-                <button
-                  type="button"
-                  onClick={() => setIsRegularizationModalOpen(true)}
-                  className="px-6 py-3 bg-blue-700 hover:bg-blue-800 text-white font-semibold text-xs sm:text-sm rounded-xl shadow-md transition-all active:scale-95 cursor-pointer flex items-center gap-2"
-                >
-                  <Clock className="w-4 h-4" />
-                  <span>Regularizar Hora de Salida Real</span>
-                </button>
-                <p className="text-[11px] text-blue-800/80 dark:text-blue-300/80 font-medium">
-                  • Jornada congelada a las 23:59 hrs. Define tu hora de salida para habilitar nueva jornada.
-                </p>
-              </div>
-            ) : (
-              <div className="flex items-center gap-5 mt-8 mb-4">
-                {/* Pausa / Reanudar */}
-                <button
-                  onClick={handlePauseToggle}
-                  className={`w-12 h-12 rounded-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 shadow-xs transition-all flex items-center justify-center active:scale-95 cursor-pointer ${
-                    isCurrentlyPaused ? 'text-amber-500 border-amber-300 dark:border-amber-600/60' : ''
-                  }`}
-                  title={isCurrentlyPaused ? 'Reanudar jornada' : 'Pausar jornada'}
-                  aria-label={isCurrentlyPaused ? 'Reanudar' : 'Pausar'}
-                >
-                  {isCurrentlyPaused ? (
-                    <Play className="w-5 h-5 fill-current ml-0.5" />
-                  ) : (
-                    <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-                      <path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z" />
-                    </svg>
-                  )}
-                </button>
-
-                {/* Detener / Finalizar */}
-                <button
-                  onClick={handleEndButtonClick}
-                  className="w-12 h-12 rounded-full border border-red-100 dark:border-rose-900/40 bg-red-50/60 dark:bg-rose-950/30 hover:bg-red-100 dark:hover:bg-rose-900/50 text-red-600 dark:text-rose-400 transition-all flex items-center justify-center active:scale-95 cursor-pointer shadow-xs"
-                  title="Finalizar jornada"
-                  aria-label="Finalizar jornada"
-                >
-                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-                    <rect x="5" y="5" width="14" height="14" rx="2.5" />
-                  </svg>
-                </button>
-              </div>
-            )}
-
-            {/* Ubicación y Validación Vectorial en diseño abierto */}
-            <div className="flex flex-col sm:flex-row items-center gap-4 text-xs font-medium text-slate-500 dark:text-[#94A3B8] tracking-wide mt-2">
+          {/* Metadatos de Geolocalización y Validación Facial si la jornada está activa */}
+          {Boolean(activeCheckin && activeCheckin.status !== 'completed') && (
+            <div className="flex flex-col sm:flex-row items-center gap-4 text-xs font-medium text-slate-500 dark:text-[#94A3B8] tracking-wide mt-3">
               <div className="flex items-center">
                 <MapPin className="w-3.5 h-3.5 mr-1.5 text-blue-700 dark:text-[#38BDF8]" />
                 <span>{activeCheckin?.address ? activeCheckin.address : 'Ubicación Registrada'}</span>
@@ -832,8 +649,8 @@ export function CheckinPanel() {
                 </div>
               )}
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
       {/* Historial Reciente Deslizable del Mes */}

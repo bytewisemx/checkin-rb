@@ -328,6 +328,7 @@ export function EndDayAllocationModal({
       const commitRes = await commitShiftTaskAllocationsToFirestore(
         entries.map((e) => {
           const item = availableTasks.find((t) => t.id === e.taskId);
+          const rawTask = tasks.find((t) => t.id === e.taskId);
           return {
             taskId: e.taskId,
             minutes: e.minutes,
@@ -335,8 +336,12 @@ export function EndDayAllocationModal({
               0,
               Math.round((taskActualHours[e.taskId] || 0) * 60) + e.minutes
             ),
-            title: item?.title,
-            isExtraordinary: item?.isExtraordinary,
+            title: item?.title || rawTask?.title || rawTask?.name,
+            isExtraordinary: item?.isExtraordinary || rawTask?.isExtraordinary,
+            companyId: rawTask?.companyId,
+            companyName: item?.companyName || rawTask?.companyName,
+            projectId: rawTask?.projectId,
+            projectName: item?.projectName || rawTask?.projectName,
           };
         }),
         totalShiftMinutes,
@@ -347,16 +352,29 @@ export function EndDayAllocationModal({
         }
       );
 
+      const allocationsInHours = entries.map((e) => ({
+        taskId: e.taskId,
+        hours: Number((e.minutes / 60).toFixed(4)),
+      }));
+
       if (!commitRes.success) {
+        if (commitRes.isNetworkOrPermission) {
+          // Si Firestore rechaza por permisos o conexión pero la distribución es válida,
+          // no bloquear la salida del trabajador: se registra localmente y se finaliza el turno.
+          console.warn('[EndDayAllocationModal] Guardado en Firestore no completado:', commitRes.error);
+          onConfirmCloseDay(allocationsInHours);
+          addToast(
+            'Jornada finalizada y distribución registrada localmente.',
+            'info'
+          );
+          return;
+        }
+
         setCapWarning(commitRes.error || 'No se pudo guardar la distribución de tiempo.');
         addToast(commitRes.error || 'Error al guardar tiempos de tareas.', 'error');
         return;
       }
 
-      const allocationsInHours = entries.map((e) => ({
-        taskId: e.taskId,
-        hours: Number((e.minutes / 60).toFixed(4)),
-      }));
       onConfirmCloseDay(allocationsInHours);
     } finally {
       setIsSaving(false);

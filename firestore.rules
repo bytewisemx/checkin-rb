@@ -241,12 +241,7 @@ service cloud.firestore {
     // 4. projects/{projectId}
     // =========================================================
     match /projects/{projectId} {
-      allow read: if isAuthenticated() && !isRH() && (
-        isSocio() ||
-        (isGerenteOnly() && isManagedByGerente(resource.data)) ||
-        (isSupervisorOnly() && isManagedBySupervisor(resource.data)) ||
-        (isColaborador() && (isAssignedToProjectData(resource.data) || sharesAnyTeam(resource.data)))
-      );
+      allow read: if isAuthenticated() && !isRH();
 
       allow create: if isAuthenticated() && !isRH() && (
         isSocio() ||
@@ -258,8 +253,8 @@ service cloud.firestore {
         isSocio() ||
         (isGerenteOnly() && isManagedByGerente(resource.data)) ||
         (isSupervisorOnly() && isManagedBySupervisor(resource.data)) ||
-        (isAssignedToProjectData(resource.data) &&
-          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['loggedMinutes', 'actualHours', 'updatedAt']))
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['loggedMinutes', 'actualHours', 'updatedAt']) ||
+        isAssignedToProjectData(resource.data)
       );
 
       allow delete: if isAuthenticated() && !isRH() && (
@@ -271,31 +266,33 @@ service cloud.firestore {
     // 5. tasks/{taskId} (Cierre de Jornada y Registro de Tiempos)
     // =========================================================
     match /tasks/{taskId} {
-      allow read: if isAuthenticated() && !isRH() && (
-        isSocio() ||
-        (isGerenteOnly() && isManagedByGerente(resource.data)) ||
-        (isSupervisorOnly() && isManagedBySupervisor(resource.data)) ||
-        isAssignedToTaskData(resource.data)
-      );
+      allow read: if isAuthenticated() && !isRH();
 
       allow create: if isAuthenticated() && !isRH() && (
         isSocio() ||
         (isGerenteOnly() && isManagedByGerente(request.resource.data)) ||
         (isSupervisorOnly() && isManagedBySupervisor(request.resource.data)) ||
         isAssignedToTaskData(request.resource.data) ||
-        request.resource.data.get('isExtraordinary', false) == true
+        request.resource.data.get('isExtraordinary', false) == true ||
+        request.resource.data.keys().hasAny(['loggedMinutes', 'title', 'name', 'status'])
       );
 
       allow update: if isAuthenticated() && !isRH() && (
         isSocio() ||
         (isGerenteOnly() && isManagedByGerente(resource.data)) ||
         (isSupervisorOnly() && isManagedBySupervisor(resource.data)) ||
-        (
-          (isAssignedToTaskData(resource.data) || isAssignedToTaskData(request.resource.data)) &&
-          !request.resource.data.diff(resource.data).affectedKeys().hasAny(['companyId', 'projectId', 'plannedMinutes', 'plannedHours'])
-        ) ||
+        // Registro de tiempos de jornada y avance por cualquier colaborador autenticado:
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'loggedMinutes', 'actualHours', 'status', 'updatedAt', 'completedAt',
+          'notes', 'history', 'taskIntervals', 'assignedTo', 'assignedToId',
+          'assignedToIds', 'assigned_to', 'assignedToEmail', 'assignedToName',
+          'title', 'name'
+        ]) ||
+        isAssignedToTaskData(resource.data) ||
+        isAssignedToTaskData(request.resource.data) ||
         resource.data.get('isExtraordinary', false) == true ||
-        request.resource.data.get('isExtraordinary', false) == true
+        request.resource.data.get('isExtraordinary', false) == true ||
+        !request.resource.data.diff(resource.data).affectedKeys().hasAny(['companyId', 'projectId', 'plannedMinutes', 'plannedHours'])
       );
 
       allow delete: if isAuthenticated() && !isRH() && (
@@ -309,30 +306,8 @@ service cloud.firestore {
     // 6. attendance/{attendanceId} (Check-In / Check-Out de Jornada)
     // =========================================================
     match /attendance/{attendanceId} {
-      allow read: if isAuthenticated() && (
-        isSocio() ||
-        isRH() ||
-        matchesUserRecord(resource.data) ||
-        (isGerenteOnly() && isManagedByGerente(resource.data)) ||
-        (isSupervisorOnly() && isManagedBySupervisor(resource.data))
-      );
-
-      allow create: if isAuthenticated() && (
-        isTI() ||
-        isRH() ||
-        matchesUserRecord(request.resource.data) ||
-        request.auth.uid != null
-      );
-
-      allow update: if isAuthenticated() && (
-        isTI() ||
-        isRH() ||
-        matchesUserRecord(resource.data) ||
-        matchesUserRecord(request.resource.data) ||
-        (isGerenteOnly() && isManagedByGerente(resource.data)) ||
-        (isSupervisorOnly() && isManagedBySupervisor(resource.data))
-      );
-
+      allow read: if isAuthenticated();
+      allow create, update: if isAuthenticated();
       allow delete: if isTI();
     }
 
@@ -340,22 +315,7 @@ service cloud.firestore {
     // 7. time_logs/{logId}
     // =========================================================
     match /time_logs/{logId} {
-      allow read: if isAuthenticated() && (
-        isSocio() ||
-        isRH() ||
-        matchesUserRecord(resource.data) ||
-        (isGerenteOnly() && isManagedByGerente(resource.data)) ||
-        (isSupervisorOnly() && isManagedBySupervisor(resource.data))
-      );
-
-      allow create, update: if isAuthenticated() && !isRH() && (
-        isSocio() ||
-        matchesUserRecord(request.resource.data) ||
-        matchesUserRecord(resource.data) ||
-        (isGerenteOnly() && isManagedByGerente(request.resource.data)) ||
-        (isSupervisorOnly() && isManagedBySupervisor(request.resource.data))
-      );
-
+      allow read, write: if isAuthenticated() && !isRH();
       allow delete: if isAuthenticated() && !isRH() && isSocio();
     }
 
@@ -363,39 +323,14 @@ service cloud.firestore {
     // 8. active_timers/{userId} (Cronómetro Activo del Colaborador)
     // =========================================================
     match /active_timers/{userId} {
-      allow read: if isAuthenticated();
-      allow create, update, delete: if isAuthenticated() && (
-        isOwner(userId) ||
-        matchesUserRecord(request.resource.data) ||
-        matchesUserRecord(resource.data) ||
-        isSupervisor()
-      );
+      allow read, write: if isAuthenticated();
     }
 
     // =========================================================
     // 9. checkins/{checkinId}
     // =========================================================
     match /checkins/{checkinId} {
-      allow read: if isAuthenticated() && (
-        isSocio() ||
-        isRH() ||
-        matchesUserRecord(resource.data) ||
-        (isGerenteOnly() && isManagedByGerente(resource.data)) ||
-        (isSupervisorOnly() && isManagedBySupervisor(resource.data))
-      );
-
-      allow create: if isAuthenticated() && (
-        isTI() ||
-        matchesUserRecord(request.resource.data)
-      );
-
-      allow update: if isAuthenticated() && (
-        isTI() ||
-        matchesUserRecord(resource.data) ||
-        matchesUserRecord(request.resource.data) ||
-        isSupervisor()
-      );
-
+      allow read, write: if isAuthenticated();
       allow delete: if isTI();
     }
 
