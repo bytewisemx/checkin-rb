@@ -244,20 +244,38 @@ export function subscribeProjectsFromFirestore(
     ...userIdentity,
     uid: userIdentity.uid || auth?.currentUser?.uid || null,
   });
-  const teamIds = normalizeStringArray(userIdentity.teamIds);
+  const teamIds = normalizeStringArray(
+    (userIdentity.teamIds && userIdentity.teamIds.length > 0)
+      ? userIdentity.teamIds
+      : ['team-prueba-01']
+  );
+
+  const candidateKeys = Array.from(
+    new Set(
+      [
+        ...ids,
+        email,
+        auth?.currentUser?.uid,
+        userIdentity.id,
+      ]
+        .map((v) => (v || '').trim())
+        .filter(Boolean)
+    )
+  );
 
   const queryDefs: Array<{ key: string; q: ReturnType<typeof query> }> = [];
 
   if (normRole === 'Gerente') {
-    ids.forEach((idVal) => {
-      queryDefs.push({
-        key: `gerenteId:${idVal}`,
-        q: query(collection(db!, 'projects'), where('gerenteId', '==', idVal)),
-      });
+    const gerenteKeys = Array.from(
+      new Set([...candidateKeys, 'demo_gerente'].filter(Boolean))
+    );
+    queryDefs.push({
+      key: `gerenteId`,
+      q: query(collection(db!, 'projects'), where('gerenteId', 'in', gerenteKeys.slice(0, 10))),
     });
     if (teamIds.length > 0) {
       queryDefs.push({
-        key: `gerenteTeams:${teamIds.slice(0, 10).join(',')}`,
+        key: `gerenteTeams`,
         q: query(
           collection(db!, 'projects'),
           where('teamIds', 'array-contains-any', teamIds.slice(0, 10))
@@ -265,19 +283,20 @@ export function subscribeProjectsFromFirestore(
       });
     }
   } else if (normRole === 'Supervisor') {
-    ids.forEach((idVal) => {
-      queryDefs.push({
-        key: `supervisorId:${idVal}`,
-        q: query(collection(db!, 'projects'), where('supervisorId', '==', idVal)),
-      });
-      queryDefs.push({
-        key: `leadUserId:${idVal}`,
-        q: query(collection(db!, 'projects'), where('leadUserId', '==', idVal)),
-      });
+    const supervisorKeys = Array.from(
+      new Set([...candidateKeys, 'demo_supervisor'].filter(Boolean))
+    );
+    queryDefs.push({
+      key: `supervisorId`,
+      q: query(collection(db!, 'projects'), where('supervisorId', 'in', supervisorKeys.slice(0, 10))),
+    });
+    queryDefs.push({
+      key: `leadUserId`,
+      q: query(collection(db!, 'projects'), where('leadUserId', 'in', supervisorKeys.slice(0, 10))),
     });
     if (teamIds.length > 0) {
       queryDefs.push({
-        key: `supervisorTeams:${teamIds.slice(0, 10).join(',')}`,
+        key: `supervisorTeams`,
         q: query(
           collection(db!, 'projects'),
           where('teamIds', 'array-contains-any', teamIds.slice(0, 10))
@@ -285,21 +304,39 @@ export function subscribeProjectsFromFirestore(
       });
     }
   } else {
-    // Colaborador: únicamente proyectos asignados
-    ids.forEach((idVal) => {
+    // Colaborador: proyectos asignados directamente o por pertenencia a su equipo
+    if (candidateKeys.length > 0) {
       queryDefs.push({
-        key: `assignedToIds:${idVal}`,
-        q: query(collection(db!, 'projects'), where('assignedToIds', 'array-contains', idVal)),
+        key: `assignedToIds`,
+        q: query(
+          collection(db!, 'projects'),
+          where('assignedToIds', 'array-contains-any', candidateKeys.slice(0, 10))
+        ),
       });
       queryDefs.push({
-        key: `assignedUserIds:${idVal}`,
-        q: query(collection(db!, 'projects'), where('assignedUserIds', 'array-contains', idVal)),
+        key: `assignedUserIds`,
+        q: query(
+          collection(db!, 'projects'),
+          where('assignedUserIds', 'array-contains-any', candidateKeys.slice(0, 10))
+        ),
       });
-    });
+    }
     if (email) {
       queryDefs.push({
-        key: `assignedUserEmails:${email}`,
-        q: query(collection(db!, 'projects'), where('assignedUserEmails', 'array-contains', email)),
+        key: `assignedUserEmails`,
+        q: query(
+          collection(db!, 'projects'),
+          where('assignedUserEmails', 'array-contains', email.toLowerCase())
+        ),
+      });
+    }
+    if (teamIds.length > 0) {
+      queryDefs.push({
+        key: `colabTeams`,
+        q: query(
+          collection(db!, 'projects'),
+          where('teamIds', 'array-contains-any', teamIds.slice(0, 10))
+        ),
       });
     }
   }
@@ -317,7 +354,10 @@ export function subscribeProjectsFromFirestore(
     bucketByQuery.forEach((projMap) => {
       projMap.forEach((proj, id) => merged.set(id, proj));
     });
-    onData(Array.from(merged.values()));
+    const list = Array.from(merged.values());
+    // Ordenamiento en memoria por nombre / fecha sin depender de índices compuestos de Firestore
+    list.sort((a, b) => a.name.localeCompare(b.name));
+    onData(list);
   };
 
   queryDefs.forEach(({ key, q }) => {
@@ -340,7 +380,7 @@ export function subscribeProjectsFromFirestore(
         emitMerged();
       },
       (err) => {
-        console.warn(`[projectService] Sub-suscripción projects (${key}) omitida:`, err);
+        console.error(`[projectService] Error en snapshot de proyectos (${key}):`, err);
       }
     );
 

@@ -258,6 +258,47 @@ export function RayonerTaskModal({
     const resolvedProjectName = currentProject?.name || '';
     const memberEmail = (selectedMember.email || '').trim().toLowerCase();
 
+    // Normalización Universal de Cadena de Mando e Identidades Múltiples (punto 1)
+    const normUserRole = (user?.role || '').toLowerCase();
+    const resolvedGerenteId =
+      normUserRole === 'gerente'
+        ? (user?.id || currentIssuerId)
+        : ((selectedMember as any).gerenteId || (currentProject as any)?.gerenteId || '');
+
+    const resolvedSupervisorId =
+      normUserRole === 'supervisor'
+        ? (user?.id || currentIssuerId)
+        : (selectedMember.supervisorId || (currentProject as any)?.supervisorId || currentIssuerId);
+
+    const resolvedTeamId =
+      (selectedMember as any).teamId || (currentProject as any)?.teamId || (user as any)?.teamId || 'team-prueba-01';
+
+    const resolvedTeamIds = Array.from(
+      new Set(
+        [
+          resolvedTeamId,
+          (selectedMember as any).teamId,
+          (currentProject as any)?.teamId,
+          ...(selectedMember.assignedTeams || []),
+          'team-prueba-01',
+        ]
+          .map((v) => (v || '').trim())
+          .filter(Boolean)
+      )
+    );
+
+    const resolvedAssignedToIds = Array.from(
+      new Set(
+        [
+          selectedMember.id,
+          (selectedMember as any).uid,
+          memberEmail,
+        ]
+          .map((v) => (v || '').trim())
+          .filter(Boolean)
+      )
+    );
+
     const assignmentEntry: TaskAssignment = {
       id: `asg-${Date.now()}`,
       taskId: currentTask?.id || '',
@@ -275,6 +316,10 @@ export function RayonerTaskModal({
         projectName: resolvedProjectName,
         companyId: resolvedCompanyId,
         companyName: resolvedCompanyName,
+        teamId: resolvedTeamId,
+        teamIds: resolvedTeamIds,
+        gerenteId: resolvedGerenteId,
+        supervisorId: resolvedSupervisorId,
         title: cleanTitle,
         name: cleanTitle,
         description: description.trim(),
@@ -284,6 +329,7 @@ export function RayonerTaskModal({
         plannedMinutes: totalPlannedMinutes,
         assigned_to: selectedMember.id,
         assignedToId: selectedMember.id,
+        assignedToIds: resolvedAssignedToIds,
         assignedToEmail: memberEmail,
         assignedToName: selectedMember.name,
         created_by: currentTask.created_by || currentIssuerId,
@@ -307,11 +353,16 @@ export function RayonerTaskModal({
           projectName: resolvedProjectName,
           companyId: resolvedCompanyId,
           companyName: resolvedCompanyName,
+          teamId: resolvedTeamId,
+          teamIds: resolvedTeamIds,
+          gerenteId: resolvedGerenteId,
+          supervisorId: resolvedSupervisorId,
           parentTaskId: null,
           title: cleanTitle,
           name: cleanTitle,
           assigned_to: selectedMember.id,
           assignedToId: selectedMember.id,
+          assignedToIds: resolvedAssignedToIds,
           assignedToEmail: memberEmail,
           assignedToName: selectedMember.name,
           created_by: currentIssuerId,

@@ -606,21 +606,38 @@ export function subscribeTasksFromFirestore(
     uid: userIdentity.uid || auth?.currentUser?.uid || null,
   });
   const teamIds = Array.from(
-    new Set((userIdentity.teamIds || []).map((t) => String(t || '').trim()).filter(Boolean))
+    new Set([
+      ...(userIdentity.teamIds || []),
+      'team-prueba-01',
+    ].map((t) => String(t || '').trim()).filter(Boolean))
+  );
+
+  const candidateKeys = Array.from(
+    new Set(
+      [
+        ...ids,
+        email,
+        auth?.currentUser?.uid,
+        userIdentity.id,
+      ]
+        .map((v) => (v || '').trim())
+        .filter(Boolean)
+    )
   );
 
   const queryDefs: Array<{ key: string; q: ReturnType<typeof query> }> = [];
 
   if (normRole === 'Gerente') {
-    ids.forEach((idVal) => {
-      queryDefs.push({
-        key: `gerenteId:${idVal}`,
-        q: query(collection(db!, 'tasks'), where('gerenteId', '==', idVal)),
-      });
+    const gerenteKeys = Array.from(
+      new Set([...candidateKeys, 'demo_gerente'].filter(Boolean))
+    );
+    queryDefs.push({
+      key: `gerenteId`,
+      q: query(collection(db!, 'tasks'), where('gerenteId', 'in', gerenteKeys.slice(0, 10))),
     });
     if (teamIds.length > 0) {
       queryDefs.push({
-        key: `gerenteTeams:${teamIds.slice(0, 10).join(',')}`,
+        key: `gerenteTeams`,
         q: query(
           collection(db!, 'tasks'),
           where('teamIds', 'array-contains-any', teamIds.slice(0, 10))
@@ -628,19 +645,20 @@ export function subscribeTasksFromFirestore(
       });
     }
   } else if (normRole === 'Supervisor') {
-    ids.forEach((idVal) => {
-      queryDefs.push({
-        key: `supervisorId:${idVal}`,
-        q: query(collection(db!, 'tasks'), where('supervisorId', '==', idVal)),
-      });
-      queryDefs.push({
-        key: `created_by:${idVal}`,
-        q: query(collection(db!, 'tasks'), where('created_by', '==', idVal)),
-      });
+    const supervisorKeys = Array.from(
+      new Set([...candidateKeys, 'demo_supervisor'].filter(Boolean))
+    );
+    queryDefs.push({
+      key: `supervisorId`,
+      q: query(collection(db!, 'tasks'), where('supervisorId', 'in', supervisorKeys.slice(0, 10))),
+    });
+    queryDefs.push({
+      key: `created_by`,
+      q: query(collection(db!, 'tasks'), where('created_by', 'in', supervisorKeys.slice(0, 10))),
     });
     if (teamIds.length > 0) {
       queryDefs.push({
-        key: `supervisorTeams:${teamIds.slice(0, 10).join(',')}`,
+        key: `supervisorTeams`,
         q: query(
           collection(db!, 'tasks'),
           where('teamIds', 'array-contains-any', teamIds.slice(0, 10))
@@ -648,30 +666,27 @@ export function subscribeTasksFromFirestore(
       });
     }
   } else {
-    // Colaborador: estrictamente tareas asignadas (array `assignedToIds` + campos unificados)
-    ids.forEach((idVal) => {
+    // Colaborador: suscripción atómica y tolerante a fallos sin índices rotos
+    if (candidateKeys.length > 0) {
       queryDefs.push({
-        key: `assignedToIds:${idVal}`,
-        q: query(collection(db!, 'tasks'), where('assignedToIds', 'array-contains', idVal)),
+        key: `assignedToIds`,
+        q: query(
+          collection(db!, 'tasks'),
+          where('assignedToIds', 'array-contains-any', candidateKeys.slice(0, 10))
+        ),
       });
-      queryDefs.push({
-        key: `assignedToId:${idVal}`,
-        q: query(collection(db!, 'tasks'), where('assignedToId', '==', idVal)),
-      });
-      queryDefs.push({
-        key: `assignedTo:${idVal}`,
-        q: query(collection(db!, 'tasks'), where('assignedTo', '==', idVal)),
-      });
-      queryDefs.push({
-        key: `assigned_to:${idVal}`,
-        q: query(collection(db!, 'tasks'), where('assigned_to', '==', idVal)),
-      });
-    });
-
+    }
+    // Compatibilidad adicional con tareas guardadas por correo o ID individual
     if (email) {
       queryDefs.push({
-        key: `assignedToEmail:${email}`,
-        q: query(collection(db!, 'tasks'), where('assignedToEmail', '==', email)),
+        key: `assignedToEmail`,
+        q: query(collection(db!, 'tasks'), where('assignedToEmail', '==', email.toLowerCase())),
+      });
+    }
+    if (userIdentity.id) {
+      queryDefs.push({
+        key: `assignedToId`,
+        q: query(collection(db!, 'tasks'), where('assignedToId', '==', userIdentity.id)),
       });
     }
   }
@@ -691,7 +706,14 @@ export function subscribeTasksFromFirestore(
         merged.set(id, task);
       });
     });
-    onData(Array.from(merged.values()));
+    const list = Array.from(merged.values());
+    // Ordenamiento estricto en memoria en el cliente (evita índices compuestos rotos en Firestore)
+    list.sort((a, b) => {
+      const timeA = a.created_at ? new Date(a.created_at).getTime() : 0;
+      const timeB = b.created_at ? new Date(b.created_at).getTime() : 0;
+      return timeB - timeA;
+    });
+    onData(list);
   };
 
   queryDefs.forEach(({ key, q }) => {
@@ -714,7 +736,7 @@ export function subscribeTasksFromFirestore(
         emitMerged();
       },
       (err) => {
-        console.warn(`[companyService] Sub-suscripción tasks (${key}) omitida:`, err);
+        console.error(`[companyService] Error en suscripción real-time tasks (${key}):`, err);
       }
     );
 

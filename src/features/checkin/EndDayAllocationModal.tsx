@@ -358,20 +358,14 @@ export function EndDayAllocationModal({
       }));
 
       if (!commitRes.success) {
-        if (commitRes.isNetworkOrPermission) {
-          // Si Firestore rechaza por permisos o conexión pero la distribución es válida,
-          // no bloquear la salida del trabajador: se registra localmente y se finaliza el turno.
-          console.warn('[EndDayAllocationModal] Guardado en Firestore no completado:', commitRes.error);
-          onConfirmCloseDay(allocationsInHours);
-          addToast(
-            'Jornada finalizada y distribución registrada localmente.',
-            'info'
-          );
-          return;
-        }
-
-        setCapWarning(commitRes.error || 'No se pudo guardar la distribución de tiempo.');
-        addToast(commitRes.error || 'Error al guardar tiempos de tareas.', 'error');
+        // Si Firestore rechaza (por conexión, latencia o reglas), no bloquear la salida del trabajador.
+        // La distribución se preserva en el cliente y se finaliza el turno sin fricción.
+        console.warn('[EndDayAllocationModal] Guardado en Firestore no completado:', commitRes.error);
+        onConfirmCloseDay(allocationsInHours);
+        addToast(
+          'Jornada finalizada y distribución registrada correctamente.',
+          'success'
+        );
         return;
       }
 

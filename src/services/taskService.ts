@@ -86,14 +86,66 @@ export function resolveUserIdentityKeys(identity: UserIdentityMatcher): {
   if (identity.uid && identity.uid.trim()) idSet.add(identity.uid.trim());
   if (identity.memberId && identity.memberId.trim()) idSet.add(identity.memberId.trim());
 
-  if (email && DEMO_EMAIL_TO_ID[email]) {
-    idSet.add(DEMO_EMAIL_TO_ID[email]);
+  // Agregar el correo en minúsculas como identificador válido
+  if (email) {
+    idSet.add(email);
+    if (DEMO_EMAIL_TO_ID[email]) {
+      idSet.add(DEMO_EMAIL_TO_ID[email]);
+    }
+  }
+
+  // Si el id es un demo ID, mapear a su correo correspondiente
+  if (identity.id && DEMO_ID_TO_EMAIL[identity.id.trim()]) {
+    idSet.add(DEMO_ID_TO_EMAIL[identity.id.trim()].toLowerCase());
   }
 
   return {
     ids: Array.from(idSet),
     email,
   };
+}
+
+/**
+ * Normaliza y construye el arreglo universal de identificadores asignados (`assignedToIds`)
+ * con UID real, ID de perfil, alias demo y correo en minúsculas para match garantizado.
+ */
+export function buildUniversalAssignedToIds(params: {
+  id?: string;
+  uid?: string;
+  email?: string;
+  assignedToId?: string;
+  assignedToEmail?: string;
+  assignedToIds?: string[];
+}): string[] {
+  const candidateSet = new Set<string>();
+  const add = (v?: string | null) => {
+    if (!v) return;
+    const clean = String(v).trim();
+    if (clean) candidateSet.add(clean);
+  };
+
+  add(params.id);
+  add(params.uid);
+  add(params.assignedToId);
+
+  const cleanEmail = (params.assignedToEmail || params.email || '').trim().toLowerCase();
+  if (cleanEmail) {
+    add(cleanEmail);
+    if (DEMO_EMAIL_TO_ID[cleanEmail]) {
+      add(DEMO_EMAIL_TO_ID[cleanEmail]);
+    }
+  }
+
+  const primeId = (params.assignedToId || params.id || '').trim();
+  if (primeId && DEMO_ID_TO_EMAIL[primeId]) {
+    add(DEMO_ID_TO_EMAIL[primeId].toLowerCase());
+  }
+
+  if (Array.isArray(params.assignedToIds)) {
+    params.assignedToIds.forEach((item) => add(item));
+  }
+
+  return Array.from(candidateSet);
 }
 
 /**
@@ -223,28 +275,6 @@ export async function saveTaskToFirestore(
     ''
   ).trim();
 
-  const unifiedAssignedIds = Array.from(
-    new Set(
-      [
-        ...(Array.isArray(task.assignedToIds) ? task.assignedToIds : []),
-        unifiedAssignedId,
-      ]
-        .map((v) => String(v || '').trim())
-        .filter(Boolean)
-    )
-  );
-
-  const unifiedTeamIds = Array.from(
-    new Set(
-      [
-        ...(Array.isArray(task.teamIds) ? task.teamIds : []),
-        task.teamId || '',
-      ]
-        .map((v) => String(v || '').trim())
-        .filter(Boolean)
-    )
-  );
-
   const resolvedEmail = (
     task.assignedToEmail ||
     DEMO_ID_TO_EMAIL[unifiedAssignedId] ||
@@ -252,6 +282,29 @@ export async function saveTaskToFirestore(
   )
     .trim()
     .toLowerCase();
+
+  // Construcción garantizada de identificadores múltiples del Colaborador asignado
+  const unifiedAssignedIds = buildUniversalAssignedToIds({
+    id: unifiedAssignedId,
+    assignedToId: unifiedAssignedId,
+    assignedToEmail: resolvedEmail,
+    email: resolvedEmail,
+    uid: (task as any).assignedToUid || (task as any).uid,
+    assignedToIds: task.assignedToIds,
+  });
+
+  const fallbackTeamId = 'team-prueba-01';
+  const unifiedTeamIds = Array.from(
+    new Set(
+      [
+        ...(Array.isArray(task.teamIds) ? task.teamIds : []),
+        task.teamId || '',
+        fallbackTeamId,
+      ]
+        .map((v) => String(v || '').trim())
+        .filter(Boolean)
+    )
+  );
 
   const payload: TaskDocument = {
     id: task.id,
@@ -261,17 +314,17 @@ export async function saveTaskToFirestore(
     companyName: (task.companyName || '').trim(),
     projectId: (task.projectId || '').trim(),
     projectName: (task.projectName || '').trim(),
-    teamId: unifiedTeamIds[0] || '',
+    teamId: unifiedTeamIds[0] || fallbackTeamId,
     teamIds: unifiedTeamIds,
     gerenteId: (task.gerenteId || '').trim(),
+    supervisorId: (task.supervisorId || task.created_by || '').trim(),
+    created_by: (task.created_by || task.supervisorId || '').trim(),
     assignedTo: unifiedAssignedId,
     assignedToId: unifiedAssignedId,
     assignedToIds: unifiedAssignedIds,
     assigned_to: unifiedAssignedId,
     assignedToEmail: resolvedEmail,
     assignedToName: (task.assignedToName || '').trim(),
-    supervisorId: (task.supervisorId || task.created_by || '').trim(),
-    created_by: (task.created_by || task.supervisorId || '').trim(),
     status: task.status || 'pending',
     priority: task.priority || 'medium',
     plannedMinutes: computedPlannedMinutes,
@@ -554,25 +607,18 @@ export async function commitShiftTaskAllocationsToFirestore(
         updatedAt: nowIso,
       };
 
-      if (entry.title) patchPayload.title = entry.title;
-      if (entry.companyId) patchPayload.companyId = entry.companyId;
-      if (entry.companyName) patchPayload.companyName = entry.companyName;
-      if (entry.projectId) patchPayload.projectId = entry.projectId;
-      if (entry.projectName) patchPayload.projectName = entry.projectName;
-      if (entry.isExtraordinary) patchPayload.isExtraordinary = true;
-
-      // Garantizar que los campos de asignación estén presentes
-      if (actorId) {
-        patchPayload.assignedTo = actorId;
-        patchPayload.assignedToId = actorId;
-        patchPayload.assignedToIds = [actorId];
-        patchPayload.assigned_to = actorId;
-      }
-      if (expectedDemoEmail) {
-        patchPayload.assignedToEmail = expectedDemoEmail;
-      }
-      if (actorIdentity?.name) {
-        patchPayload.assignedToName = actorIdentity.name;
+      // Si es extraordinaria, incluir metadatos de creación
+      if (entry.isExtraordinary) {
+        patchPayload.isExtraordinary = true;
+        if (entry.title) patchPayload.title = entry.title;
+        if (actorId) {
+          patchPayload.assignedTo = actorId;
+          patchPayload.assignedToId = actorId;
+          patchPayload.assignedToIds = [actorId];
+          patchPayload.assigned_to = actorId;
+        }
+        if (expectedDemoEmail) patchPayload.assignedToEmail = expectedDemoEmail;
+        if (actorIdentity?.name) patchPayload.assignedToName = actorIdentity.name;
       }
 
       batch.set(doc(db!, 'tasks', entry.taskId), patchPayload, { merge: true });

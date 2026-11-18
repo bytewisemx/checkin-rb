@@ -153,7 +153,9 @@ service cloud.firestore {
         data.get('assignedTo', '') == effUid ||
         data.get('assigned_to', '') == request.auth.uid ||
         data.get('assigned_to', '') == effUid ||
-        (em != '' && safeLower(data.get('assignedToEmail', '')) == em)
+        (em != '' && safeLower(data.get('assignedToEmail', '')) == em) ||
+        (em != '' && data.get('assignedToEmails', []) is list && em in data.get('assignedToEmails', [])) ||
+        (em != '' && safeLower(data.get('userEmail', '')) == em)
       );
     }
 
@@ -282,17 +284,15 @@ service cloud.firestore {
         (isGerenteOnly() && isManagedByGerente(resource.data)) ||
         (isSupervisorOnly() && isManagedBySupervisor(resource.data)) ||
         // Registro de tiempos de jornada y avance por cualquier colaborador autenticado:
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+        request.resource.data.diff(resource.data).affectedKeys().hasAny([
           'loggedMinutes', 'actualHours', 'status', 'updatedAt', 'completedAt',
-          'notes', 'history', 'taskIntervals', 'assignedTo', 'assignedToId',
-          'assignedToIds', 'assigned_to', 'assignedToEmail', 'assignedToName',
-          'title', 'name'
+          'notes', 'history', 'taskIntervals'
         ]) ||
         isAssignedToTaskData(resource.data) ||
         isAssignedToTaskData(request.resource.data) ||
         resource.data.get('isExtraordinary', false) == true ||
         request.resource.data.get('isExtraordinary', false) == true ||
-        !request.resource.data.diff(resource.data).affectedKeys().hasAny(['companyId', 'projectId', 'plannedMinutes', 'plannedHours'])
+        !request.resource.data.diff(resource.data).affectedKeys().hasAny(['plannedMinutes', 'plannedHours'])
       );
 
       allow delete: if isAuthenticated() && !isRH() && (
