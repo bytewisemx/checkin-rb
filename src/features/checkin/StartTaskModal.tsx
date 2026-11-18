@@ -5,6 +5,10 @@ import {
 } from 'lucide-react';
 import { useRayonerStore } from '../../store/useRayonerStore';
 import { useCheckinStore } from '../../store/useCheckinStore';
+import { doesTaskBelongToUser } from '../../services/taskService';
+import { formatMinutesSexagesimal } from '../../services/attendanceService';
+import { auth } from '../../services/firebase';
+import { CompanyLogoBadge } from '../../components/common/CompanyLogoBadge';
 
 interface StartTaskModalProps {
   isOpen: boolean;
@@ -37,33 +41,62 @@ export function StartTaskModal({
     ) || null;
   }, [user, teamMembers]);
 
-  // Clientes a los que tiene permiso
-  const allowedClientIds = useMemo(() => {
-    return currentMember?.allowedClientIds || [];
-  }, [currentMember]);
+  // Identidad unificada del colaborador (id, uid Firebase, memberId y email)
+  const userIdentity = useMemo(
+    () => ({
+      id: user?.id || null,
+      uid: auth?.currentUser?.uid || null,
+      memberId: currentMember?.id || null,
+      email: user?.email || currentMember?.email || null,
+    }),
+    [user?.id, user?.email, currentMember?.id, currentMember?.email]
+  );
 
-  // Proyectos disponibles (solo de los clientes autorizados)
-  const allowedProjects = useMemo(() => {
-    if (allowedClientIds.length === 0) return [];
-    return projects.filter(p => allowedClientIds.includes(p.clientId) && p.isActive);
-  }, [projects, allowedClientIds]);
-
-  // Tareas específicamente asignadas al colaborador actual
+  // Tareas específicamente asignadas al colaborador actual (unificado por ID y correo)
   const myAssignedTaskIds = useMemo(() => {
-    if (!user) return [];
+    if (!user && !currentMember) return [];
     const fromAssignments = assignments
-      .filter(a => a.userId === user.id || (currentMember && a.userId === currentMember.id))
-      .map(a => a.taskId);
-    const fromDirectField = tasks
-      .filter(t => t.assigned_to === user.id || (currentMember && t.assigned_to === currentMember.id))
-      .map(t => t.id);
-    return Array.from(new Set([...fromAssignments, ...fromDirectField]));
-  }, [assignments, tasks, user, currentMember]);
+      .filter(
+        (a) =>
+          (user?.id && a.userId === user.id) ||
+          (currentMember && a.userId === currentMember.id) ||
+          (auth?.currentUser?.uid && a.userId === auth.currentUser.uid)
+      )
+      .map((a) => a.taskId);
+    const assignedSet = new Set(fromAssignments);
+    const matched = tasks
+      .filter((t) => doesTaskBelongToUser(t, userIdentity, assignedSet))
+      .map((t) => t.id);
+    return Array.from(new Set([...fromAssignments, ...matched]));
+  }, [assignments, tasks, user, currentMember, userIdentity]);
 
   // Tareas disponibles para este colaborador (estrictamente filtradas por asignación)
   const availableTasks = useMemo(() => {
-    return tasks.filter(t => myAssignedTaskIds.includes(t.id) && t.isActive);
+    return tasks.filter(
+      (t) => myAssignedTaskIds.includes(t.id) && t.isActive !== false && t.status !== 'completed'
+    );
   }, [tasks, myAssignedTaskIds]);
+
+  // Clientes a los que tiene permiso (incluye empresas derivadas de sus tareas asignadas)
+  const allowedClientIds = useMemo(() => {
+    const ids = new Set<string>(currentMember?.allowedClientIds || []);
+    availableTasks.forEach((t) => {
+      if (t.companyId) ids.add(t.companyId);
+      const proj = projects.find((p) => p.id === t.projectId);
+      if (proj?.clientId) ids.add(proj.clientId);
+    });
+    return Array.from(ids);
+  }, [currentMember, availableTasks, projects]);
+
+  // Proyectos disponibles (de los clientes autorizados o tareas asignadas)
+  const allowedProjects = useMemo(() => {
+    const directProjectIds = new Set(availableTasks.map((t) => t.projectId).filter(Boolean));
+    return projects.filter(
+      (p) =>
+        p.isActive !== false &&
+        (allowedClientIds.includes(p.clientId) || directProjectIds.has(p.id))
+    );
+  }, [projects, allowedClientIds, availableTasks]);
 
   // Detección de última tarea activa del día anterior o prioritaria asignada (solo si está asignada)
   const smartPreselectedTask = useMemo(() => {
@@ -128,7 +161,9 @@ export function StartTaskModal({
   if (!isOpen) return null;
 
   const smartProject = projects.find(p => p.id === smartPreselectedTask?.projectId);
-  const smartClient = clients.find(c => c.id === smartProject?.clientId);
+  const smartClient = clients.find(
+    c => c.id === (smartProject?.clientId || smartPreselectedTask?.companyId)
+  );
 
   const handleCreateAndSelectTask = (e: React.FormEvent) => {
     e.preventDefault();
@@ -217,24 +252,36 @@ export function StartTaskModal({
               {/* Tarjeta de Tarea Recomendada */}
               <div className="bg-[#101726] border border-[#1E40AF]/60 p-4 rounded-xl relative overflow-hidden group">
                 <div className="flex items-start justify-between gap-3">
-                  <div className="space-y-1 min-w-0">
-                    <h4 className="text-base font-bold text-white tracking-tight truncate">
-                      {smartPreselectedTask.name}
-                    </h4>
-                    <div className="flex items-center space-x-2 text-xs text-slate-400">
-                      <span className="flex items-center truncate text-sky-400">
-                        <Building2 className="w-3.5 h-3.5 mr-1 shrink-0" />
-                        {smartClient?.name || 'Cliente'}
-                      </span>
-                      <span>•</span>
-                      <span className="flex items-center truncate">
-                        <Briefcase className="w-3.5 h-3.5 mr-1 shrink-0" />
-                        {smartProject?.name || 'Proyecto'}
-                      </span>
+                  <div className="flex items-start gap-3 min-w-0">
+                    <CompanyLogoBadge
+                      name={smartClient?.name || smartPreselectedTask.companyName}
+                      commercialName={smartClient?.commercialName}
+                      logoUrl={smartClient?.logoUrl}
+                      size="sm"
+                      className="mt-0.5"
+                    />
+                    <div className="space-y-1 min-w-0">
+                      <h4 className="text-base font-bold text-white tracking-tight truncate">
+                        {smartPreselectedTask.name}
+                      </h4>
+                      <div className="flex items-center space-x-2 text-xs text-slate-400">
+                        <span className="flex items-center truncate text-sky-400">
+                          <Building2 className="w-3.5 h-3.5 mr-1 shrink-0" />
+                          {smartClient?.commercialName || smartClient?.name || smartPreselectedTask.companyName || 'Empresa'}
+                        </span>
+                        <span>•</span>
+                        <span className="flex items-center truncate">
+                          <Briefcase className="w-3.5 h-3.5 mr-1 shrink-0" />
+                          {smartProject?.name || smartPreselectedTask.projectName || 'Proyecto'}
+                        </span>
+                      </div>
                     </div>
                   </div>
                   <span className="text-xs font-mono font-bold px-2.5 py-1 bg-[#1E2B45] text-slate-200 rounded-md border border-slate-700 shrink-0">
-                    {smartPreselectedTask.plannedHours}h planeadas
+                    {formatMinutesSexagesimal(
+                      smartPreselectedTask.plannedMinutes ??
+                        Math.round((smartPreselectedTask.plannedHours || 0) * 60)
+                    )}
                   </span>
                 </div>
 
@@ -333,7 +380,11 @@ export function StartTaskModal({
                     const isSelected = selectedTaskId === task.id;
                     const isDirectlyAssigned = myAssignedTaskIds.includes(task.id);
                     const project = projects.find((p) => p.id === task.projectId);
-                    const client = clients.find((c) => c.id === project?.clientId);
+                    const client = clients.find(
+                      (c) => c.id === (project?.clientId || task.companyId)
+                    );
+                    const taskPlannedMin =
+                      task.plannedMinutes ?? Math.round((task.plannedHours || 0) * 60);
 
                     return (
                       <div
@@ -347,12 +398,20 @@ export function StartTaskModal({
                       >
                         <div className="flex items-start space-x-3 min-w-0 pr-2">
                           <div
-                            className={`mt-0.5 w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 ${
+                            className={`mt-1 w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 ${
                               isSelected ? 'border-[#38BDF8] bg-[#1E40AF]' : 'border-[#64748B]'
                             }`}
                           >
                             {isSelected && <div className="w-1.5 h-1.5 bg-[#38BDF8] rounded-full" />}
                           </div>
+
+                          <CompanyLogoBadge
+                            name={client?.name || task.companyName}
+                            commercialName={client?.commercialName}
+                            logoUrl={client?.logoUrl}
+                            size="sm"
+                            className="mt-0.5"
+                          />
 
                           <div className="min-w-0">
                             <div className="flex items-center space-x-1.5 flex-wrap gap-y-0.5">
@@ -369,21 +428,21 @@ export function StartTaskModal({
                             <div className="flex items-center space-x-2 text-[10px] text-[#94A3B8] mt-0.5">
                               <span className="flex items-center truncate text-sky-400">
                                 <Building2 className="w-3 h-3 mr-1" />
-                                {client?.name || 'Cliente'}
+                                {client?.commercialName || client?.name || task.companyName || 'Empresa'}
                               </span>
                               <span>•</span>
                               <span className="flex items-center truncate">
                                 <Briefcase className="w-3 h-3 mr-1 text-[#94A3B8]" />
-                                {project?.name || 'Proyecto'}
+                                {project?.name || task.projectName || 'Proyecto'}
                               </span>
                             </div>
                           </div>
                         </div>
 
                         <div className="shrink-0 text-right">
-                          <span className="text-xs font-heading font-bold text-[#F8FAFC] flex items-center justify-end">
+                          <span className="text-xs font-mono font-bold text-[#F8FAFC] flex items-center justify-end">
                             <Clock className="w-3 h-3 mr-1 text-[#64748B]" />
-                            {task.plannedHours}h
+                            {formatMinutesSexagesimal(taskPlannedMin)}
                           </span>
                         </div>
                       </div>

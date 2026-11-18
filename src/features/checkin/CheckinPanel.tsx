@@ -26,6 +26,8 @@ import {
 import { loadFaceApiModels } from '../../services/facialBiometrics';
 import { DailyQuoteCard } from '../../components/common/DailyQuoteCard';
 import { useOperationalCatalogSync } from '../../hooks/useLiveTeamTimers';
+import { doesTaskBelongToUser } from '../../services/taskService';
+import { auth } from '../../services/firebase';
 
 export function CheckinPanel() {
   useOperationalCatalogSync();
@@ -250,15 +252,29 @@ export function CheckinPanel() {
     return 480;
   };
 
-  // Tareas asignadas estrictamente al usuario actual
+  // Tareas asignadas estrictamente al usuario actual (unificado por id, uid, memberId y email)
   const userAssignedTasks = useMemo(() => {
     if (!user) return [];
-    return tasks.filter((t) => {
-      if (t.assigned_to === user.id) return true;
-      if (assignments.some((a) => a.taskId === t.id && a.userId === user.id)) return true;
-      return false;
-    });
-  }, [tasks, assignments, user]);
+    const identity = {
+      id: user.id,
+      uid: auth?.currentUser?.uid || null,
+      memberId: currentMember?.id || null,
+      email: user.email || currentMember?.email || null,
+    };
+    const assignedIds = new Set(
+      assignments
+        .filter(
+          (a) =>
+            a.userId === user.id ||
+            (currentMember && a.userId === currentMember.id) ||
+            (auth?.currentUser?.uid && a.userId === auth.currentUser.uid)
+        )
+        .map((a) => a.taskId)
+    );
+    return tasks.filter(
+      (t) => t.status !== 'completed' && doesTaskBelongToUser(t, identity, assignedIds)
+    );
+  }, [tasks, assignments, user, currentMember]);
 
   // Paso siguiente tras biometría (o directo si está exento de biometría)
   const proceedAfterBiometrics = (bioData?: { matchScore?: number; distance?: number }) => {

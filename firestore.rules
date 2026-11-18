@@ -206,39 +206,45 @@ service cloud.firestore {
     // 3. Colección `tasks` (Tareas y Tiempos en minutos enteros)
     //    - Socio / TI: Global
     //    - Gerente / Supervisor: Su línea jerárquica
-    //    - Colaborador: Sus tareas asignadas
+    //    - Colaborador: Sus tareas asignadas (por assignedToId / assignedTo / assigned_to / assignedToEmail)
     //    - RH (Nivel 2 Lateral): BLOQUEO ESTRICTO (403)
     // =========================================================
+    function isAssignedToTaskData(data) {
+      let effUid = getEffectiveUid();
+      return (
+        data.get('assignedToId', '') == request.auth.uid ||
+        data.get('assignedToId', '') == effUid ||
+        data.get('assignedTo', '') == request.auth.uid ||
+        data.get('assignedTo', '') == effUid ||
+        data.get('assigned_to', '') == request.auth.uid ||
+        data.get('assigned_to', '') == effUid ||
+        (hasAuthEmail() && data.get('assignedToEmail', '') == request.auth.token.email)
+      );
+    }
+
     match /tasks/{taskId} {
       allow read: if isAuthenticated() && !isRH() && (
         isSocio() ||
         isGerente() ||
         (isSupervisor() && (
           resource.data.get('supervisorId', '') == request.auth.uid ||
+          resource.data.get('supervisorId', '') == getEffectiveUid() ||
           resource.data.get('created_by', '') == request.auth.uid ||
+          resource.data.get('created_by', '') == getEffectiveUid() ||
           (getUserTeamId() != null && resource.data.get('teamId', '') == getUserTeamId()) ||
           isDemoAccount()
         )) ||
-        (isEmpleado() && (
-          resource.data.get('assignedTo', '') == request.auth.uid ||
-          resource.data.get('assigned_to', '') == request.auth.uid
-        ))
+        (isEmpleado() && isAssignedToTaskData(resource.data))
       );
 
       allow create: if isAuthenticated() && !isRH() && (
         isSupervisor() ||
-        (isEmpleado() && (
-          request.resource.data.get('assignedTo', '') == request.auth.uid ||
-          request.resource.data.get('assigned_to', '') == request.auth.uid
-        ))
+        (isEmpleado() && isAssignedToTaskData(request.resource.data))
       );
 
       allow update: if isAuthenticated() && !isRH() && (
         isSupervisor() ||
-        (isEmpleado() && (
-          resource.data.get('assignedTo', '') == request.auth.uid ||
-          resource.data.get('assigned_to', '') == request.auth.uid
-        ))
+        (isEmpleado() && isAssignedToTaskData(resource.data))
       );
 
       allow delete: if isAuthenticated() && !isRH() && isSupervisor();

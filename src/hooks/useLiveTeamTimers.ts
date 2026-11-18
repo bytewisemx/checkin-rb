@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { collection, onSnapshot } from 'firebase/firestore';
-import { db, isFirebaseConfigured } from '../services/firebase';
+import { db, auth, isFirebaseConfigured } from '../services/firebase';
 import {
   registerActiveListener,
   unregisterActiveListener,
@@ -98,10 +98,14 @@ export function useLiveTeamTimers() {
 /**
  * Suscripción 100% Real-Time a las colecciones `companies`, `projects` y `tasks` de Cloud Firestore.
  * Bloqueado estrictamente para el rol RH (403).
- * Refleja al instante cualquier empresa, proyecto o tarea creada en todos los selectores y tablas.
+ * Para Colaborador, filtra en tiempo real por `assignedToId`, `assignedTo` y `assignedToEmail`
+ * y sincroniza automáticamente minutos trabajados (`loggedMinutes`) y empresas/proyectos vinculados.
  */
 export function useOperationalCatalogSync() {
-  const userRole = useCheckinStore((state) => state.user?.role);
+  const user = useCheckinStore((state) => state.user);
+  const userRole = user?.role;
+  const userId = user?.id;
+  const userEmail = user?.email;
 
   useEffect(() => {
     if (!userRole || !canReadCompanies(userRole)) {
@@ -148,14 +152,45 @@ export function useOperationalCatalogSync() {
       useRayonerStore.setState({ projects });
     });
 
-    const unsubTasks = subscribeTasksFromFirestore(userRole, (tasks) => {
-      useRayonerStore.setState({ tasks });
-    });
+    const unsubTasks = subscribeTasksFromFirestore(
+      userRole,
+      (tasks) => {
+        useRayonerStore.setState((state) => {
+          const nextTaskActualHours = { ...state.taskActualHours };
+          const nextUserTaskActualHours = { ...state.userTaskActualHours };
+
+          tasks.forEach((t) => {
+            if (typeof t.loggedMinutes === 'number' && t.loggedMinutes >= 0) {
+              const loggedHours = Number((t.loggedMinutes / 60).toFixed(4));
+              nextTaskActualHours[t.id] = loggedHours;
+              const assigneeKey = t.assignedToId || t.assigned_to;
+              if (assigneeKey) {
+                nextUserTaskActualHours[`${t.id}_${assigneeKey}`] = loggedHours;
+              }
+              if (userId) {
+                nextUserTaskActualHours[`${t.id}_${userId}`] = loggedHours;
+              }
+            }
+          });
+
+          return {
+            tasks,
+            taskActualHours: nextTaskActualHours,
+            userTaskActualHours: nextUserTaskActualHours,
+          };
+        });
+      },
+      {
+        id: userId,
+        uid: auth?.currentUser?.uid || null,
+        email: userEmail,
+      }
+    );
 
     return () => {
       unsubCompanies();
       unsubProjects();
       unsubTasks();
     };
-  }, [userRole]);
+  }, [userRole, userId, userEmail]);
 }

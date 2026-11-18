@@ -3,13 +3,16 @@ import {
   doc,
   getDocs,
   onSnapshot,
+  query,
   setDoc,
   deleteDoc,
   serverTimestamp,
+  where,
 } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, auth, storage, isFirebaseConfigured, loginWithEmail, registerWithEmail } from './firebase';
 import { normalizeRole, type LegacyOrCurrentRole } from './rbac';
+import { resolveUserIdentityKeys, type UserIdentityMatcher } from './taskService';
 import {
   registerActiveListener,
   trackFirestoreDelete,
@@ -490,6 +493,9 @@ export async function saveProjectToFirestore(
         notes: project.notes || '',
         isActive: project.isActive !== false,
         assignedUserIds: Array.isArray(project.assignedUserIds) ? project.assignedUserIds : [],
+        assignedUserEmails: Array.isArray(project.assignedUserEmails)
+          ? project.assignedUserEmails.map((e) => e.trim().toLowerCase()).filter(Boolean)
+          : [],
         createdBy: project.createdBy || 'system',
         updatedAt: new Date().toISOString(),
         createdAt: serverTimestamp(),
@@ -557,6 +563,7 @@ export function subscribeProjectsFromFirestore(
           notes: String(d.notes || ''),
           isActive: d.isActive !== false,
           assignedUserIds: Array.isArray(d.assignedUserIds) ? d.assignedUserIds : [],
+          assignedUserEmails: Array.isArray(d.assignedUserEmails) ? d.assignedUserEmails : [],
         });
       });
       onData(list);
@@ -572,17 +579,154 @@ export function subscribeProjectsFromFirestore(
   };
 }
 
+function mapDocToTaskNode(docId: string, d: Record<string, any>): TaskNode {
+  const plannedMin =
+    typeof d.plannedMinutes === 'number'
+      ? Math.round(d.plannedMinutes)
+      : Math.round((Number(d.plannedHours) || 0) * 60);
+  const loggedMin =
+    typeof d.loggedMinutes === 'number'
+      ? Math.max(0, Math.round(d.loggedMinutes))
+      : 0;
+  const title = String(d.title || d.name || 'Tarea');
+  const unifiedAssigneeId = String(d.assignedToId || d.assignedTo || d.assigned_to || '');
+
+  return {
+    id: d.id || docId,
+    title,
+    name: title,
+    projectId: String(d.projectId || ''),
+    projectName: d.projectName ? String(d.projectName) : undefined,
+    companyId: d.companyId ? String(d.companyId) : undefined,
+    companyName: d.companyName ? String(d.companyName) : undefined,
+    assigned_to: unifiedAssigneeId,
+    assignedToId: unifiedAssigneeId,
+    assignedToEmail: d.assignedToEmail ? String(d.assignedToEmail).toLowerCase() : undefined,
+    assignedToName: d.assignedToName ? String(d.assignedToName) : undefined,
+    created_by: String(d.supervisorId || d.created_by || ''),
+    status: d.status || 'pending',
+    priority: d.priority || 'medium',
+    plannedHours: Number((plannedMin / 60).toFixed(4)),
+    plannedMinutes: plannedMin,
+    loggedMinutes: loggedMin,
+    dueDate: d.dueDate ? String(d.dueDate) : undefined,
+    locationMode: d.locationMode === 'client_site' ? 'client_site' : 'office',
+    locationAddress: d.locationAddress ? String(d.locationAddress) : undefined,
+    locationRadiusMeters:
+      typeof d.locationRadiusMeters === 'number' ? Math.round(d.locationRadiusMeters) : 150,
+    isBillable: d.isBillable !== false,
+    isActive: d.isActive !== false,
+    description: d.description ? String(d.description) : undefined,
+    created_at: d.createdAt ? String(d.createdAt) : undefined,
+    completed_at: d.completedAt ? String(d.completedAt) : null,
+    isExtraordinary: Boolean(d.isExtraordinary),
+    extraordinaryCategory: d.extraordinaryCategory ? String(d.extraordinaryCategory) : undefined,
+  };
+}
+
 /**
- * Suscripción en tiempo real a `tasks` en Firestore (bloqueado para RH)
+ * Suscripción en tiempo real a `tasks` en Firestore (bloqueado para RH).
+ * - Para TI / Socio / Gerente / Supervisor: escucha la colección `tasks`.
+ * - Para Colaborador: escucha mediante consultas `where(...)` paralelas por
+ *   `assignedToId`, `assignedTo`, `assigned_to` y `assignedToEmail` deduplicadas en vivo,
+ *   cumpliendo con las reglas de seguridad de Firestore sin discrepancias uid/demo/email.
  */
 export function subscribeTasksFromFirestore(
   role: LegacyOrCurrentRole | null | undefined,
-  onData: (tasks: TaskNode[]) => void
+  onData: (tasks: TaskNode[]) => void,
+  userIdentity?: UserIdentityMatcher
 ): () => void {
   if (!canReadCompanies(role) || !isFirebaseConfigured() || !db) {
     return () => {};
   }
 
+  const normRole = normalizeRole(role ?? undefined);
+
+  // Flujo especializado para Colaborador: múltiples queries filtradas (assignedToId / assignedTo / assigned_to / assignedToEmail)
+  if (normRole === 'Colaborador' && userIdentity) {
+    const { ids, email } = resolveUserIdentityKeys({
+      ...userIdentity,
+      uid: userIdentity.uid || auth?.currentUser?.uid || null,
+    });
+
+    const queryDefs: Array<{ key: string; q: ReturnType<typeof query> }> = [];
+
+    ids.forEach((idVal) => {
+      queryDefs.push({
+        key: `assignedToId:${idVal}`,
+        q: query(collection(db!, 'tasks'), where('assignedToId', '==', idVal)),
+      });
+      queryDefs.push({
+        key: `assignedTo:${idVal}`,
+        q: query(collection(db!, 'tasks'), where('assignedTo', '==', idVal)),
+      });
+      queryDefs.push({
+        key: `assigned_to:${idVal}`,
+        q: query(collection(db!, 'tasks'), where('assigned_to', '==', idVal)),
+      });
+    });
+
+    if (email) {
+      queryDefs.push({
+        key: `assignedToEmail:${email}`,
+        q: query(collection(db!, 'tasks'), where('assignedToEmail', '==', email)),
+      });
+    }
+
+    if (queryDefs.length === 0) {
+      onData([]);
+      return () => {};
+    }
+
+    const bucketByQuery = new Map<string, Map<string, TaskNode>>();
+    const unsubscribers: Array<() => void> = [];
+
+    const emitMerged = () => {
+      const merged = new Map<string, TaskNode>();
+      bucketByQuery.forEach((taskMap) => {
+        taskMap.forEach((task, id) => {
+          merged.set(id, task);
+        });
+      });
+      onData(Array.from(merged.values()));
+    };
+
+    queryDefs.forEach(({ key, q }) => {
+      const listenerId = `realtime-tasks-collab-${key}`;
+      registerActiveListener(listenerId, 'tasks');
+      bucketByQuery.set(key, new Map());
+
+      const unsub = onSnapshot(
+        q,
+        (snap) => {
+          trackFirestoreRead(Math.max(1, snap.size));
+          const nextMap = new Map<string, TaskNode>();
+          snap.forEach((docSnap) => {
+            nextMap.set(
+              docSnap.id,
+              mapDocToTaskNode(docSnap.id, docSnap.data() as Record<string, any>)
+            );
+          });
+          bucketByQuery.set(key, nextMap);
+          emitMerged();
+        },
+        (err) => {
+          console.warn(`[companyService] Sub-suscripción colaborador (${key}) omitida:`, err);
+        }
+      );
+
+      unsubscribers.push(() => {
+        unsub();
+        unregisterActiveListener(listenerId);
+      });
+    });
+
+    return () => {
+      unsubscribers.forEach((fn) => fn());
+    };
+  }
+
+  // Flujo global para TI, Socio, Gerente y Supervisor
   const listenerId = 'realtime-tasks-catalog';
   registerActiveListener(listenerId, 'tasks');
 
@@ -592,29 +736,7 @@ export function subscribeTasksFromFirestore(
       trackFirestoreRead(Math.max(1, snap.size));
       const list: TaskNode[] = [];
       snap.forEach((docSnap) => {
-        const d = docSnap.data();
-        const plannedMin =
-          typeof d.plannedMinutes === 'number'
-            ? Math.round(d.plannedMinutes)
-            : Math.round((Number(d.plannedHours) || 0) * 60);
-        const title = String(d.title || d.name || 'Tarea');
-        list.push({
-          id: d.id || docSnap.id,
-          title,
-          name: title,
-          projectId: String(d.projectId || ''),
-          assigned_to: String(d.assignedTo || d.assigned_to || ''),
-          created_by: String(d.supervisorId || d.created_by || ''),
-          status: d.status || 'pending',
-          priority: d.priority || 'medium',
-          plannedHours: Number((plannedMin / 60).toFixed(4)),
-          isBillable: d.isBillable !== false,
-          isActive: d.isActive !== false,
-          description: d.description ? String(d.description) : undefined,
-          created_at: d.createdAt ? String(d.createdAt) : undefined,
-          completed_at: d.completedAt ? String(d.completedAt) : null,
-          isExtraordinary: Boolean(d.isExtraordinary),
-        });
+        list.push(mapDocToTaskNode(docSnap.id, docSnap.data()));
       });
       onData(list);
     },

@@ -1,38 +1,22 @@
 import { useState, useMemo, useEffect } from 'react';
-import {
-  X,
-  Tag,
-  Users,
-  Shield,
-  MapPin,
-  DollarSign,
-  AlertTriangle,
-  Plus,
-  Trash2,
-  UserCheck,
-} from 'lucide-react';
-import { MapContainer, TileLayer, Marker, Circle } from 'react-leaflet';
-import L from 'leaflet';
+import { X } from 'lucide-react';
 import { useRayonerStore } from '../../../store/useRayonerStore';
 import { useCheckinStore } from '../../../store/useCheckinStore';
-import type { TaskAssignment, BudgetType, TaskPriority } from '../../../types/rayoner';
-import { TimeInputSexagesimal } from '../../../components/common/TimeInputSexagesimal';
-import { formatHoursToSexagesimal } from '../../../utils/timeFormat';
-
-delete (L.Icon.Default.prototype as unknown as Record<string, unknown>)._getIconUrl;
-L.Icon.Default.mergeOptions({
-  iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
-  iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
-  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
-});
+import type { TaskAssignment, TaskPriority } from '../../../types/rayoner';
 
 interface RayonerTaskModalProps {
   isOpen: boolean;
   onClose: () => void;
   taskId?: string | null;
   projectId?: string | null;
-  initialTab?: 'properties' | 'budget' | 'lead' | 'geofence';
+  initialTab?: 'properties' | 'location';
 }
+
+type TaskModalTab = 'properties' | 'location';
+type ExecutionLocationMode = 'office' | 'client_site';
+
+const DEFAULT_OFFICE_ADDRESS = 'Oficina Central — Despacho Corporativo';
+const DEFAULT_OFFICE_RADIUS = 150;
 
 export function RayonerTaskModal({
   isOpen,
@@ -45,341 +29,331 @@ export function RayonerTaskModal({
     tasks,
     projects,
     clients,
-    assignments,
     geofences,
     teamMembers,
     getTeamMembersBySupervisor,
     updateTask,
     addTask,
-    updateProject,
     setAssignmentsForTask,
     updateGeofence,
   } = useRayonerStore();
 
   const user = useCheckinStore((state) => state.user);
-  const currentSupervisorId = user?.id || 'demo_supervisor';
-  const currentSupervisorName = `${user?.name || 'Supervisor'} ${user?.lastName || ''}`.trim();
+  const addToast = useCheckinStore((state) => state.addToast);
 
-  // Usuarios reales filtrados estrictamente por el supervisor_id del supervisor autenticado
-  const supervisorTeamMembers = useMemo(() => {
-    return getTeamMembersBySupervisor(currentSupervisorId, user?.role);
-  }, [teamMembers, currentSupervisorId, user?.role, getTeamMembersBySupervisor]);
+  const currentIssuerId = user?.id || 'demo_supervisor';
+  const currentIssuerName = `${user?.name || 'Responsable'} ${user?.lastName || ''}`.trim();
 
-  const [activeTab, setActiveTab] = useState<'properties' | 'budget' | 'lead' | 'geofence'>(
-    initialTab
-  );
+  // Colaboradores de la línea operativa autorizados para asignación
+  const eligibleCollaborators = useMemo(() => {
+    const list = getTeamMembersBySupervisor(currentIssuerId, user?.role);
+    if (list.length > 0) return list;
+    // Respaldo operativo limpio si el catálogo aún está sincronizando
+    return teamMembers.filter((m) => {
+      const r = (m.role || '').toUpperCase();
+      return r !== 'TI' && r !== 'RH';
+    });
+  }, [teamMembers, currentIssuerId, user?.role, getTeamMembersBySupervisor]);
 
   const currentTask = useMemo(() => {
     if (taskId) return tasks.find((t) => t.id === taskId) || null;
     return null;
   }, [taskId, tasks]);
 
-  const initialProjId = currentTask?.projectId || propProjectId || (projects[0]?.id ?? '');
-  const initialProj = projects.find((p) => p.id === initialProjId);
-  const [selectedCompanyId, setSelectedCompanyId] = useState<string>(
-    initialProj?.clientId || clients[0]?.id || ''
-  );
-  const [selectedProjectId, setSelectedProjectId] = useState<string>(initialProjId);
+  const [activeTab, setActiveTab] = useState<TaskModalTab>(initialTab);
 
-  useEffect(() => {
-    if (!isOpen) return;
-    const pId = currentTask?.projectId || propProjectId || (projects[0]?.id ?? '');
-    const pObj = projects.find((p) => p.id === pId);
-    setSelectedProjectId(pId);
-    setSelectedCompanyId(pObj?.clientId || clients[0]?.id || '');
-  }, [isOpen, currentTask?.projectId, propProjectId, projects, clients]);
+  // Pestaña 1: Propiedades y Asignación
+  const [selectedCompanyId, setSelectedCompanyId] = useState<string>('');
+  const [selectedProjectId, setSelectedProjectId] = useState<string>('');
+  const [taskTitle, setTaskTitle] = useState<string>('');
+  const [description, setDescription] = useState<string>('');
+  const [assignedUserId, setAssignedUserId] = useState<string>('');
+  const [estimatedHours, setEstimatedHours] = useState<number>(2);
+  const [estimatedMinutes, setEstimatedMinutes] = useState<number>(0);
+  const [priority, setPriority] = useState<TaskPriority>('medium');
+  const [dueDate, setDueDate] = useState<string>('');
 
-  const filteredProjectsForCompany = useMemo(() => {
+  // Pestaña 2: Ubicación de Ejecución (Oficina / Oficina de Cliente)
+  const [locationMode, setLocationMode] = useState<ExecutionLocationMode>('office');
+  const [useCustomClientAddress, setUseCustomClientAddress] = useState<boolean>(false);
+  const [clientAddress, setClientAddress] = useState<string>('');
+  const [radiusMeters, setRadiusMeters] = useState<number>(250);
+  const [errorMessage, setErrorMessage] = useState<string>('');
+
+  // Proyectos filtrados por empresa seleccionada
+  const filteredProjects = useMemo(() => {
     if (!selectedCompanyId) return projects;
     return projects.filter((p) => p.clientId === selectedCompanyId);
   }, [projects, selectedCompanyId]);
 
-  const targetProjectId = selectedProjectId || filteredProjectsForCompany[0]?.id || '';
-  const currentProject = projects.find((p) => p.id === targetProjectId);
-
-  // 1. Estados Pestaña Propiedades y Asignación Directa (assigned_to)
-  const [taskName, setTaskName] = useState(currentTask?.title || currentTask?.name || '');
-  const [description, setDescription] = useState(currentTask?.description || '');
-  const [priority, setPriority] = useState<TaskPriority>(currentTask?.priority || 'medium');
-  const [isBillable, setIsBillable] = useState(currentTask?.isBillable ?? true);
-  const [plannedHours, setPlannedHours] = useState(currentTask?.plannedHours || 20);
-  const [assignedToUserId, setAssignedToUserId] = useState<string>(
-    currentTask?.assigned_to || supervisorTeamMembers[0]?.id || 'demo_colaborador'
+  const targetProjectId = selectedProjectId || filteredProjects[0]?.id || '';
+  const currentProject = useMemo(
+    () => projects.find((p) => p.id === targetProjectId) || null,
+    [projects, targetProjectId]
   );
 
-  // 2. Estados Pestaña Usuarios y Presupuesto
-  const [budgetType, setBudgetType] = useState<BudgetType>(
-    currentProject?.budgetType || 'fixed_project'
-  );
-  const [hourlyRate, setHourlyRate] = useState(currentProject?.hourlyRate || 1500);
+  const currentCompany = useMemo(() => {
+    const cid = selectedCompanyId || currentProject?.clientId || '';
+    return clients.find((c) => c.id === cid) || null;
+  }, [clients, selectedCompanyId, currentProject?.clientId]);
 
-  const existingAssignments = useMemo(() => {
-    if (!currentTask) return [];
-    return assignments.filter((a) => a.taskId === currentTask.id);
-  }, [currentTask, assignments]);
-
-  const [taskAssignments, setTaskAssignments] = useState<TaskAssignment[]>([]);
-
-  // Sincronizar datos reales al abrir el modal o cambiar de tarea
+  // Inicializar estado al abrir el modal o cambiar la tarea objetivo
   useEffect(() => {
     if (!isOpen) return;
-    setTaskName(currentTask?.title || currentTask?.name || '');
+
+    setActiveTab(initialTab);
+    setErrorMessage('');
+
+    const resolvedProjectId =
+      currentTask?.projectId || propProjectId || projects[0]?.id || '';
+    const resolvedProject = projects.find((p) => p.id === resolvedProjectId) || null;
+    const resolvedCompanyId =
+      currentTask?.companyId || resolvedProject?.clientId || clients[0]?.id || '';
+    const resolvedCompany = clients.find((c) => c.id === resolvedCompanyId) || null;
+
+    setSelectedCompanyId(resolvedCompanyId);
+    setSelectedProjectId(resolvedProjectId);
+    setTaskTitle(currentTask?.title || currentTask?.name || '');
     setDescription(currentTask?.description || '');
     setPriority(currentTask?.priority || 'medium');
-    setIsBillable(currentTask?.isBillable ?? true);
-    setPlannedHours(currentTask?.plannedHours || 20);
+    setDueDate(currentTask?.dueDate || resolvedProject?.deadline || '');
 
-    const defaultMember =
-      supervisorTeamMembers.find((m) => m.id === currentTask?.assigned_to) ||
-      supervisorTeamMembers[0];
+    // Tiempo estimado en formato sexagesimal (Horas + Minutos 0-59)
+    const totalMins =
+      currentTask?.plannedMinutes !== undefined
+        ? Math.max(0, Math.round(currentTask.plannedMinutes))
+        : currentTask?.plannedHours !== undefined
+        ? Math.max(0, Math.round(currentTask.plannedHours * 60))
+        : 120;
+    setEstimatedHours(Math.floor(totalMins / 60));
+    setEstimatedMinutes(totalMins % 60);
 
-    const initialAssigneeId = defaultMember?.id || 'demo_colaborador';
-    setAssignedToUserId(initialAssigneeId);
+    // Colaborador asignado
+    const existingAssigneeId = currentTask?.assignedToId || currentTask?.assigned_to || '';
+    const existingAssigneeEmail = (currentTask?.assignedToEmail || '').toLowerCase();
+    const matchedMember =
+      eligibleCollaborators.find(
+        (m) =>
+          (existingAssigneeId && m.id === existingAssigneeId) ||
+          (existingAssigneeEmail && m.email.toLowerCase() === existingAssigneeEmail)
+      ) || eligibleCollaborators[0];
+    setAssignedUserId(matchedMember?.id || '');
 
-    if (existingAssignments.length > 0) {
-      setTaskAssignments(existingAssignments);
-    } else if (defaultMember) {
-      setTaskAssignments([
-        {
-          id: `asg-init-${defaultMember.id}`,
-          taskId: currentTask?.id || '',
-          userId: defaultMember.id,
-          userName: defaultMember.name,
-          userRoleTitle: defaultMember.roleTitle,
-          allocatedHours: currentTask?.plannedHours || 20,
-          hourlyRateOverride: currentProject?.hourlyRate || 1500,
-          blockOnLimit: true,
-        },
-      ]);
+    // Ubicación de ejecución
+    const existingGeo = resolvedProjectId ? geofences[resolvedProjectId] : undefined;
+    const initialMode: ExecutionLocationMode =
+      currentTask?.locationMode === 'client_site' ||
+      (!currentTask && existingGeo?.locationMode === 'client_site')
+        ? 'client_site'
+        : 'office';
+    setLocationMode(initialMode);
+
+    const fiscalAddr = (resolvedCompany?.fiscalAddress || '').trim();
+    const savedAddr = (currentTask?.locationAddress || existingGeo?.address || '').trim();
+
+    if (initialMode === 'client_site') {
+      if (savedAddr && savedAddr !== fiscalAddr) {
+        setUseCustomClientAddress(true);
+        setClientAddress(savedAddr);
+      } else {
+        setUseCustomClientAddress(false);
+        setClientAddress(fiscalAddr || savedAddr);
+      }
     } else {
-      setTaskAssignments([]);
+      setUseCustomClientAddress(false);
+      setClientAddress(fiscalAddr);
     }
-  }, [isOpen, currentTask, existingAssignments, supervisorTeamMembers, currentProject]);
 
-  // Al cambiar el empleado principal (assigned_to), asegurar que esté en taskAssignments
-  const handleSelectPrimaryAssignee = (newUserId: string) => {
-    setAssignedToUserId(newUserId);
-    const member = supervisorTeamMembers.find((m) => m.id === newUserId);
-    if (!member) return;
+    const initialRadius =
+      currentTask?.locationRadiusMeters || existingGeo?.radiusMeters || 250;
+    setRadiusMeters(initialRadius);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, currentTask?.id, propProjectId]);
 
-    setTaskAssignments((prev) => {
-      const alreadyExists = prev.some((a) => a.userId === newUserId);
-      if (alreadyExists) {
-        // Mover al principio como responsable principal
-        const target = prev.find((a) => a.userId === newUserId)!;
-        return [target, ...prev.filter((a) => a.userId !== newUserId)];
-      }
-      if (prev.length === 1) {
-        return [
-          {
-            ...prev[0],
-            userId: member.id,
-            userName: member.name,
-            userRoleTitle: member.roleTitle,
-          },
-        ];
-      }
-      return [
-        {
-          id: `asg-${Date.now()}`,
-          taskId: currentTask?.id || '',
-          userId: member.id,
-          userName: member.name,
-          userRoleTitle: member.roleTitle,
-          allocatedHours: plannedHours,
-          hourlyRateOverride: hourlyRate,
-          blockOnLimit: true,
-        },
-        ...prev,
-      ];
-    });
-  };
-
-  const subtasksHours = useMemo(() => {
-    if (!currentTask) return 0;
-    return tasks
-      .filter((t) => t.parentTaskId === currentTask.id)
-      .reduce((sum, sub) => sum + (sub.plannedHours || 0), 0);
-  }, [currentTask, tasks]);
-
-  const totalConsolidatedHours = plannedHours + subtasksHours;
-
-  const [leadUserName, setLeadUserName] = useState(
-    currentProject?.leadUserName || currentSupervisorName
-  );
-  const [notifyAt80, setNotifyAt80] = useState(true);
-  const [notifyOffHours, setNotifyOffHours] = useState(true);
-
-  const existingGeo = geofences[targetProjectId];
-  const [geoMode, setGeoMode] = useState<'remote' | 'office' | 'client_site'>(
-    existingGeo?.locationMode || 'client_site'
-  );
-  const [geoAddress, setGeoAddress] = useState(
-    existingGeo?.address || ''
-  );
-  const [geoRadius, setGeoRadius] = useState(existingGeo?.radiusMeters || 250);
-  const [geoEnforcement, setGeoEnforcement] = useState<'strict_block' | 'warning' | 'none'>(
-    existingGeo?.enforcementMode || 'warning'
-  );
-  const geoLat = existingGeo?.lat || 0;
-  const geoLng = existingGeo?.lng || 0;
+  // Si el usuario cambia de empresa/proyecto en modo sede fiscal, sincronizar la dirección del cliente
+  useEffect(() => {
+    if (!isOpen || useCustomClientAddress) return;
+    const fiscalAddr = (currentCompany?.fiscalAddress || '').trim();
+    if (fiscalAddr) {
+      setClientAddress(fiscalAddr);
+    }
+  }, [isOpen, currentCompany?.fiscalAddress, useCustomClientAddress]);
 
   if (!isOpen) return null;
 
-  const handleToggleBlock = (index: number) => {
-    const updated = [...taskAssignments];
-    updated[index] = { ...updated[index], blockOnLimit: !updated[index].blockOnLimit };
-    setTaskAssignments(updated);
+  const handleHoursChange = (raw: string) => {
+    const parsed = parseInt(raw, 10);
+    setEstimatedHours(Number.isFinite(parsed) && parsed >= 0 ? parsed : 0);
   };
 
-  const handleUpdateAllocatedHours = (index: number, val: number) => {
-    const updated = [...taskAssignments];
-    updated[index] = { ...updated[index], allocatedHours: Math.max(0, val) };
-    setTaskAssignments(updated);
-  };
-
-  const handleChangeAssignmentMember = (index: number, memberId: string) => {
-    const member = supervisorTeamMembers.find((m) => m.id === memberId);
-    if (!member) return;
-    const updated = [...taskAssignments];
-    updated[index] = {
-      ...updated[index],
-      userId: member.id,
-      userName: member.name,
-      userRoleTitle: member.roleTitle,
-    };
-    setTaskAssignments(updated);
-    if (index === 0) {
-      setAssignedToUserId(member.id);
+  const handleMinutesChange = (raw: string) => {
+    const parsed = parseInt(raw, 10);
+    if (!Number.isFinite(parsed) || parsed < 0) {
+      setEstimatedMinutes(0);
+      return;
     }
-  };
-
-  const handleAddAssignment = () => {
-    const assignedIds = new Set(taskAssignments.map((a) => a.userId));
-    const nextAvailable =
-      supervisorTeamMembers.find((m) => !assignedIds.has(m.id)) || supervisorTeamMembers[0];
-
-    if (!nextAvailable) return;
-
-    const newAsg: TaskAssignment = {
-      id: `asg-${Date.now()}`,
-      taskId: currentTask?.id || '',
-      userId: nextAvailable.id,
-      userName: nextAvailable.name,
-      userRoleTitle: nextAvailable.roleTitle,
-      allocatedHours: 8,
-      hourlyRateOverride: hourlyRate,
-      blockOnLimit: true,
-    };
-    setTaskAssignments([...taskAssignments, newAsg]);
-  };
-
-  const handleRemoveAssignment = (index: number) => {
-    const filtered = taskAssignments.filter((_, idx) => idx !== index);
-    setTaskAssignments(filtered);
-    if (filtered[0]) {
-      setAssignedToUserId(filtered[0].userId);
+    if (parsed >= 60) {
+      const extraH = Math.floor(parsed / 60);
+      setEstimatedHours((prev) => prev + extraH);
+      setEstimatedMinutes(parsed % 60);
+      return;
     }
+    setEstimatedMinutes(parsed);
   };
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
-    const addToast = useCheckinStore.getState().addToast;
-    const finalTitle = taskName.trim() || 'Nueva Tarea de Proyecto';
-    const primaryMember =
-      supervisorTeamMembers.find((m) => m.id === assignedToUserId) || supervisorTeamMembers[0];
+    setErrorMessage('');
 
-    const finalAssignments: TaskAssignment[] =
-      taskAssignments.length > 0
-        ? taskAssignments
-        : primaryMember
-        ? [
-            {
-              id: `asg-${Date.now()}`,
-              taskId: currentTask?.id || '',
-              userId: primaryMember.id,
-              userName: primaryMember.name,
-              userRoleTitle: primaryMember.roleTitle,
-              allocatedHours: plannedHours,
-              hourlyRateOverride: hourlyRate,
-              blockOnLimit: true,
-            },
-          ]
-        : [];
+    const cleanTitle = taskTitle.trim();
+    if (!cleanTitle) {
+      setErrorMessage('Ingresa un título para la tarea.');
+      setActiveTab('properties');
+      return;
+    }
+
+    if (!targetProjectId) {
+      setErrorMessage('Selecciona un proyecto vinculado antes de guardar la tarea.');
+      setActiveTab('properties');
+      return;
+    }
+
+    const selectedMember =
+      eligibleCollaborators.find((m) => m.id === assignedUserId) || eligibleCollaborators[0];
+
+    if (!selectedMember) {
+      setErrorMessage('Selecciona un colaborador para asignar la tarea.');
+      setActiveTab('properties');
+      return;
+    }
+
+    const totalPlannedMinutes = Math.max(
+      0,
+      Math.round(estimatedHours) * 60 + Math.min(59, Math.max(0, Math.round(estimatedMinutes)))
+    );
+    const totalPlannedHours = Number((totalPlannedMinutes / 60).toFixed(4));
+
+    const resolvedLocationAddress =
+      locationMode === 'office'
+        ? DEFAULT_OFFICE_ADDRESS
+        : (useCustomClientAddress
+            ? clientAddress
+            : currentCompany?.fiscalAddress || clientAddress
+          ).trim();
+
+    if (locationMode === 'client_site' && !resolvedLocationAddress) {
+      setErrorMessage(
+        'Captura la dirección de la oficina del cliente o selecciona ejecución en oficina.'
+      );
+      setActiveTab('location');
+      return;
+    }
+
+    const resolvedRadius =
+      locationMode === 'office' ? DEFAULT_OFFICE_RADIUS : Math.max(50, Math.round(radiusMeters));
+
+    const resolvedCompanyId = currentCompany?.id || currentProject?.clientId || '';
+    const resolvedCompanyName =
+      currentCompany?.commercialName || currentCompany?.name || '';
+    const resolvedProjectName = currentProject?.name || '';
+    const memberEmail = (selectedMember.email || '').trim().toLowerCase();
+
+    const assignmentEntry: TaskAssignment = {
+      id: `asg-${Date.now()}`,
+      taskId: currentTask?.id || '',
+      userId: selectedMember.id,
+      userName: selectedMember.name,
+      userRoleTitle: selectedMember.roleTitle || 'Colaborador',
+      allocatedHours: totalPlannedHours,
+      hourlyRateOverride: currentProject?.hourlyRate || 0,
+      blockOnLimit: false,
+    };
 
     if (currentTask) {
       updateTask(currentTask.id, {
-        title: finalTitle,
-        name: finalTitle,
-        description,
+        projectId: targetProjectId,
+        projectName: resolvedProjectName,
+        companyId: resolvedCompanyId,
+        companyName: resolvedCompanyName,
+        title: cleanTitle,
+        name: cleanTitle,
+        description: description.trim(),
         priority,
-        isBillable,
-        plannedHours,
-        assigned_to: assignedToUserId,
-        created_by: currentTask.created_by || currentSupervisorId,
+        dueDate: dueDate || undefined,
+        plannedHours: totalPlannedHours,
+        plannedMinutes: totalPlannedMinutes,
+        assigned_to: selectedMember.id,
+        assignedToId: selectedMember.id,
+        assignedToEmail: memberEmail,
+        assignedToName: selectedMember.name,
+        created_by: currentTask.created_by || currentIssuerId,
+        locationMode,
+        locationAddress: resolvedLocationAddress,
+        locationRadiusMeters: resolvedRadius,
       });
 
       setAssignmentsForTask(
         currentTask.id,
-        finalAssignments.map((a) => ({ ...a, taskId: currentTask.id })),
-        currentSupervisorId,
-        currentSupervisorName
+        [{ ...assignmentEntry, taskId: currentTask.id }],
+        currentIssuerId,
+        currentIssuerName
       );
 
-      addToast(
-        `Tarea "${finalTitle}" actualizada y notificada en tiempo real a ${primaryMember?.name || 'empleado'}.`,
-        'success'
-      );
+      addToast(`Tarea "${cleanTitle}" actualizada y asignada a ${selectedMember.name}.`, 'success');
     } else {
-      const newId = addTask(
+      const newTaskId = addTask(
         {
           projectId: targetProjectId,
+          projectName: resolvedProjectName,
+          companyId: resolvedCompanyId,
+          companyName: resolvedCompanyName,
           parentTaskId: null,
-          title: finalTitle,
-          name: finalTitle,
-          assigned_to: assignedToUserId,
-          created_by: currentSupervisorId,
+          title: cleanTitle,
+          name: cleanTitle,
+          assigned_to: selectedMember.id,
+          assignedToId: selectedMember.id,
+          assignedToEmail: memberEmail,
+          assignedToName: selectedMember.name,
+          created_by: currentIssuerId,
           status: 'pending',
           created_at: new Date().toISOString(),
           completed_at: null,
-          description,
+          description: description.trim(),
           priority,
-          isBillable,
-          plannedHours,
+          dueDate: dueDate || undefined,
+          isBillable: true,
+          plannedHours: totalPlannedHours,
+          plannedMinutes: totalPlannedMinutes,
+          loggedMinutes: 0,
+          locationMode,
+          locationAddress: resolvedLocationAddress,
+          locationRadiusMeters: resolvedRadius,
           isActive: true,
         },
         false
       );
 
       setAssignmentsForTask(
-        newId,
-        finalAssignments.map((a) => ({ ...a, taskId: newId })),
-        currentSupervisorId,
-        currentSupervisorName
+        newTaskId,
+        [{ ...assignmentEntry, taskId: newTaskId }],
+        currentIssuerId,
+        currentIssuerName
       );
 
-      addToast(
-        `Nueva tarea "${finalTitle}" asignada y notificada en tiempo real a ${primaryMember?.name || 'empleado'}.`,
-        'success'
-      );
+      addToast(`Tarea "${cleanTitle}" asignada a ${selectedMember.name}.`, 'success');
     }
 
     if (currentProject) {
-      updateProject(currentProject.id, {
-        budgetType,
-        hourlyRate,
-        leadUserName,
-      });
-
+      const existingGeo = geofences[currentProject.id];
       updateGeofence(currentProject.id, {
         id: existingGeo?.id || `geo-${Date.now()}`,
         projectId: currentProject.id,
-        locationMode: geoMode,
-        address: geoAddress,
-        lat: geoLat,
-        lng: geoLng,
-        radiusMeters: geoRadius,
-        enforcementMode: geoEnforcement,
+        locationMode,
+        address: resolvedLocationAddress,
+        lat: existingGeo?.lat || 0,
+        lng: existingGeo?.lng || 0,
+        radiusMeters: resolvedRadius,
+        enforcementMode: existingGeo?.enforcementMode || 'warning',
       });
     }
 
@@ -387,139 +361,121 @@ export function RayonerTaskModal({
   };
 
   return (
-    <div className="fixed inset-0 z-[150] flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-3 sm:p-6 animate-fade-in">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[92vh] flex flex-col overflow-hidden border border-slate-200">
-        {/* Encabezado del Modal */}
-        <div className="flex justify-between items-center px-6 py-4 border-b border-slate-100 bg-[#0D5C75] text-white">
-          <div className="flex items-center space-x-3">
-            <div className="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center font-bold text-sm">
-              R
-            </div>
-            <div>
-              <h2 className="text-base font-bold tracking-tight">
-                {currentTask
-                  ? `Editar: ${currentTask.title || currentTask.name}`
-                  : 'Asignar Nueva Tarea al Equipo'}
-              </h2>
-              <p className="text-xs text-white/80">
-                {currentProject?.name} • Supervisor Emisor: {currentSupervisorName} ({currentSupervisorId})
-              </p>
-            </div>
+    <div
+      className="fixed inset-0 z-[150] flex items-center justify-center bg-slate-950/70 backdrop-blur-xs p-4 animate-fade-in"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white dark:bg-[#0B111E] border border-slate-200 dark:border-slate-800 shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden text-slate-900 dark:text-slate-100"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Encabezado Minimalista Corporativo (Sin iconos decorativos ni textos técnicos) */}
+        <div className="flex items-start justify-between px-6 py-4 border-b border-slate-200 dark:border-slate-800">
+          <div className="min-w-0 pr-4">
+            <h2 className="text-base font-heading font-bold tracking-tight text-slate-900 dark:text-white">
+              {currentTask ? 'Editar Tarea' : 'Asignar Nueva Tarea'}
+            </h2>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 truncate">
+              {currentCompany && currentProject
+                ? `${currentCompany.commercialName || currentCompany.name} — ${currentProject.name}`
+                : 'Define el alcance, colaborador responsable y ubicación de ejecución.'}
+            </p>
           </div>
           <button
+            type="button"
             onClick={onClose}
-            className="p-1.5 rounded-full hover:bg-white/10 text-white/80 hover:text-white transition-colors"
+            aria-label="Cerrar modal"
+            className="p-1.5 text-slate-400 hover:text-slate-700 dark:hover:text-white transition-colors cursor-pointer"
           >
-            <X className="w-5 h-5" />
+            <X className="w-4 h-4" />
           </button>
         </div>
 
-        {/* Pestañas de Navegación Horizontal */}
-        <div className="flex border-b border-slate-200 bg-slate-50 px-6 gap-2 overflow-x-auto text-xs font-bold uppercase tracking-wider">
+        {/* Únicamente 2 Pestañas Sobrias */}
+        <div className="flex border-b border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-[#101726] px-6 gap-6">
           <button
             type="button"
             onClick={() => setActiveTab('properties')}
-            className={`flex items-center py-3 px-3.5 border-b-2 transition-all ${
+            className={`py-3 text-xs font-heading font-semibold uppercase tracking-wider border-b-2 transition-colors cursor-pointer ${
               activeTab === 'properties'
-                ? 'border-[#0D5C75] text-[#0D5C75] bg-white'
-                : 'border-transparent text-slate-500 hover:text-slate-800'
+                ? 'border-blue-700 dark:border-sky-400 text-slate-900 dark:text-white'
+                : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
             }`}
           >
-            <Tag className="w-3.5 h-3.5 mr-1.5" />
-            Propiedades & Asignación
+            1. Propiedades y Asignación
           </button>
 
           <button
             type="button"
-            onClick={() => setActiveTab('budget')}
-            className={`flex items-center py-3 px-3.5 border-b-2 transition-all ${
-              activeTab === 'budget'
-                ? 'border-[#0D5C75] text-[#0D5C75] bg-white'
-                : 'border-transparent text-slate-500 hover:text-slate-800'
+            onClick={() => setActiveTab('location')}
+            className={`py-3 text-xs font-heading font-semibold uppercase tracking-wider border-b-2 transition-colors cursor-pointer ${
+              activeTab === 'location'
+                ? 'border-blue-700 dark:border-sky-400 text-slate-900 dark:text-white'
+                : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
             }`}
           >
-            <Users className="w-3.5 h-3.5 mr-1.5" />
-            Equipo (supervisor_id) y Presupuesto
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveTab('lead')}
-            className={`flex items-center py-3 px-3.5 border-b-2 transition-all ${
-              activeTab === 'lead'
-                ? 'border-[#0D5C75] text-[#0D5C75] bg-white'
-                : 'border-transparent text-slate-500 hover:text-slate-800'
-            }`}
-          >
-            <Shield className="w-3.5 h-3.5 mr-1.5" />
-            Responsable del Proyecto
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveTab('geofence')}
-            className={`flex items-center py-3 px-3.5 border-b-2 transition-all ${
-              activeTab === 'geofence'
-                ? 'border-[#0D5C75] text-[#0D5C75] bg-white'
-                : 'border-transparent text-slate-500 hover:text-slate-800'
-            }`}
-          >
-            <MapPin className="w-3.5 h-3.5 mr-1.5" />
-            Dirección y Perímetro
+            2. Ubicación de Ejecución
           </button>
         </div>
 
-        {/* Contenido Dinámico */}
-        <form onSubmit={handleSave} className="flex-1 overflow-y-auto p-6 space-y-6">
-          {/* PESTAÑA 1: PROPIEDADES Y ASIGNACIÓN DIRECTA */}
+        {/* Formulario */}
+        <form onSubmit={handleSave} className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
+          {errorMessage && (
+            <div className="px-3.5 py-2.5 text-xs text-rose-700 dark:text-rose-300 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900">
+              {errorMessage}
+            </div>
+          )}
+
+          {/* PESTAÑA 1: PROPIEDADES Y ASIGNACIÓN */}
           {activeTab === 'properties' && (
             <div className="space-y-4 animate-fade-in">
-              {/* Selector encadenado Empresa -> Proyecto en tiempo real */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {/* Empresa y Proyecto Vinculado */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+                  <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1.5">
                     Empresa / Cliente
                   </label>
                   <select
                     value={selectedCompanyId}
                     onChange={(e) => {
-                      const nextCompanyId = e.target.value;
-                      setSelectedCompanyId(nextCompanyId);
-                      const firstProj = projects.find((p) => p.clientId === nextCompanyId);
+                      const nextCid = e.target.value;
+                      setSelectedCompanyId(nextCid);
+                      const firstProj = projects.find((p) => p.clientId === nextCid);
                       setSelectedProjectId(firstProj?.id || '');
                     }}
-                    className="w-full border border-slate-200 bg-slate-50 rounded-lg px-3 py-2 text-xs font-medium text-slate-800 focus:border-[#0D5C75] outline-none"
+                    className="w-full px-3 py-2 text-xs bg-white dark:bg-[#101726] border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 focus:border-blue-700 dark:focus:border-sky-400 outline-none cursor-pointer"
                   >
                     <option value="">Todas las empresas ({clients.length})</option>
                     {clients.map((c) => (
                       <option key={c.id} value={c.id}>
-                        {c.name} {c.code ? `(${c.code})` : ''}
+                        {c.commercialName || c.name}
+                        {c.code ? ` (${c.code})` : ''}
                       </option>
                     ))}
                   </select>
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+                  <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1.5">
                     Proyecto Vinculado *
                   </label>
                   <select
                     value={targetProjectId}
                     required
                     onChange={(e) => {
-                      const nextProjId = e.target.value;
-                      setSelectedProjectId(nextProjId);
-                      const proj = projects.find((p) => p.id === nextProjId);
+                      const nextPid = e.target.value;
+                      setSelectedProjectId(nextPid);
+                      const proj = projects.find((p) => p.id === nextPid);
                       if (proj?.clientId) setSelectedCompanyId(proj.clientId);
                     }}
-                    className="w-full border border-slate-200 bg-slate-50 rounded-lg px-3 py-2 text-xs font-medium text-slate-800 focus:border-[#0D5C75] outline-none"
+                    className="w-full px-3 py-2 text-xs bg-white dark:bg-[#101726] border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 focus:border-blue-700 dark:focus:border-sky-400 outline-none cursor-pointer"
                   >
                     <option value="">
-                      {filteredProjectsForCompany.length === 0
-                        ? 'Sin proyectos para esta empresa'
-                        : '-- Seleccionar proyecto --'}
+                      {filteredProjects.length === 0
+                        ? 'Sin proyectos registrados'
+                        : 'Seleccionar proyecto'}
                     </option>
-                    {filteredProjectsForCompany.map((p) => (
+                    {filteredProjects.map((p) => (
                       <option key={p.id} value={p.id}>
                         {p.name} ({p.code})
                       </option>
@@ -528,77 +484,106 @@ export function RayonerTaskModal({
                 </div>
               </div>
 
+              {/* Título de la Tarea */}
               <div>
-                <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
-                  Título de la Tarea (title)
+                <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1.5">
+                  Título de la Tarea *
                 </label>
                 <input
                   type="text"
                   required
-                  value={taskName}
-                  onChange={(e) => setTaskName(e.target.value)}
-                  placeholder="Ej: Pruebas Sustantivas de Ingresos y CFDI..."
-                  className="w-full border border-slate-200 rounded-lg px-3.5 py-2 text-sm focus:ring-2 focus:ring-[#0D5C75]/20 focus:border-[#0D5C75] outline-none"
+                  value={taskTitle}
+                  onChange={(e) => setTaskTitle(e.target.value)}
+                  placeholder="Ej. Conciliación bancaria y pruebas sustantivas de ingresos"
+                  className="w-full px-3 py-2 text-sm bg-white dark:bg-[#101726] border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:border-blue-700 dark:focus:border-sky-400 outline-none"
                 />
               </div>
 
-              {/* Selector de Empleado Asignado filtrado por supervisor_id */}
-              <div className="bg-cyan-50/50 border border-cyan-200 rounded-xl p-4 space-y-2">
-                <div className="flex items-center justify-between">
-                  <label className="text-xs font-black text-[#0D5C75] uppercase flex items-center space-x-1.5">
-                    <UserCheck className="w-4 h-4 text-[#0D5C75]" />
-                    <span>Empleado Asignado (assigned_to)</span>
-                  </label>
-                  <span className="text-[10px] font-bold bg-white text-[#0D5C75] px-2 py-0.5 rounded-full border border-cyan-200">
-                    Filtrado por supervisor_id: {currentSupervisorId} ({supervisorTeamMembers.length} miembros)
-                  </span>
-                </div>
-                <select
-                  value={assignedToUserId}
-                  onChange={(e) => handleSelectPrimaryAssignee(e.target.value)}
-                  className="w-full border border-cyan-300 bg-white rounded-lg px-3.5 py-2 text-sm font-bold text-slate-800 focus:ring-2 focus:ring-[#0D5C75]/20 outline-none"
-                >
-                  {supervisorTeamMembers.map((member) => (
-                    <option key={member.id} value={member.id}>
-                      {member.name} — {member.roleTitle} ({member.email}) [ID: {member.id}]
-                    </option>
-                  ))}
-                </select>
-                <p className="text-[11px] text-slate-500">
-                  Al guardar, se emitirá un evento en <code>notifications</code> y se notificará en tiempo real a este empleado.
-                </p>
-              </div>
-
+              {/* Descripción breve */}
               <div>
-                <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
-                  Descripción y Criterios Técnicos
+                <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1.5">
+                  Descripción Breve <span className="font-normal text-slate-400">(Opcional)</span>
                 </label>
                 <textarea
+                  rows={2}
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
-                  placeholder="Detalles sobre el procedimiento de auditoría o alcance..."
-                  rows={3}
-                  className="w-full border border-slate-200 rounded-lg px-3.5 py-2 text-sm focus:ring-2 focus:ring-[#0D5C75]/20 focus:border-[#0D5C75] outline-none"
+                  placeholder="Alcance, entregables o notas operativas..."
+                  className="w-full px-3 py-2 text-xs bg-white dark:bg-[#101726] border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:border-blue-700 dark:focus:border-sky-400 outline-none resize-none"
                 />
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2">
+              {/* Colaborador Asignado */}
+              <div>
+                <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1.5">
+                  Colaborador Asignado *
+                </label>
+                <select
+                  required
+                  value={assignedUserId}
+                  onChange={(e) => setAssignedUserId(e.target.value)}
+                  className="w-full px-3 py-2 text-sm font-medium bg-white dark:bg-[#101726] border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 focus:border-blue-700 dark:focus:border-sky-400 outline-none cursor-pointer"
+                >
+                  {eligibleCollaborators.length === 0 ? (
+                    <option value="">Sin colaboradores disponibles</option>
+                  ) : (
+                    eligibleCollaborators.map((member) => (
+                      <option key={member.id} value={member.id}>
+                        {member.name} — {member.roleTitle || 'Colaborador'} ({member.email})
+                      </option>
+                    ))
+                  )}
+                </select>
+              </div>
+
+              {/* Tiempo Estimado (Horas y Minutos 0-59), Prioridad y Fecha Límite */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-1">
                 <div>
-                  <TimeInputSexagesimal
-                    label="Horas Estimadas Propias"
-                    totalHours={plannedHours}
-                    onChange={(newHours) => setPlannedHours(newHours)}
-                  />
+                  <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1.5">
+                    Tiempo Estimado
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <div className="relative flex-1">
+                      <input
+                        type="number"
+                        min={0}
+                        step={1}
+                        value={estimatedHours}
+                        onChange={(e) => handleHoursChange(e.target.value)}
+                        aria-label="Horas estimadas"
+                        className="w-full px-2.5 py-2 pr-7 text-xs font-mono font-semibold text-right bg-white dark:bg-[#101726] border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 focus:border-blue-700 dark:focus:border-sky-400 outline-none"
+                      />
+                      <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[11px] font-mono text-slate-400 pointer-events-none">
+                        h
+                      </span>
+                    </div>
+                    <span className="text-slate-400 font-mono text-xs">:</span>
+                    <div className="relative flex-1">
+                      <input
+                        type="number"
+                        min={0}
+                        max={59}
+                        step={1}
+                        value={estimatedMinutes}
+                        onChange={(e) => handleMinutesChange(e.target.value)}
+                        aria-label="Minutos estimados"
+                        className="w-full px-2.5 py-2 pr-7 text-xs font-mono font-semibold text-right bg-white dark:bg-[#101726] border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 focus:border-blue-700 dark:focus:border-sky-400 outline-none"
+                      />
+                      <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[11px] font-mono text-slate-400 pointer-events-none">
+                        m
+                      </span>
+                    </div>
+                  </div>
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
-                    Nivel de Prioridad
+                  <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1.5">
+                    Prioridad
                   </label>
                   <select
                     value={priority}
                     onChange={(e) => setPriority(e.target.value as TaskPriority)}
-                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-[#0D5C75]/20 outline-none capitalize"
+                    className="w-full px-3 py-2 text-xs bg-white dark:bg-[#101726] border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 focus:border-blue-700 dark:focus:border-sky-400 outline-none cursor-pointer"
                   >
                     <option value="low">Baja</option>
                     <option value="medium">Media</option>
@@ -608,341 +593,183 @@ export function RayonerTaskModal({
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
-                    Tratamiento Fiscal / Costo
+                  <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1.5">
+                    Fecha Límite
                   </label>
-                  <div className="flex items-center space-x-2 mt-2">
-                    <button
-                      type="button"
-                      onClick={() => setIsBillable(!isBillable)}
-                      className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out ${
-                        isBillable ? 'bg-[#0D5C75]' : 'bg-slate-300'
-                      }`}
-                    >
-                      <span
-                        className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                          isBillable ? 'translate-x-5' : 'translate-x-0'
-                        }`}
-                      />
-                    </button>
-                    <span className="text-xs font-semibold text-slate-700">
-                      {isBillable ? 'Facturable a Cliente' : 'Interno / No Facturable'}
-                    </span>
-                  </div>
+                  <input
+                    type="date"
+                    value={dueDate}
+                    onChange={(e) => setDueDate(e.target.value)}
+                    className="w-full px-3 py-2 text-xs font-mono bg-white dark:bg-[#101726] border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 focus:border-blue-700 dark:focus:border-sky-400 outline-none"
+                  />
                 </div>
               </div>
             </div>
           )}
 
-          {/* PESTAÑA 2: USUARIOS FILTRADOS POR SUPERVISOR_ID Y PRESUPUESTO */}
-          {activeTab === 'budget' && (
-            <div className="space-y-6 animate-fade-in">
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5">
-                  <span className="text-xs text-slate-500 font-medium block">
-                    Horas Propias de Tarea
-                  </span>
-                  <span className="text-xl font-bold text-slate-800">
-                    {formatHoursToSexagesimal(plannedHours)}
-                  </span>
-                </div>
-
-                <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5">
-                  <span className="text-xs text-slate-500 font-medium block">
-                    Horas en Subtareas
-                  </span>
-                  <span className="text-xl font-bold text-blue-600">
-                    +{formatHoursToSexagesimal(subtasksHours)}
-                  </span>
-                </div>
-
-                <div className="bg-[#0D5C75]/10 border border-[#0D5C75]/20 rounded-xl p-3.5">
-                  <span className="text-xs text-[#0D5C75] font-semibold block">
-                    Total Consolidado (Rollup)
-                  </span>
-                  <span className="text-xl font-bold text-[#0D5C75]">
-                    {formatHoursToSexagesimal(totalConsolidatedHours)}
-                  </span>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
-                    Tipo de Planificación
-                  </label>
-                  <select
-                    value={budgetType}
-                    onChange={(e) => setBudgetType(e.target.value as BudgetType)}
-                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-[#0D5C75]/20 outline-none"
-                  >
-                    <option value="fixed_project">Presupuesto Fijo por Proyecto</option>
-                    <option value="by_tasks">Presupuesto por Tareas (Bottom-Up)</option>
-                    <option value="by_person">Presupuesto por Persona</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
-                    Tarifa Base por Hora
-                  </label>
-                  <div className="relative">
-                    <input
-                      type="number"
-                      value={hourlyRate}
-                      onChange={(e) => setHourlyRate(parseFloat(e.target.value) || 0)}
-                      className="w-full border border-slate-200 rounded-lg pl-8 pr-3 py-2 text-sm font-semibold text-slate-800 focus:ring-2 focus:ring-[#0D5C75]/20 outline-none"
-                    />
-                    <DollarSign className="w-4 h-4 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
-                  </div>
-                </div>
-              </div>
-
-              {/* Lista de Colaboradores Reales Filtrados por supervisor_id */}
-              <div>
-                <div className="flex justify-between items-center mb-2">
-                  <div>
-                    <h4 className="text-xs font-bold text-slate-700 uppercase">
-                      Miembros Reales del Equipo Asignados (supervisor_id: {currentSupervisorId})
-                    </h4>
-                    <p className="text-[11px] text-slate-400">
-                      Selecciona entre los colaboradores vinculados a tu supervisión.
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={handleAddAssignment}
-                    className="inline-flex items-center text-xs font-bold text-[#0D5C75] hover:text-[#0E7490] transition-colors cursor-pointer"
-                  >
-                    <Plus className="w-3.5 h-3.5 mr-1" />
-                    Agregar Miembro de mi Equipo
-                  </button>
-                </div>
-
-                <div className="border border-slate-200 rounded-xl overflow-hidden divide-y divide-slate-100">
-                  {taskAssignments.map((asg, idx) => (
-                    <div
-                      key={asg.id || idx}
-                      className="p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white hover:bg-slate-50 transition-colors"
-                    >
-                      <div className="flex items-center space-x-3 flex-1">
-                        <div className="w-8 h-8 rounded-full bg-[#0D5C75]/10 text-[#0D5C75] font-bold text-xs flex items-center justify-center shrink-0">
-                          {asg.userName.substring(0, 2).toUpperCase()}
-                        </div>
-                        <div className="flex-1 max-w-xs">
-                          <select
-                            value={asg.userId}
-                            onChange={(e) => handleChangeAssignmentMember(idx, e.target.value)}
-                            className="w-full border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-bold text-slate-800 bg-white focus:border-[#0D5C75] outline-none"
-                          >
-                            {supervisorTeamMembers.map((member) => (
-                              <option key={member.id} value={member.id}>
-                                {member.name} ({member.roleTitle})
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center space-x-4">
-                        <div className="flex items-center space-x-1.5">
-                          <TimeInputSexagesimal
-                            totalHours={asg.allocatedHours}
-                            onChange={(newH) => handleUpdateAllocatedHours(idx, newH)}
-                          />
-                        </div>
-
-                        <button
-                          type="button"
-                          onClick={() => handleToggleBlock(idx)}
-                          className="flex items-center space-x-1.5 px-2.5 py-1 rounded border border-slate-300 dark:border-slate-700 bg-white dark:bg-[#0B111E] text-slate-700 dark:text-slate-300 text-xs transition-colors hover:border-slate-400 cursor-pointer"
-                          title="Alternar límite de tiempo"
-                        >
-                          <span
-                            className={`w-2 h-2 rounded-full ${
-                              asg.blockOnLimit
-                                ? 'bg-[#1D4ED8] dark:bg-sky-400 shadow-2xs'
-                                : 'bg-slate-300 dark:bg-slate-600'
-                            }`}
-                          />
-                          <span>{asg.blockOnLimit ? 'Límite Activo' : 'Sin Límite'}</span>
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveAssignment(idx)}
-                          className="text-slate-400 hover:text-red-500 transition-colors p-1"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* PESTAÑA 3: RESPONSABLE DEL PROYECTO */}
-          {activeTab === 'lead' && (
+          {/* PESTAÑA 2: UBICACIÓN DE EJECUCIÓN */}
+          {activeTab === 'location' && (
             <div className="space-y-5 animate-fade-in">
               <div>
-                <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
-                  Líder del Proyecto / Supervisor Responsable (created_by)
-                </label>
-                <input
-                  type="text"
-                  value={leadUserName}
-                  onChange={(e) => setLeadUserName(e.target.value)}
-                  className="w-full border border-slate-200 rounded-lg px-3.5 py-2 text-sm focus:ring-2 focus:ring-[#0D5C75]/20 outline-none"
-                />
+                <span className="block text-[11px] font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-2.5">
+                  Lugar de Ejecución
+                </span>
+
+                {/* Selector Binario Sobrio (Radio Cards) */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <label
+                    className={`flex items-start gap-3 p-4 border transition-colors cursor-pointer ${
+                      locationMode === 'office'
+                        ? 'border-blue-700 dark:border-sky-400 bg-slate-50 dark:bg-[#101726]'
+                        : 'border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="executionLocationMode"
+                      value="office"
+                      checked={locationMode === 'office'}
+                      onChange={() => setLocationMode('office')}
+                      className="mt-0.5 accent-blue-700"
+                    />
+                    <div className="min-w-0">
+                      <span className="block text-xs font-semibold text-slate-900 dark:text-white">
+                        En Oficina (Despacho)
+                      </span>
+                      <span className="block text-[11px] text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
+                        Aplica el perímetro y coordenadas de la oficina central del despacho ({DEFAULT_OFFICE_RADIUS} m).
+                      </span>
+                    </div>
+                  </label>
+
+                  <label
+                    className={`flex items-start gap-3 p-4 border transition-colors cursor-pointer ${
+                      locationMode === 'client_site'
+                        ? 'border-blue-700 dark:border-sky-400 bg-slate-50 dark:bg-[#101726]'
+                        : 'border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="executionLocationMode"
+                      value="client_site"
+                      checked={locationMode === 'client_site'}
+                      onChange={() => {
+                        setLocationMode('client_site');
+                        if (!clientAddress && currentCompany?.fiscalAddress) {
+                          setClientAddress(currentCompany.fiscalAddress);
+                        }
+                      }}
+                      className="mt-0.5 accent-blue-700"
+                    />
+                    <div className="min-w-0">
+                      <span className="block text-xs font-semibold text-slate-900 dark:text-white">
+                        En Oficina de Cliente
+                      </span>
+                      <span className="block text-[11px] text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
+                        Ejecución presencial en las instalaciones de la empresa vinculada con geocerca configurable.
+                      </span>
+                    </div>
+                  </label>
+                </div>
               </div>
 
-              <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-3">
-                <h4 className="text-xs font-bold text-slate-700 uppercase flex items-center">
-                  <AlertTriangle className="w-4 h-4 mr-1.5 text-[#FF6B35]" />
-                  Alertas y Notificaciones Bidireccionales
-                </h4>
-
-                <label className="flex items-start space-x-2.5 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={notifyAt80}
-                    onChange={(e) => setNotifyAt80(e.target.checked)}
-                    className="mt-0.5 rounded text-[#0D5C75] focus:ring-[#0D5C75]"
-                  />
-                  <span className="text-xs text-slate-600 leading-snug">
-                    <b>Notificación en tiempo real al completar:</b> Recibir alerta instantánea en bandeja cuando el empleado marque la tarea como <code>completed</code>.
+              {/* Detalle Opción A: Oficina del Despacho */}
+              {locationMode === 'office' && (
+                <div className="p-4 border border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-[#101726]/70 space-y-1">
+                  <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 block">
+                    Sede Predeterminada
                   </span>
-                </label>
+                  <p className="text-xs font-medium text-slate-800 dark:text-slate-200">
+                    {DEFAULT_OFFICE_ADDRESS}
+                  </p>
+                  <p className="text-[11px] font-mono text-slate-500 dark:text-slate-400">
+                    Perímetro permitido: {DEFAULT_OFFICE_RADIUS} metros
+                  </p>
+                </div>
+              )}
 
-                <label className="flex items-start space-x-2.5 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={notifyOffHours}
-                    onChange={(e) => setNotifyOffHours(e.target.checked)}
-                    className="mt-0.5 rounded text-[#0D5C75] focus:ring-[#0D5C75]"
-                  />
-                  <span className="text-xs text-slate-600 leading-snug">
-                    <b>Alerta al 80% de consumo:</b> Notificar automáticamente en el tablero antes de agotar el presupuesto.
-                  </span>
-                </label>
-              </div>
+              {/* Detalle Opción B: Oficina de Cliente */}
+              {locationMode === 'client_site' && (
+                <div className="space-y-4 pt-1 border-t border-slate-200 dark:border-slate-800">
+                  {currentCompany?.fiscalAddress && (
+                    <div className="flex items-start justify-between gap-3 pt-3">
+                      <div className="min-w-0">
+                        <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 block">
+                          Sede Fiscal Registrada — {currentCompany.commercialName || currentCompany.name}
+                        </span>
+                        <p className="text-xs text-slate-800 dark:text-slate-200 mt-0.5">
+                          {currentCompany.fiscalAddress}
+                        </p>
+                      </div>
+                      <label className="inline-flex items-center gap-2 text-xs text-slate-600 dark:text-slate-300 shrink-0 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={useCustomClientAddress}
+                          onChange={(e) => {
+                            const checked = e.target.checked;
+                            setUseCustomClientAddress(checked);
+                            if (!checked) {
+                              setClientAddress(currentCompany.fiscalAddress || '');
+                            }
+                          }}
+                          className="accent-blue-700"
+                        />
+                        <span>Usar otra dirección</span>
+                      </label>
+                    </div>
+                  )}
+
+                  {(!currentCompany?.fiscalAddress || useCustomClientAddress) && (
+                    <div>
+                      <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1.5">
+                        Dirección de la Oficina del Cliente *
+                      </label>
+                      <input
+                        type="text"
+                        value={clientAddress}
+                        onChange={(e) => setClientAddress(e.target.value)}
+                        placeholder="Calle, número, colonia, ciudad y código postal"
+                        className="w-full px-3 py-2 text-xs bg-white dark:bg-[#101726] border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:border-blue-700 dark:focus:border-sky-400 outline-none"
+                      />
+                    </div>
+                  )}
+
+                  <div className="max-w-xs">
+                    <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1.5">
+                      Radio de Geocerca Permitido
+                    </label>
+                    <select
+                      value={radiusMeters}
+                      onChange={(e) => setRadiusMeters(Number(e.target.value))}
+                      className="w-full px-3 py-2 text-xs font-mono bg-white dark:bg-[#101726] border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 focus:border-blue-700 dark:focus:border-sky-400 outline-none cursor-pointer"
+                    >
+                      <option value={50}>50 metros (Tolerancia estricta)</option>
+                      <option value={100}>100 metros (Edificio / Oficina)</option>
+                      <option value={250}>250 metros (Campus / Planta)</option>
+                      <option value={500}>500 metros (Parque industrial)</option>
+                    </select>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
-          {/* PESTAÑA 4: DIRECCIÓN Y PERÍMETRO GEOGRÁFICO */}
-          {activeTab === 'geofence' && (
-            <div className="space-y-4 animate-fade-in">
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
-                    Modalidad de Trabajo
-                  </label>
-                  <select
-                    value={geoMode}
-                    onChange={(e) =>
-                      setGeoMode(e.target.value as 'remote' | 'office' | 'client_site')
-                    }
-                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-[#0D5C75]/20 outline-none"
-                  >
-                    <option value="client_site">En Sitio del Cliente</option>
-                    <option value="office">Oficina del Despacho</option>
-                    <option value="remote">Remoto / Sin Restricción</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
-                    Radio de Geocerca (Metros)
-                  </label>
-                  <select
-                    value={geoRadius}
-                    onChange={(e) => setGeoRadius(parseInt(e.target.value))}
-                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-[#0D5C75]/20 outline-none"
-                  >
-                    <option value="50">50 metros (Tolerancia estricta)</option>
-                    <option value="100">100 metros (Estándar)</option>
-                    <option value="250">250 metros (Campus / Planta)</option>
-                    <option value="500">500 metros (Área amplia)</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
-                    Política de Incumplimiento
-                  </label>
-                  <select
-                    value={geoEnforcement}
-                    onChange={(e) =>
-                      setGeoEnforcement(e.target.value as 'strict_block' | 'warning' | 'none')
-                    }
-                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-[#0D5C75]/20 outline-none"
-                  >
-                    <option value="warning">Alerta y Solicitud de Aprobación</option>
-                    <option value="strict_block">Bloqueo Estricto de Cronómetro</option>
-                    <option value="none">Solo Registro Informativo</option>
-                  </select>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
-                  Dirección Física Registrada
-                </label>
-                <input
-                  type="text"
-                  value={geoAddress}
-                  onChange={(e) => setGeoAddress(e.target.value)}
-                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-[#0D5C75]/20 outline-none"
-                />
-              </div>
-
-              <div className="h-64 w-full rounded-xl overflow-hidden border border-slate-700 shadow-inner relative corporate-dark-map bg-[#090E17]">
-                <MapContainer
-                  center={[geoLat, geoLng]}
-                  zoom={15}
-                  attributionControl={false}
-                  className="w-full h-full corporate-dark-map"
-                >
-                  <TileLayer
-                    url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
-                    maxZoom={19}
-                  />
-                  <Marker position={[geoLat, geoLng]} />
-                  <Circle
-                    center={[geoLat, geoLng]}
-                    radius={geoRadius}
-                    pathOptions={{ color: '#0D5C75', fillColor: '#0D5C75', fillOpacity: 0.2 }}
-                  />
-                </MapContainer>
-                <div className="absolute bottom-2 left-2 z-[400] bg-white/90 backdrop-blur-xs px-2.5 py-1 rounded text-[11px] font-semibold text-slate-700 shadow-sm border border-slate-200">
-                  Perímetro activo: {geoRadius}m alrededor del punto
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Pie del Modal */}
-          <div className="pt-4 border-t border-slate-200 flex items-center justify-between mt-6">
-            <span className="text-xs text-slate-400">
-              💡 La asignación y notificación se sincronizan en tiempo real con el empleado seleccionado.
-            </span>
-            <div className="flex space-x-3">
-              <button
-                type="button"
-                onClick={onClose}
-                className="px-4 py-2 border border-slate-200 rounded-lg text-sm font-semibold text-slate-600 hover:bg-slate-50 transition-colors"
-              >
-                Cancelar
-              </button>
-              <button
-                type="submit"
-                className="px-5 py-2 bg-[#FF6B35] hover:bg-[#F97316] text-white rounded-lg text-sm font-bold shadow-sm transition-all cursor-pointer"
-              >
-                Guardar y Notificar Asignación
-              </button>
-            </div>
+          {/* Pie de Acciones del Modal */}
+          <div className="pt-4 border-t border-slate-200 dark:border-slate-800 flex items-center justify-end gap-3">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 text-xs font-semibold tracking-wide text-slate-700 dark:text-slate-300 bg-white dark:bg-[#101726] border border-slate-300 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              className="px-5 py-2 text-xs font-semibold tracking-wide text-white bg-blue-700 hover:bg-blue-600 transition-colors cursor-pointer"
+            >
+              {currentTask ? 'Guardar Cambios' : 'Guardar y Asignar Tarea'}
+            </button>
           </div>
         </form>
       </div>

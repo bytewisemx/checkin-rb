@@ -83,8 +83,12 @@ export function ProjectTeamAssignmentModal({
 
   const handleSave = () => {
     const assignedArray = Array.from(selectedUserIds);
+    const assignedEmails = assignedArray
+      .map((id) => teamMembers.find((m) => m.id === id)?.email?.trim().toLowerCase() || '')
+      .filter(Boolean);
     updateProject(project.id, {
       assignedUserIds: assignedArray,
+      assignedUserEmails: Array.from(new Set(assignedEmails)),
     });
 
     // Asegurar que si hay tareas en el proyecto, los colaboradores asignados tengan visibilidad

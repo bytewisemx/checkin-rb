@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { X, Plus, Clock, User, Edit2, ListTodo } from 'lucide-react';
 import { useRayonerStore } from '../../../store/useRayonerStore';
 import { CompanyLogoBadge } from '../../../components/common/CompanyLogoBadge';
+import { formatMinutesSexagesimal } from '../../../services/attendanceService';
 import type { Project, TaskNode } from '../../../types/rayoner';
 
 interface ProjectTasksDrawerModalProps {
@@ -107,13 +108,26 @@ export function ProjectTasksDrawerModal({
         {/* Lista de Tareas */}
         <div className="flex-1 my-4 overflow-y-auto space-y-2.5 pr-1 no-scrollbar">
           {projectTasks.map((task: TaskNode) => {
-            const actual = taskActualHours[task.id] || 0;
-            const planned = task.plannedHours || 1;
-            const percent = Math.round((actual / planned) * 100);
+            const actualMinutes =
+              task.loggedMinutes !== undefined
+                ? Math.max(0, Math.round(task.loggedMinutes))
+                : Math.max(0, Math.round((taskActualHours[task.id] || 0) * 60));
+            const plannedMinutes =
+              task.plannedMinutes !== undefined
+                ? Math.max(0, Math.round(task.plannedMinutes))
+                : Math.max(0, Math.round((task.plannedHours || 0) * 60));
+            const percent =
+              plannedMinutes > 0 ? Math.round((actualMinutes / plannedMinutes) * 100) : 0;
             const isOver = percent >= 100;
             const isAlert = percent >= 80 && percent < 100;
 
-            const assignee = teamMembers.find((m) => m.id === task.assigned_to);
+            const assignee = teamMembers.find(
+              (m) =>
+                m.id === (task.assignedToId || task.assigned_to) ||
+                (task.assignedToEmail &&
+                  m.email.toLowerCase() === task.assignedToEmail.toLowerCase())
+            );
+            const assigneeDisplayName = assignee?.name || task.assignedToName || 'Sin asignar';
 
             return (
               <div
@@ -135,12 +149,12 @@ export function ProjectTasksDrawerModal({
                   <div className="flex items-center gap-3 mt-1.5 text-[11px] text-slate-400">
                     <span className="inline-flex items-center gap-1">
                       <User className="w-3 h-3 text-slate-400" />
-                      {assignee?.name || 'Sin asignar'}
+                      {assigneeDisplayName}
                     </span>
                     <span>•</span>
-                    <span className="inline-flex items-center gap-1 font-medium">
+                    <span className="inline-flex items-center gap-1 font-mono font-medium">
                       <Clock className="w-3 h-3" />
-                      {actual}h / {planned}h ({percent}%)
+                      {formatMinutesSexagesimal(actualMinutes)} / {formatMinutesSexagesimal(plannedMinutes)} ({percent}%)
                     </span>
                   </div>
 

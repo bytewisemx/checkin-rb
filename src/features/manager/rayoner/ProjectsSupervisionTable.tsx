@@ -1,10 +1,10 @@
 import { useState, useMemo } from 'react';
-import { 
-  Search, 
-  Plus, 
-  ListTodo, 
-  FileText, 
-  UserPlus 
+import {
+  Search,
+  Plus,
+  ListTodo,
+  FileText,
+  UserPlus
 } from 'lucide-react';
 import { useRayonerStore } from '../../../store/useRayonerStore';
 import { useCheckinStore } from '../../../store/useCheckinStore';
@@ -61,7 +61,7 @@ export function ProjectsSupervisionTable({
     return projects.map((project) => {
       const client = clients.find((c) => c.id === project.clientId);
       const projectTasks = tasks.filter((t) => t.projectId === project.id);
-      
+
       // Total de horas consumidas
       const consumedHours = projectTasks.reduce(
         (acc, t) => acc + (taskActualHours[t.id] || 0),
@@ -372,26 +372,24 @@ export function ProjectsSupervisionTable({
                               {consumedHours}h / {budgetHours}h
                             </span>
                             <span
-                              className={`font-bold ${
-                                isOverBudget
+                              className={`font-bold ${isOverBudget
                                   ? 'text-rose-600 dark:text-rose-400'
                                   : isWarning
-                                  ? 'text-amber-600 dark:text-amber-400'
-                                  : 'text-blue-600 dark:text-blue-400'
-                              }`}
+                                    ? 'text-amber-600 dark:text-amber-400'
+                                    : 'text-blue-600 dark:text-blue-400'
+                                }`}
                             >
                               {percent}%
                             </span>
                           </div>
                           <div className="w-full bg-slate-100 dark:bg-slate-800 rounded-full h-1.5 overflow-hidden">
                             <div
-                              className={`h-1.5 rounded-full transition-all duration-300 ${
-                                isOverBudget
+                              className={`h-1.5 rounded-full transition-all duration-300 ${isOverBudget
                                   ? 'bg-rose-500'
                                   : isWarning
-                                  ? 'bg-amber-500'
-                                  : 'bg-blue-600 dark:bg-blue-500'
-                              }`}
+                                    ? 'bg-amber-500'
+                                    : 'bg-blue-600 dark:bg-blue-500'
+                                }`}
                               style={{ width: `${Math.min(percent, 100)}%` }}
                             />
                           </div>

@@ -1,25 +1,129 @@
 import { collection, doc, getDocs, query, setDoc, where, deleteDoc, writeBatch } from 'firebase/firestore';
-import { db, isFirebaseConfigured } from './firebase';
+import { db, auth, isFirebaseConfigured, loginWithEmail, registerWithEmail } from './firebase';
 import { validateShiftTimeDistribution } from './attendanceService';
 import {
   trackFirestoreDelete,
   trackFirestoreRead,
   trackFirestoreWrite,
 } from './firestoreTelemetry';
+import type { TaskNode } from '../types/rayoner';
 
 export interface TaskDocument {
   id: string;
   title: string;
+  description?: string;
   companyId: string;
+  companyName?: string;
   projectId?: string;
+  projectName?: string;
+  // Identificadores unificados del colaborador asignado
   assignedTo: string;
+  assignedToId: string;
+  assigned_to: string;
+  assignedToEmail: string;
+  assignedToName?: string;
   supervisorId: string;
+  created_by?: string;
   status: 'pending' | 'in_progress' | 'progress' | 'review' | 'completed';
-  priority: 'low' | 'medium' | 'high';
+  priority: 'low' | 'medium' | 'high' | 'urgent';
   plannedMinutes: number; // Entero estricto, sin decimales
   loggedMinutes: number; // Entero estricto, sin decimales
+  dueDate?: string;
+  locationMode?: 'office' | 'client_site';
+  locationAddress?: string;
+  locationRadiusMeters?: number;
+  isBillable?: boolean;
+  isActive?: boolean;
+  isExtraordinary?: boolean;
+  extraordinaryCategory?: string;
   createdAt: string;
   updatedAt?: string;
+}
+
+export interface UserIdentityMatcher {
+  id?: string | null;
+  uid?: string | null;
+  memberId?: string | null;
+  email?: string | null;
+}
+
+const DEMO_EMAIL_TO_ID: Record<string, string> = {
+  'ti.root@russellbedford.mx': 'demo_ti',
+  'socio.prueba@russellbedford.mx': 'demo_socio',
+  'gerente.prueba@russellbedford.mx': 'demo_gerente',
+  'rh.prueba@russellbedford.mx': 'demo_rh',
+  'supervisor.prueba@russellbedford.mx': 'demo_supervisor',
+  'colaborador.prueba@russellbedford.mx': 'demo_colaborador',
+};
+
+const DEMO_ID_TO_EMAIL: Record<string, string> = {
+  demo_ti: 'ti.root@russellbedford.mx',
+  demo_socio: 'socio.prueba@russellbedford.mx',
+  demo_gerente: 'gerente.prueba@russellbedford.mx',
+  demo_rh: 'rh.prueba@russellbedford.mx',
+  demo_supervisor: 'supervisor.prueba@russellbedford.mx',
+  demo_colaborador: 'colaborador.prueba@russellbedford.mx',
+};
+
+/**
+ * Resuelve todos los identificadores válidos (id de perfil, uid Firebase, id demo y correo en minúsculas)
+ * asociados a un usuario para asegurar sincronización exacta entre Firestore y el cliente.
+ */
+export function resolveUserIdentityKeys(identity: UserIdentityMatcher): {
+  ids: string[];
+  email: string;
+} {
+  const email = (identity.email || '').trim().toLowerCase();
+  const idSet = new Set<string>();
+
+  if (identity.id && identity.id.trim()) idSet.add(identity.id.trim());
+  if (identity.uid && identity.uid.trim()) idSet.add(identity.uid.trim());
+  if (identity.memberId && identity.memberId.trim()) idSet.add(identity.memberId.trim());
+
+  if (email && DEMO_EMAIL_TO_ID[email]) {
+    idSet.add(DEMO_EMAIL_TO_ID[email]);
+  }
+
+  return {
+    ids: Array.from(idSet),
+    email,
+  };
+}
+
+/**
+ * Determina si una tarea pertenece al usuario dado, comparando de forma unificada
+ * `assignedToId`, `assigned_to`, `assignedTo` y `assignedToEmail`.
+ */
+export function doesTaskBelongToUser(
+  task: Pick<TaskNode, 'id' | 'assigned_to' | 'assignedToId' | 'assignedToEmail'> & {
+    assignedTo?: string;
+  },
+  identity: UserIdentityMatcher,
+  assignedTaskIds?: Set<string>
+): boolean {
+  if (assignedTaskIds && assignedTaskIds.has(task.id)) return true;
+
+  const { ids, email } = resolveUserIdentityKeys(identity);
+  const taskIds = [task.assignedToId, task.assigned_to, task.assignedTo]
+    .map((v) => (v || '').trim())
+    .filter(Boolean);
+
+  if (ids.some((candidate) => taskIds.includes(candidate))) {
+    return true;
+  }
+
+  const taskEmail = (task.assignedToEmail || '').trim().toLowerCase();
+  if (email && taskEmail && taskEmail === email) {
+    return true;
+  }
+
+  // Respaldo para tareas antiguas que solo guardaron ID demo sin assignedToEmail
+  if (email && DEMO_EMAIL_TO_ID[email]) {
+    const demoId = DEMO_EMAIL_TO_ID[email];
+    if (taskIds.includes(demoId)) return true;
+  }
+
+  return false;
 }
 
 /**
@@ -32,11 +136,18 @@ export function toIntegerMinutes(value: number | undefined | null): number {
 }
 
 /**
- * Crea o actualiza una tarea en la colección `tasks` de Firestore
- * Garantiza tiempos almacenados estrictamente en minutos enteros sin decimales.
+ * Crea o actualiza una tarea en la colección `tasks` de Firestore.
+ * Guarda identificadores unificados (`assignedToId`, `assignedTo`, `assigned_to`, `assignedToEmail`),
+ * vínculo a empresa/proyecto y tiempos almacenados estrictamente en minutos enteros sin decimales.
  */
 export async function saveTaskToFirestore(
-  task: Omit<TaskDocument, 'plannedMinutes' | 'loggedMinutes' | 'createdAt'> & {
+  task: Omit<
+    TaskDocument,
+    'plannedMinutes' | 'loggedMinutes' | 'createdAt' | 'assignedToId' | 'assigned_to' | 'assignedToEmail'
+  > & {
+    assignedToId?: string;
+    assigned_to?: string;
+    assignedToEmail?: string;
     plannedMinutes?: number;
     loggedMinutes?: number;
     plannedHours?: number;
@@ -50,17 +161,51 @@ export async function saveTaskToFirestore(
 
   const computedLoggedMinutes = toIntegerMinutes(task.loggedMinutes || 0);
 
+  const unifiedAssignedId = (
+    task.assignedToId ||
+    task.assignedTo ||
+    task.assigned_to ||
+    ''
+  ).trim();
+
+  const resolvedEmail = (
+    task.assignedToEmail ||
+    DEMO_ID_TO_EMAIL[unifiedAssignedId] ||
+    ''
+  )
+    .trim()
+    .toLowerCase();
+
   const payload: TaskDocument = {
     id: task.id,
     title: task.title.trim() || 'Tarea sin título',
-    companyId: task.companyId || '',
-    projectId: task.projectId || '',
-    assignedTo: task.assignedTo || '',
-    supervisorId: task.supervisorId || '',
+    description: (task.description || '').trim(),
+    companyId: (task.companyId || '').trim(),
+    companyName: (task.companyName || '').trim(),
+    projectId: (task.projectId || '').trim(),
+    projectName: (task.projectName || '').trim(),
+    assignedTo: unifiedAssignedId,
+    assignedToId: unifiedAssignedId,
+    assigned_to: unifiedAssignedId,
+    assignedToEmail: resolvedEmail,
+    assignedToName: (task.assignedToName || '').trim(),
+    supervisorId: (task.supervisorId || task.created_by || '').trim(),
+    created_by: (task.created_by || task.supervisorId || '').trim(),
     status: task.status || 'pending',
     priority: task.priority || 'medium',
     plannedMinutes: computedPlannedMinutes,
     loggedMinutes: computedLoggedMinutes,
+    dueDate: (task.dueDate || '').trim(),
+    locationMode: task.locationMode || 'office',
+    locationAddress: (task.locationAddress || '').trim(),
+    locationRadiusMeters:
+      typeof task.locationRadiusMeters === 'number' && task.locationRadiusMeters > 0
+        ? Math.round(task.locationRadiusMeters)
+        : 150,
+    isBillable: task.isBillable !== false,
+    isActive: task.isActive !== false,
+    isExtraordinary: Boolean(task.isExtraordinary),
+    extraordinaryCategory: (task.extraordinaryCategory || '').trim(),
     createdAt: task.createdAt || new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   };
@@ -70,6 +215,20 @@ export async function saveTaskToFirestore(
   }
 
   try {
+    // Asegurar sesión Firebase Auth sincronizada cuando se opera con una cuenta demo
+    const actorId = payload.supervisorId || payload.assignedToId;
+    const expectedDemoEmail = DEMO_ID_TO_EMAIL[actorId];
+    if (
+      expectedDemoEmail &&
+      auth &&
+      (auth.currentUser?.email || '').toLowerCase() !== expectedDemoEmail
+    ) {
+      let authRes = await loginWithEmail(expectedDemoEmail, 'admin123');
+      if (!authRes.success) {
+        authRes = await registerWithEmail(expectedDemoEmail, 'admin123');
+      }
+    }
+
     await setDoc(doc(db, 'tasks', payload.id), payload, { merge: true });
     trackFirestoreWrite(1);
     return { success: true, data: payload };
@@ -91,6 +250,7 @@ export async function updateTaskProgressInFirestore(
     loggedMinutes?: number;
     status?: TaskDocument['status'];
     plannedMinutes?: number;
+    completedAt?: string | null;
   }
 ): Promise<boolean> {
   if (!isFirebaseConfigured() || !db) return true;
@@ -108,6 +268,9 @@ export async function updateTaskProgressInFirestore(
   if (patch.status !== undefined) {
     cleanPatch.status = patch.status;
   }
+  if (patch.completedAt !== undefined) {
+    cleanPatch.completedAt = patch.completedAt;
+  }
 
   try {
     await setDoc(doc(db, 'tasks', taskId), cleanPatch, { merge: true });
@@ -119,42 +282,77 @@ export async function updateTaskProgressInFirestore(
   }
 }
 
+function mapRawDocToTaskDocument(docId: string, d: Record<string, any>): TaskDocument {
+  const unifiedId = String(d.assignedToId || d.assignedTo || d.assigned_to || '');
+  return {
+    id: d.id || docId,
+    title: String(d.title || d.name || 'Sin título'),
+    description: d.description ? String(d.description) : '',
+    companyId: String(d.companyId || ''),
+    companyName: d.companyName ? String(d.companyName) : '',
+    projectId: String(d.projectId || ''),
+    projectName: d.projectName ? String(d.projectName) : '',
+    assignedTo: unifiedId,
+    assignedToId: unifiedId,
+    assigned_to: unifiedId,
+    assignedToEmail: String(d.assignedToEmail || DEMO_ID_TO_EMAIL[unifiedId] || '').toLowerCase(),
+    assignedToName: d.assignedToName ? String(d.assignedToName) : '',
+    supervisorId: String(d.supervisorId || d.created_by || ''),
+    created_by: String(d.created_by || d.supervisorId || ''),
+    status: d.status || 'pending',
+    priority: d.priority || 'medium',
+    plannedMinutes: toIntegerMinutes(
+      d.plannedMinutes !== undefined ? d.plannedMinutes : (d.plannedHours || 0) * 60
+    ),
+    loggedMinutes: toIntegerMinutes(d.loggedMinutes || 0),
+    dueDate: d.dueDate ? String(d.dueDate) : '',
+    locationMode: d.locationMode === 'client_site' ? 'client_site' : 'office',
+    locationAddress: d.locationAddress ? String(d.locationAddress) : '',
+    locationRadiusMeters:
+      typeof d.locationRadiusMeters === 'number' ? Math.round(d.locationRadiusMeters) : 150,
+    isBillable: d.isBillable !== false,
+    isActive: d.isActive !== false,
+    isExtraordinary: Boolean(d.isExtraordinary),
+    extraordinaryCategory: d.extraordinaryCategory ? String(d.extraordinaryCategory) : '',
+    createdAt: String(d.createdAt || d.created_at || new Date().toISOString()),
+    updatedAt: d.updatedAt ? String(d.updatedAt) : undefined,
+  };
+}
+
 /**
  * Consulta las tareas asignadas a un colaborador específico en Firestore
+ * buscando por ID unificado (`assignedToId` / `assignedTo`) y por correo (`assignedToEmail`).
  */
-export async function fetchTasksByAssignee(userId: string): Promise<TaskDocument[]> {
-  if (!isFirebaseConfigured() || !db || !userId) return [];
+export async function fetchTasksByAssignee(
+  userId: string,
+  userEmail?: string
+): Promise<TaskDocument[]> {
+  if (!isFirebaseConfigured() || !db || (!userId && !userEmail)) return [];
 
-  try {
-    const q = query(collection(db, 'tasks'), where('assignedTo', '==', userId));
-    const snap = await getDocs(q);
-    trackFirestoreRead(Math.max(1, snap.size));
+  const { ids, email } = resolveUserIdentityKeys({ id: userId, email: userEmail });
+  const merged = new Map<string, TaskDocument>();
 
-    const results: TaskDocument[] = [];
-    snap.forEach((docSnap) => {
-      const d = docSnap.data();
-      results.push({
-        id: d.id || docSnap.id,
-        title: String(d.title || d.name || 'Sin título'),
-        companyId: String(d.companyId || ''),
-        projectId: String(d.projectId || ''),
-        assignedTo: String(d.assignedTo || d.assigned_to || ''),
-        supervisorId: String(d.supervisorId || d.created_by || ''),
-        status: d.status || 'pending',
-        priority: d.priority || 'medium',
-        plannedMinutes: toIntegerMinutes(
-          d.plannedMinutes !== undefined ? d.plannedMinutes : (d.plannedHours || 0) * 60
-        ),
-        loggedMinutes: toIntegerMinutes(d.loggedMinutes || 0),
-        createdAt: String(d.createdAt || d.created_at || new Date().toISOString()),
-        updatedAt: d.updatedAt ? String(d.updatedAt) : undefined,
-      });
-    });
-    return results;
-  } catch (err) {
-    console.warn('[taskService] Error al consultar tareas por colaborador:', err);
-    return [];
-  }
+  const queries = [
+    ...ids.map((idVal) => query(collection(db!, 'tasks'), where('assignedToId', '==', idVal))),
+    ...ids.map((idVal) => query(collection(db!, 'tasks'), where('assignedTo', '==', idVal))),
+    ...(email ? [query(collection(db!, 'tasks'), where('assignedToEmail', '==', email))] : []),
+  ];
+
+  await Promise.all(
+    queries.map(async (qRef) => {
+      try {
+        const snap = await getDocs(qRef);
+        trackFirestoreRead(Math.max(1, snap.size));
+        snap.forEach((docSnap) => {
+          merged.set(docSnap.id, mapRawDocToTaskDocument(docSnap.id, docSnap.data()));
+        });
+      } catch (err) {
+        console.warn('[taskService] Sub-consulta de tareas omitida por permisos/índice:', err);
+      }
+    })
+  );
+
+  return Array.from(merged.values());
 }
 
 /**

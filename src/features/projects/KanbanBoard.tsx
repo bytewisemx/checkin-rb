@@ -4,6 +4,10 @@ import { useCheckinStore } from '../../store/useCheckinStore';
 import { useRayonerStore } from '../../store/useRayonerStore';
 import { useGamificationStore } from '../../store/useGamificationStore';
 import { useOperationalCatalogSync } from '../../hooks/useLiveTeamTimers';
+import { doesTaskBelongToUser } from '../../services/taskService';
+import { formatMinutesSexagesimal } from '../../services/attendanceService';
+import { auth } from '../../services/firebase';
+import { CompanyLogoBadge } from '../../components/common/CompanyLogoBadge';
 import type { TaskNode } from '../../types/rayoner';
 import { EditTaskTimeModal } from './EditTaskTimeModal';
 import { FinalizeTaskModal } from './FinalizeTaskModal';
@@ -95,48 +99,65 @@ export function KanbanBoard() {
     ) || null;
   }, [teamMembers, currentUserId, user]);
 
-  // Tareas asignadas al usuario actual (vinculación real por assigned_to y assignments)
-  const userAssignedTasks = useMemo(() => {
-    if (!currentUserId && !currentMember) return [];
-    const userAssignments = assignments.filter(
-      a => (currentUserId && a.userId === currentUserId) || (currentMember && a.userId === currentMember.id)
-    );
-    const assignedTaskIds = new Set(userAssignments.map(a => a.taskId));
-    return tasks.filter(
-      t =>
-        (currentUserId && t.assigned_to === currentUserId) ||
-        (currentMember && t.assigned_to === currentMember.id) ||
-        assignedTaskIds.has(t.id)
-    );
-  }, [tasks, assignments, currentUserId, currentMember]);
+  // Identidad unificada del colaborador (id de perfil, uid Firebase, memberId y correo)
+  const userIdentity = useMemo(
+    () => ({
+      id: currentUserId,
+      uid: auth?.currentUser?.uid || null,
+      memberId: currentMember?.id || null,
+      email: user?.email || currentMember?.email || null,
+    }),
+    [currentUserId, currentMember?.id, currentMember?.email, user?.email]
+  );
 
-  // Empresas/Clientes asignados al colaborador (incluyendo las de sus tareas)
+  // Tareas asignadas al usuario actual (unificación por assignedToId, assigned_to, assignedToEmail y assignments)
+  const userAssignedTasks = useMemo(() => {
+    if (!user && !currentMember) return [];
+    const userAssignments = assignments.filter(
+      (a) =>
+        (currentUserId && a.userId === currentUserId) ||
+        (currentMember && a.userId === currentMember.id) ||
+        (auth?.currentUser?.uid && a.userId === auth.currentUser.uid)
+    );
+    const assignedTaskIds = new Set(userAssignments.map((a) => a.taskId));
+    return tasks.filter((t) => doesTaskBelongToUser(t, userIdentity, assignedTaskIds));
+  }, [tasks, assignments, currentUserId, currentMember, user, userIdentity]);
+
+  // Empresas/Clientes asignados al colaborador (incluyendo las de sus tareas y companyId directo)
   const assignedClients = useMemo(() => {
     const clientIds = new Set<string>();
 
     if (currentMember?.allowedClientIds && currentMember.allowedClientIds.length > 0) {
-      currentMember.allowedClientIds.forEach(id => clientIds.add(id));
+      currentMember.allowedClientIds.forEach((id) => clientIds.add(id));
     }
 
-    userAssignedTasks.forEach(t => {
-      const proj = projects.find(p => p.id === t.projectId);
+    userAssignedTasks.forEach((t) => {
+      if (t.companyId && t.companyId !== 'cli-extraordinario') {
+        clientIds.add(t.companyId);
+      }
+      const proj = projects.find((p) => p.id === t.projectId);
       if (proj?.clientId && proj.clientId !== 'cli-extraordinario') {
         clientIds.add(proj.clientId);
       }
     });
 
-    return clients.filter(c => clientIds.has(c.id) && c.id !== 'cli-extraordinario');
+    return clients.filter((c) => clientIds.has(c.id) && c.id !== 'cli-extraordinario');
   }, [clients, currentMember, userAssignedTasks, projects]);
 
-  // Horas asignadas a una tarea específica para el colaborador
+  // Horas asignadas a una tarea específica para el colaborador (fallback a plannedHours real de Firestore)
   const getTaskAllocatedHours = (taskId: string): number => {
     const asg = assignments.find(
-      a => a.taskId === taskId && (
-        (currentUserId && a.userId === currentUserId) || 
-        (currentMember && a.userId === currentMember.id)
-      )
+      (a) =>
+        a.taskId === taskId &&
+        ((currentUserId && a.userId === currentUserId) ||
+          (currentMember && a.userId === currentMember.id))
     );
-    return asg?.allocatedHours || 0;
+    if (asg?.allocatedHours && asg.allocatedHours > 0) return asg.allocatedHours;
+    const taskObj = tasks.find((t) => t.id === taskId);
+    if (taskObj && typeof taskObj.plannedMinutes === 'number' && taskObj.plannedMinutes > 0) {
+      return Number((taskObj.plannedMinutes / 60).toFixed(4));
+    }
+    return taskObj?.plannedHours || 0;
   };
 
   // Horas reales invertidas en una tarea por el colaborador
@@ -144,7 +165,16 @@ export function KanbanBoard() {
     if (!currentUserId && !currentMember) return 0;
     const userKey = currentUserId ? `${taskId}_${currentUserId}` : '';
     const memberKey = currentMember ? `${taskId}_${currentMember.id}` : '';
-    return (userKey && userTaskActualHours[userKey]) || (memberKey && userTaskActualHours[memberKey]) || 0;
+    const fromStore =
+      (userKey && userTaskActualHours[userKey]) ||
+      (memberKey && userTaskActualHours[memberKey]) ||
+      0;
+    if (fromStore > 0) return fromStore;
+    const taskObj = tasks.find((t) => t.id === taskId);
+    if (taskObj && typeof taskObj.loggedMinutes === 'number' && taskObj.loggedMinutes > 0) {
+      return Number((taskObj.loggedMinutes / 60).toFixed(4));
+    }
+    return 0;
   };
 
   // Regla de Negocio: Clasificación efectiva de la columna según el estado del sistema
@@ -185,7 +215,9 @@ export function KanbanBoard() {
       const projectIdsForClient = new Set(
         projects.filter(p => p.clientId === selectedClientId).map(p => p.id)
       );
-      result = result.filter(t => projectIdsForClient.has(t.projectId));
+      result = result.filter(
+        t => projectIdsForClient.has(t.projectId) || t.companyId === selectedClientId
+      );
     }
 
     // Filtro de texto
@@ -193,12 +225,14 @@ export function KanbanBoard() {
       const query = searchTerm.toLowerCase();
       result = result.filter(t => {
         const proj = projects.find(p => p.id === t.projectId);
-        const cli = clients.find(c => c.id === proj?.clientId);
+        const cli = clients.find(c => c.id === (proj?.clientId || t.companyId));
         return (
           t.name.toLowerCase().includes(query) ||
           (t.description && t.description.toLowerCase().includes(query)) ||
-          (cli && cli.name.toLowerCase().includes(query)) ||
-          (proj && proj.name.toLowerCase().includes(query))
+          (cli && (cli.name.toLowerCase().includes(query) || (cli.commercialName || '').toLowerCase().includes(query))) ||
+          (t.companyName && t.companyName.toLowerCase().includes(query)) ||
+          (proj && proj.name.toLowerCase().includes(query)) ||
+          (t.projectName && t.projectName.toLowerCase().includes(query))
         );
       });
     }
@@ -216,7 +250,7 @@ export function KanbanBoard() {
   // Acción 1: Iniciar Trabajo en Tarea (pasa automáticamente a En Proceso)
   const handleStartWorkingOnTask = (task: TaskNode) => {
     const project = projects.find(p => p.id === task.projectId);
-    const client = clients.find(c => c.id === project?.clientId);
+    const client = clients.find(c => c.id === (project?.clientId || task.companyId));
 
     // Iniciar cronómetro de trabajador en Rayoner
     startWorkerTimer({
@@ -224,13 +258,16 @@ export function KanbanBoard() {
       userName: currentMember?.name || user?.name || 'Colaborador',
       taskId: task.id,
       taskName: task.name,
-      projectName: project?.name || 'Proyecto',
-      clientName: client?.name || 'Cliente',
+      projectName: project?.name || task.projectName || 'Proyecto',
+      clientName: client?.commercialName || client?.name || task.companyName || 'Empresa',
       startedAtMs: Date.now(),
       currentDurationStr: '00:00:01',
     });
 
     localStorage.setItem('rb_active_task_id', task.id);
+    if (currentUserId) {
+      localStorage.setItem(`rb_active_task_id_${currentUserId}`, task.id);
+    }
     moveTaskStatus(task.id, 'progress');
     // Registrar cambio y trabajo de tarea en tiempo real para gamificación mensual
     useGamificationStore.getState().recordTaskSwitch();
@@ -267,9 +304,11 @@ export function KanbanBoard() {
   const handleSaveHours = (newHours: number) => {
     if (!editingTask) return;
     updateTaskActualHours(editingTask.id, currentUserId, newHours);
-    // Registrar edición manual: si se abusa de ajustes manuales se anula el bono de tiempo en vivo
     useGamificationStore.getState().recordManualEdit();
-    addToast(`Tiempo invertido ajustado a ${newHours}h en "${editingTask.name}"`, 'success');
+    addToast(
+      `Tiempo invertido ajustado a ${formatMinutesSexagesimal(Math.round(newHours * 60))} en "${editingTask.name}".`,
+      'success'
+    );
     setEditingTask(null);
   };
 
@@ -279,7 +318,10 @@ export function KanbanBoard() {
     stopWorkerTimer(currentUserId);
     localStorage.removeItem('rb_active_task_id');
     finalizeTaskWithHours(editingTask.id, currentUserId, finalHours, currentMember?.name || user?.name);
-    addToast(`Tarea "${editingTask.name}" finalizada con ${finalHours}h imputadas. Notificación enviada al supervisor (${editingTask.created_by || 'admin-99'}).`, 'success');
+    addToast(
+      `Tarea "${editingTask.name}" finalizada con ${formatMinutesSexagesimal(Math.round(finalHours * 60))} imputados.`,
+      'success'
+    );
     setEditingTask(null);
   };
 
@@ -294,7 +336,10 @@ export function KanbanBoard() {
     stopWorkerTimer(currentUserId);
     localStorage.removeItem('rb_active_task_id');
     finalizeTaskWithHours(finalizingTask.id, currentUserId, finalHours, currentMember?.name || user?.name);
-    addToast(`Tarea "${finalizingTask.name}" finalizada con ${finalHours}h imputadas. Notificación enviada al supervisor (${finalizingTask.created_by || 'admin-99'}).`, 'success');
+    addToast(
+      `Tarea "${finalizingTask.name}" finalizada con ${formatMinutesSexagesimal(Math.round(finalHours * 60))} imputados.`,
+      'success'
+    );
     setFinalizingTask(null);
   };
 
@@ -438,12 +483,17 @@ export function KanbanBoard() {
                   <div className="space-y-3 min-h-[220px]">
                     {columnTasks.map((task) => {
                       const project = projects.find(p => p.id === task.projectId);
-                      const client = clients.find(c => c.id === project?.clientId);
+                      const client = clients.find(c => c.id === (project?.clientId || task.companyId));
+                      const displayCompanyName =
+                        client?.commercialName || client?.name || task.companyName || 'Empresa';
+                      const displayProjectName = project?.name || task.projectName || 'Proyecto';
                       const allocatedHours = getTaskAllocatedHours(task.id);
                       const actualHours = getTaskUserActualHours(task.id);
-                      
-                      const percentConsumed = allocatedHours > 0 
-                        ? Math.round((actualHours / allocatedHours) * 100) 
+                      const allocatedMinutes = Math.max(0, Math.round(allocatedHours * 60));
+                      const actualMinutes = Math.max(0, Math.round(actualHours * 60));
+
+                      const percentConsumed = allocatedMinutes > 0
+                        ? Math.round((actualMinutes / allocatedMinutes) * 100)
                         : 0;
 
                       const isCurrentlyActive = activeWorkers.some(
@@ -459,19 +509,27 @@ export function KanbanBoard() {
                               : 'border-slate-200 hover:border-slate-300 shadow-2xs'
                           }`}
                         >
-                          {/* Empresa / Categoría y Prioridad (Sin píldoras con bordes pesados) */}
+                          {/* Empresa (con logotipo/monograma) y Prioridad */}
                           <div className="flex items-center justify-between text-[11px] gap-2">
                             {task.isExtraordinary || task.projectId === 'prj-extraordinario' ? (
                               <span className="font-semibold text-[11px] text-blue-700 uppercase tracking-wider truncate">
                                 Tarea Extraordinaria
                               </span>
                             ) : (
-                              <span className="font-semibold text-[11px] text-slate-500 uppercase tracking-wider truncate">
-                                {client?.name || 'Empresa'}
-                              </span>
+                              <div className="flex items-center gap-2 min-w-0">
+                                <CompanyLogoBadge
+                                  name={client?.name || task.companyName}
+                                  commercialName={client?.commercialName}
+                                  logoUrl={client?.logoUrl}
+                                  size="sm"
+                                />
+                                <span className="font-semibold text-[11px] text-slate-600 uppercase tracking-wider truncate">
+                                  {displayCompanyName}
+                                </span>
+                              </div>
                             )}
 
-                            <div className="flex items-center space-x-1.5">
+                            <div className="flex items-center space-x-1.5 shrink-0">
                               {isCurrentlyActive && (
                                 <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-semibold tracking-wider bg-blue-700 text-white">
                                   EN VIVO
@@ -483,7 +541,13 @@ export function KanbanBoard() {
                                   task.priority === 'high' ? 'text-amber-700' :
                                   'text-slate-500'
                                 }`}>
-                                  {task.priority}
+                                  {task.priority === 'urgent'
+                                    ? 'Urgente'
+                                    : task.priority === 'high'
+                                    ? 'Alta'
+                                    : task.priority === 'low'
+                                    ? 'Baja'
+                                    : 'Media'}
                                 </span>
                               )}
                             </div>
@@ -503,10 +567,17 @@ export function KanbanBoard() {
                                 </span>
                               ) : (
                                 <span className="truncate">
-                                  {project?.name || 'Proyecto'}
+                                  {displayProjectName}
                                 </span>
                               )}
                             </div>
+                            {task.locationMode && (
+                              <div className="text-[11px] text-slate-400 mt-1 truncate">
+                                {task.locationMode === 'client_site'
+                                  ? `En Oficina de Cliente${task.locationAddress ? ` • ${task.locationAddress}` : ''}`
+                                  : 'En Oficina (Despacho)'}
+                              </div>
+                            )}
                           </div>
 
                           {/* Alerta de Revisión Solicitada por el Supervisor */}
@@ -521,12 +592,15 @@ export function KanbanBoard() {
                             </div>
                           )}
 
-                          {/* Avance en Tiempo: Presupuesto vs Invertido (Sin recuadro encapsulado) */}
+                          {/* Avance en Tiempo: Presupuesto vs Invertido en formato sexagesimal (Xh Ym) */}
                           <div className="space-y-1.5 pt-1">
                             <div className="flex items-center justify-between text-xs">
                               <span className="text-slate-500">Avance de tiempo:</span>
                               <span className="font-mono font-medium text-slate-800">
-                                {actualHours}h <span className="text-slate-400 font-normal">/ {allocatedHours > 0 ? `${allocatedHours}h` : 'N/A'}</span>
+                                {formatMinutesSexagesimal(actualMinutes)}{' '}
+                                <span className="text-slate-400 font-normal">
+                                  / {allocatedMinutes > 0 ? formatMinutesSexagesimal(allocatedMinutes) : 'Sin estimación'}
+                                </span>
                               </span>
                             </div>
 

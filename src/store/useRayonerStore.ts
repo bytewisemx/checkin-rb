@@ -8,7 +8,11 @@ import {
   saveProjectToFirestore,
   deleteProjectFromFirestore,
 } from '../services/companyService';
-import { saveTaskToFirestore, deleteTaskFromFirestore } from '../services/taskService';
+import {
+  saveTaskToFirestore,
+  updateTaskProgressInFirestore,
+  deleteTaskFromFirestore,
+} from '../services/taskService';
 import { trackFirestoreWrite } from '../services/firestoreTelemetry';
 import { useNotificationStore } from './useNotificationStore';
 import type {
@@ -360,17 +364,49 @@ export const useRayonerStore = create<RayonerState>()(
         const id = `tsk-${Date.now()}`;
         const nowIso = new Date().toISOString();
         const titleStr = taskData.title || taskData.name || 'Nueva Tarea';
+        const stateSnapshot = get();
+        const projForCompany = stateSnapshot.projects.find((p) => p.id === taskData.projectId);
+        const companyId = taskData.companyId || projForCompany?.clientId || '';
+        const companyObj = stateSnapshot.clients.find((c) => c.id === companyId);
+        const unifiedAssigneeId = taskData.assignedToId || taskData.assigned_to || '';
+        const memberObj = stateSnapshot.teamMembers.find(
+          (m) =>
+            m.id === unifiedAssigneeId ||
+            (taskData.assignedToEmail &&
+              m.email.toLowerCase() === taskData.assignedToEmail.toLowerCase())
+        );
+        const resolvedEmail = (
+          taskData.assignedToEmail ||
+          memberObj?.email ||
+          ''
+        )
+          .trim()
+          .toLowerCase();
+        const resolvedName = (taskData.assignedToName || memberObj?.name || '').trim();
+        const plannedMin =
+          typeof taskData.plannedMinutes === 'number'
+            ? Math.max(0, Math.round(taskData.plannedMinutes))
+            : Math.max(0, Math.round((taskData.plannedHours || 0) * 60));
 
         const newTask: TaskNode = {
           ...taskData,
           id,
           title: titleStr,
           name: titleStr,
-          assigned_to: taskData.assigned_to || '',
+          companyId,
+          companyName: taskData.companyName || companyObj?.commercialName || companyObj?.name || '',
+          projectName: taskData.projectName || projForCompany?.name || '',
+          assigned_to: unifiedAssigneeId,
+          assignedToId: unifiedAssigneeId,
+          assignedToEmail: resolvedEmail,
+          assignedToName: resolvedName,
           created_by: taskData.created_by || '',
           status: taskData.status || 'pending',
           created_at: taskData.created_at || nowIso,
           completed_at: taskData.completed_at ?? null,
+          plannedHours: Number((plannedMin / 60).toFixed(4)),
+          plannedMinutes: plannedMin,
+          loggedMinutes: taskData.loggedMinutes ?? 0,
           isActive: true,
         };
 
@@ -378,32 +414,46 @@ export const useRayonerStore = create<RayonerState>()(
           tasks: [...state.tasks, newTask],
         }));
 
-        const projForCompany = get().projects.find((p) => p.id === newTask.projectId);
         void saveTaskToFirestore({
           id,
           title: titleStr,
-          companyId: projForCompany?.clientId || '',
+          description: newTask.description || '',
+          companyId: newTask.companyId || '',
+          companyName: newTask.companyName || '',
           projectId: newTask.projectId || '',
-          assignedTo: newTask.assigned_to || '',
+          projectName: newTask.projectName || '',
+          assignedTo: unifiedAssigneeId,
+          assignedToId: unifiedAssigneeId,
+          assigned_to: unifiedAssigneeId,
+          assignedToEmail: resolvedEmail,
+          assignedToName: resolvedName,
           supervisorId: newTask.created_by || '',
+          created_by: newTask.created_by || '',
           status: newTask.status || 'pending',
-          priority: (newTask.priority as 'low' | 'medium' | 'high') || 'medium',
-          plannedMinutes: Math.round((newTask.plannedHours || 0) * 60),
-          loggedMinutes: 0,
+          priority: newTask.priority || 'medium',
+          plannedMinutes: plannedMin,
+          loggedMinutes: newTask.loggedMinutes ?? 0,
+          dueDate: newTask.dueDate || '',
+          locationMode: newTask.locationMode || 'office',
+          locationAddress: newTask.locationAddress || '',
+          locationRadiusMeters: newTask.locationRadiusMeters || 150,
+          isBillable: newTask.isBillable !== false,
+          isActive: true,
+          isExtraordinary: Boolean(newTask.isExtraordinary),
+          extraordinaryCategory: newTask.extraordinaryCategory || '',
           createdAt: nowIso,
         });
 
-        if (notifyAssignee && newTask.assigned_to) {
-          const proj = get().projects.find((p) => p.id === newTask.projectId);
+        if (notifyAssignee && unifiedAssigneeId) {
           useNotificationStore.getState().addNotification({
-            recipient_id: newTask.assigned_to,
-            sender_id: newTask.created_by || 'admin-99',
+            recipient_id: unifiedAssigneeId,
+            sender_id: newTask.created_by || 'demo_supervisor',
             type: 'task_assigned',
             title: 'Nueva Tarea Asignada',
-            message: `Tu supervisor te ha asignado la tarea "${newTask.title}" en ${proj?.name || 'Russell Bedford'}.`,
+            message: `Tu supervisor te ha asignado la tarea "${newTask.title}" en ${projForCompany?.name || 'Russell Bedford'}.`,
             taskId: id,
             taskTitle: newTask.title,
-            projectName: proj?.name,
+            projectName: projForCompany?.name,
             authorName: 'Supervisor',
           });
         }
@@ -441,26 +491,105 @@ export const useRayonerStore = create<RayonerState>()(
       },
 
       updateTask: (id, data) => {
+        const stateSnapshot = get();
+        const existing = stateSnapshot.tasks.find((t) => t.id === id);
+        if (!existing) return;
+
+        const nextTitle = data.title ?? data.name ?? existing.title ?? existing.name;
+        const nextStatus = data.status ?? existing.status ?? 'pending';
+        const nextCompletedAt =
+          nextStatus === 'completed'
+            ? existing.completed_at || new Date().toISOString()
+            : data.status !== undefined
+            ? null
+            : existing.completed_at;
+        const nextProjectId = data.projectId ?? existing.projectId;
+        const projObj = stateSnapshot.projects.find((p) => p.id === nextProjectId);
+        const nextCompanyId = data.companyId ?? projObj?.clientId ?? existing.companyId ?? '';
+        const companyObj = stateSnapshot.clients.find((c) => c.id === nextCompanyId);
+        const unifiedAssigneeId =
+          data.assignedToId ?? data.assigned_to ?? existing.assignedToId ?? existing.assigned_to ?? '';
+        const memberObj = stateSnapshot.teamMembers.find(
+          (m) =>
+            m.id === unifiedAssigneeId ||
+            (data.assignedToEmail && m.email.toLowerCase() === data.assignedToEmail.toLowerCase())
+        );
+        const resolvedEmail = (
+          data.assignedToEmail ??
+          memberObj?.email ??
+          existing.assignedToEmail ??
+          ''
+        )
+          .trim()
+          .toLowerCase();
+        const resolvedName = (
+          data.assignedToName ??
+          memberObj?.name ??
+          existing.assignedToName ??
+          ''
+        ).trim();
+        const nextPlannedHours = data.plannedHours ?? existing.plannedHours ?? 0;
+        const plannedMin =
+          typeof data.plannedMinutes === 'number'
+            ? Math.max(0, Math.round(data.plannedMinutes))
+            : Math.max(0, Math.round(nextPlannedHours * 60));
+
+        const mergedTask: TaskNode = {
+          ...existing,
+          ...data,
+          title: nextTitle,
+          name: nextTitle,
+          projectId: nextProjectId,
+          projectName: data.projectName ?? projObj?.name ?? existing.projectName ?? '',
+          companyId: nextCompanyId,
+          companyName:
+            data.companyName ??
+            companyObj?.commercialName ??
+            companyObj?.name ??
+            existing.companyName ??
+            '',
+          assigned_to: unifiedAssigneeId,
+          assignedToId: unifiedAssigneeId,
+          assignedToEmail: resolvedEmail,
+          assignedToName: resolvedName,
+          plannedHours: Number((plannedMin / 60).toFixed(4)),
+          plannedMinutes: plannedMin,
+          status: nextStatus,
+          completed_at: nextCompletedAt,
+        };
+
         set((state) => ({
-          tasks: state.tasks.map((t) => {
-            if (t.id !== id) return t;
-            const nextTitle = data.title ?? data.name ?? t.title ?? t.name;
-            const nextStatus = data.status ?? t.status;
-            const nextCompletedAt =
-              nextStatus === 'completed'
-                ? t.completed_at || new Date().toISOString()
-                : nextStatus !== undefined
-                ? null
-                : t.completed_at;
-            return {
-              ...t,
-              ...data,
-              title: nextTitle,
-              name: nextTitle,
-              completed_at: nextCompletedAt,
-            };
-          }),
+          tasks: state.tasks.map((t) => (t.id === id ? mergedTask : t)),
         }));
+
+        void saveTaskToFirestore({
+          id: mergedTask.id,
+          title: mergedTask.title || mergedTask.name,
+          description: mergedTask.description || '',
+          companyId: mergedTask.companyId || '',
+          companyName: mergedTask.companyName || '',
+          projectId: mergedTask.projectId || '',
+          projectName: mergedTask.projectName || '',
+          assignedTo: unifiedAssigneeId,
+          assignedToId: unifiedAssigneeId,
+          assigned_to: unifiedAssigneeId,
+          assignedToEmail: resolvedEmail,
+          assignedToName: resolvedName,
+          supervisorId: mergedTask.created_by || '',
+          created_by: mergedTask.created_by || '',
+          status: mergedTask.status || 'pending',
+          priority: mergedTask.priority || 'medium',
+          plannedMinutes: plannedMin,
+          loggedMinutes: mergedTask.loggedMinutes ?? Math.round((stateSnapshot.taskActualHours[id] || 0) * 60),
+          dueDate: mergedTask.dueDate || '',
+          locationMode: mergedTask.locationMode || 'office',
+          locationAddress: mergedTask.locationAddress || '',
+          locationRadiusMeters: mergedTask.locationRadiusMeters || 150,
+          isBillable: mergedTask.isBillable !== false,
+          isActive: mergedTask.isActive !== false,
+          createdAt: mergedTask.created_at || new Date().toISOString(),
+        });
+
         broadcastRayonerSync('TASK_UPDATED', { taskId: id });
       },
 
@@ -553,28 +682,45 @@ export const useRayonerStore = create<RayonerState>()(
 
       getTeamMembersBySupervisor: (supervisorId, role) => {
         const all = get().teamMembers;
-        const normRole = (role || '').toUpperCase();
-        // TI tiene visibilidad global
-        if (normRole === 'TI') return all;
-        // Gerente: miembros de sus equipos autorizados
-        if (normRole === 'GERENTE') {
-          return all.filter((m) => m.team === 'Equipo Prueba' || m.teamId === 'team-prueba-01');
+        const normRole = (role || '').trim().toUpperCase();
+        const operationalMembers = all.filter((m) => {
+          const r = (m.role || '').trim().toUpperCase();
+          return r !== 'TI' && r !== 'RH';
+        });
+        const collaboratorsOnly = operationalMembers.filter((m) => {
+          const r = (m.role || '').trim().toUpperCase();
+          return r === 'EMPLEADO' || r === 'COLABORADOR' || !r;
+        });
+
+        // TI, Socio y Gerente: acceso a los colaboradores de la línea operativa (y personal operativo)
+        if (normRole === 'TI' || normRole === 'SOCIO' || normRole === 'GERENTE') {
+          if (collaboratorsOnly.length > 0) {
+            // Colaboradores primero, luego el resto de la línea operativa
+            const rest = operationalMembers.filter(
+              (m) => !collaboratorsOnly.some((c) => c.id === m.id)
+            );
+            return [...collaboratorsOnly, ...rest];
+          }
+          return operationalMembers.length > 0 ? operationalMembers : all;
         }
-        // Supervisor: miembros vinculados a su equipo o a su ID
+
+        // Supervisor: colaboradores vinculados a su equipo o supervisión
         if (normRole === 'SUPERVISOR') {
-          return all.filter(
+          const direct = collaboratorsOnly.filter(
             (m) =>
-              (m.role === 'Empleado' || m.role === 'Colaborador') &&
-              (m.supervisor_id === supervisorId ||
-                m.supervisorId === supervisorId ||
-                (!m.supervisor_id && (m.teamId === 'team-prueba-01' || m.team === 'Equipo Prueba')))
+              m.supervisor_id === supervisorId ||
+              m.supervisorId === supervisorId ||
+              m.teamId === 'team-prueba-01' ||
+              m.team === 'Equipo Prueba'
           );
+          return direct.length > 0 ? direct : collaboratorsOnly;
         }
+
         // RH: miembros de los equipos de gestión
         if (normRole === 'RH') {
           return all.filter((m) => m.team === 'Equipo Prueba' || m.teamId === 'team-prueba-01');
         }
-        return [];
+        return collaboratorsOnly;
       },
 
       toggleUserClientPermission: (userId, clientId) => {
@@ -706,16 +852,28 @@ export const useRayonerStore = create<RayonerState>()(
         plannedHours,
         userId,
         userName,
-        supervisorId = 'admin-99',
+        supervisorId = 'demo_supervisor',
         supervisorName = 'Supervisor Prueba'
       ) => {
         const id = `tsk-${Date.now()}`;
         const nowIso = new Date().toISOString();
+        const stateSnap = get();
+        const projObj = stateSnap.projects.find((p) => p.id === projectId);
+        const companyObj = stateSnap.clients.find((c) => c.id === projObj?.clientId);
+        const memberObj = stateSnap.teamMembers.find((m) => m.id === userId);
+        const plannedMin = Math.max(0, Math.round((plannedHours || 0) * 60));
+
         const newTask: TaskNode = {
           id,
           title: taskName,
           name: taskName,
+          companyId: projObj?.clientId || '',
+          companyName: companyObj?.commercialName || companyObj?.name || '',
+          projectName: projObj?.name || '',
           assigned_to: userId,
+          assignedToId: userId,
+          assignedToEmail: (memberObj?.email || '').toLowerCase(),
+          assignedToName: userName || memberObj?.name || '',
           created_by: supervisorId,
           status: 'pending',
           created_at: nowIso,
@@ -723,6 +881,8 @@ export const useRayonerStore = create<RayonerState>()(
           projectId,
           parentTaskId: null,
           plannedHours,
+          plannedMinutes: plannedMin,
+          loggedMinutes: 0,
           priority: 'medium',
           isBillable: true,
           isActive: true,
@@ -733,7 +893,7 @@ export const useRayonerStore = create<RayonerState>()(
           taskId: id,
           userId,
           userName,
-          userRoleTitle: 'Empleado Operativo',
+          userRoleTitle: 'Colaborador Operativo',
           allocatedHours: plannedHours,
           blockOnLimit: true,
         };
@@ -743,13 +903,34 @@ export const useRayonerStore = create<RayonerState>()(
           assignments: [...state.assignments, newAssignment],
         }));
 
+        void saveTaskToFirestore({
+          id,
+          title: taskName,
+          companyId: newTask.companyId || '',
+          companyName: newTask.companyName || '',
+          projectId,
+          projectName: newTask.projectName || '',
+          assignedTo: userId,
+          assignedToId: userId,
+          assigned_to: userId,
+          assignedToEmail: newTask.assignedToEmail || '',
+          assignedToName: newTask.assignedToName || '',
+          supervisorId,
+          created_by: supervisorId,
+          status: 'pending',
+          priority: 'medium',
+          plannedMinutes: plannedMin,
+          loggedMinutes: 0,
+          createdAt: nowIso,
+        });
+
         // Evento 1: Notificación de Asignación (Supervisor -> Empleado)
         useNotificationStore.getState().addNotification({
           recipient_id: userId,
           sender_id: supervisorId,
           type: 'task_assigned',
           title: 'Nueva Tarea Asignada',
-          message: `El supervisor ${supervisorName} te ha asignado la tarea "${taskName}" (${plannedHours}h).`,
+          message: `El supervisor ${supervisorName} te ha asignado la tarea "${taskName}".`,
           taskId: id,
           taskTitle: taskName,
           authorName: supervisorName,
@@ -777,19 +958,24 @@ export const useRayonerStore = create<RayonerState>()(
           ),
         }));
 
+        void updateTaskProgressInFirestore(taskId, {
+          status: normalizedStatus,
+          completedAt: normalizedStatus === 'completed' ? nowIso : null,
+        });
+
         // Si el cambio es a completed, disparar Evento 2 (Empleado -> Supervisor)
         if (normalizedStatus === 'completed' && currentTask) {
           const currentProject = get().projects.find((p) => p.id === currentTask.projectId);
           useNotificationStore.getState().addNotification({
-            recipient_id: currentTask.created_by || 'admin-99',
+            recipient_id: currentTask.created_by || 'demo_supervisor',
             sender_id: actorUserId || currentTask.assigned_to || '',
             type: 'task_completed',
-            title: 'Tarea Completada por Empleado',
-            message: `${actorName || 'El empleado'} ha marcado como completada la tarea "${currentTask.title || currentTask.name}" en ${currentProject?.name || 'Russell Bedford'}.`,
+            title: 'Tarea Completada por Colaborador',
+            message: `${actorName || 'El colaborador'} ha marcado como completada la tarea "${currentTask.title || currentTask.name}" en ${currentProject?.name || 'Russell Bedford'}.`,
             taskId,
             taskTitle: currentTask.title || currentTask.name,
             projectName: currentProject?.name,
-            authorName: actorName || 'Empleado',
+            authorName: actorName || 'Colaborador',
           });
         }
 
@@ -797,22 +983,31 @@ export const useRayonerStore = create<RayonerState>()(
       },
 
       updateTaskActualHours: (taskId, userId, hours) => {
+        let updatedTaskMinutes = 0;
         set((state) => {
           const userKey = `${taskId}_${userId}`;
           const prevUserHours = state.userTaskActualHours[userKey] || 0;
           const diff = hours - prevUserHours;
           const currentTotalTask = state.taskActualHours[taskId] || 0;
+          const nextTaskHours = Math.max(0, Number((currentTotalTask + diff).toFixed(4)));
+          updatedTaskMinutes = Math.round(nextTaskHours * 60);
 
           return {
             taskActualHours: {
               ...state.taskActualHours,
-              [taskId]: Math.max(0, Number((currentTotalTask + diff).toFixed(2))),
+              [taskId]: nextTaskHours,
             },
             userTaskActualHours: {
               ...state.userTaskActualHours,
-              [userKey]: Math.max(0, Number(hours.toFixed(2))),
+              [userKey]: Math.max(0, Number(hours.toFixed(4))),
             },
+            tasks: state.tasks.map((t) =>
+              t.id === taskId ? { ...t, loggedMinutes: updatedTaskMinutes } : t
+            ),
           };
+        });
+        void updateTaskProgressInFirestore(taskId, {
+          loggedMinutes: updatedTaskMinutes,
         });
         broadcastRayonerSync('TASK_HOURS_UPDATED', { taskId, userId, hours });
       },
@@ -865,6 +1060,17 @@ export const useRayonerStore = create<RayonerState>()(
               (w) => !(w.userId === userId && w.taskId === taskId)
             ),
           };
+        });
+
+        const updatedLoggedMinutes =
+          finalHours !== undefined
+            ? Math.max(0, Math.round((get().taskActualHours[taskId] || finalHours) * 60))
+            : undefined;
+
+        void updateTaskProgressInFirestore(taskId, {
+          status: 'completed',
+          completedAt: nowIso,
+          ...(updatedLoggedMinutes !== undefined ? { loggedMinutes: updatedLoggedMinutes } : {}),
         });
 
         // Evento 2: Finalización de tarea (Empleado -> Supervisor created_by)

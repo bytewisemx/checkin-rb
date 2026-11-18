@@ -50,14 +50,21 @@ export interface Project {
   notes?: string;
   isActive: boolean;
   assignedUserIds?: string[];
+  assignedUserEmails?: string[];
 }
 
 export interface TaskNode {
   id: string;
   title?: string;            // Esquema DB: título de la tarea
   name: string;              // Sincronizado con title
-  assigned_to?: string;      // Esquema DB: user_id_del_empleado
-  created_by?: string;       // Esquema DB: supervisor_id
+  assigned_to?: string;      // Compatibilidad: ID del colaborador
+  assignedToId?: string;     // ID unificado del colaborador (uid / demo_colaborador)
+  assignedToEmail?: string;  // Correo del colaborador en minúsculas
+  assignedToName?: string;   // Nombre legible del colaborador
+  companyId?: string;        // ID de la empresa vinculada
+  companyName?: string;      // Nombre de la empresa vinculada
+  projectName?: string;      // Nombre del proyecto vinculado
+  created_by?: string;       // ID del emisor / supervisor
   status?: TaskStatusType;   // 'pending' | 'in_progress' | 'completed' | 'progress' | 'review'
   created_at?: string;       // TIMESTAMP ISO
   completed_at?: string | null; // TIMESTAMP ISO o null
@@ -65,10 +72,15 @@ export interface TaskNode {
   parentTaskId?: string | null;
   description?: string;
   plannedHours: number;
+  plannedMinutes?: number;
+  loggedMinutes?: number;
   priority: TaskPriority;
   isBillable: boolean;
   isActive: boolean;
   dueDate?: string;
+  locationMode?: 'office' | 'client_site';
+  locationAddress?: string;
+  locationRadiusMeters?: number;
   supervisorReviewNote?: string;
   isExtraordinary?: boolean;
   extraordinaryCategory?: string;
