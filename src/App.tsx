@@ -3,6 +3,7 @@ import { useCheckinStore } from './store/useCheckinStore';
 import { useNotificationStore } from './store/useNotificationStore';
 import { useState, useEffect } from 'react';
 import { normalizeRole, getEffectiveModules, type UserModules } from './services/rbac';
+import { canAccessClientsDirectory } from './services/companyService';
 import { subscribeToAuthState, isFirebaseConfigured } from './services/firebase';
 import { handleUserSession } from './services/userService';
 
@@ -237,6 +238,41 @@ function TIAdminRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+function ClientsDirectoryRoute({ children }: { children: React.ReactNode }) {
+  const { isAuthenticated, user } = useCheckinStore();
+  const isProfileComplete = Boolean(user?.isProfileComplete || (user?.name && user?.role));
+
+  if (!isAuthenticated) return <Navigate to="/login" replace />;
+  if (!isProfileComplete) return <Navigate to="/register" replace />;
+
+  const role = normalizeRole(user?.role);
+  const isTi = role === 'TI';
+  const hasNoTeam =
+    !user?.team ||
+    user.team.trim() === '' ||
+    user.team === 'Sin equipo asignado' ||
+    user.team === 'Sin equipo' ||
+    user.team === 'Sin equipo disponible';
+
+  const isInactiveByPolicy =
+    !isTi &&
+    (user?.status === 'inactive' ||
+      user?.isActive === false ||
+      (user as any)?.accessRevoked === true ||
+      hasNoTeam);
+
+  if (isInactiveByPolicy) {
+    return <Navigate to="/" replace />;
+  }
+
+  // Bloqueo estricto: Únicamente Socio, Gerente y TI tienen acceso a /clients
+  if (!canAccessClientsDirectory(user?.role)) {
+    return <Navigate to="/" replace />;
+  }
+
+  return <>{children}</>;
+}
+
 function ModuleProtectedRoute({
   moduleKey,
   blockRH = false,
@@ -390,12 +426,12 @@ export default function App() {
           <Route
             path="/clients"
             element={
-              <ModuleProtectedRoute moduleKey="clients" blockRH>
+              <ClientsDirectoryRoute>
                 <MainLayout
-                  initialSupervisorTab="tree"
-                  initialTiTab="supervisor_view"
+                  initialSupervisorTab="clients"
+                  initialTiTab="clients_directory"
                 />
-              </ModuleProtectedRoute>
+              </ClientsDirectoryRoute>
             }
           />
 

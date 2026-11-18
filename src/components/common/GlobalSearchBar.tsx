@@ -288,8 +288,8 @@ export function GlobalSearchBar({
       return [];
     }
 
-    // TI: ve todos los proyectos
-    if (normalizedRole === 'TI') {
+    // TI, Socio y Gerente: ven todos los proyectos
+    if (normalizedRole === 'TI' || normalizedRole === 'Socio' || normalizedRole === 'Gerente') {
       return projects;
     }
 
@@ -313,28 +313,22 @@ export function GlobalSearchBar({
   const allowedClients = useMemo(() => {
     if (!user) return [];
 
-    // Colaborador y RH: NO tienen acceso al catálogo de clientes
-    if (normalizedRole === 'Colaborador' || normalizedRole === 'RH') {
+    // Bloqueo estricto: Supervisor, Colaborador y RH no tienen acceso al catálogo de clientes
+    if (
+      normalizedRole === 'Supervisor' ||
+      normalizedRole === 'Colaborador' ||
+      normalizedRole === 'RH'
+    ) {
       return [];
     }
 
-    // TI: todos los clientes
-    if (normalizedRole === 'TI') {
+    // TI, Socio y Gerente: catálogo completo de clientes y empresas
+    if (normalizedRole === 'TI' || normalizedRole === 'Socio' || normalizedRole === 'Gerente') {
       return clients;
     }
 
-    // Supervisor: clientes vinculados a proyectos que lidera
-    if (normalizedRole === 'Supervisor') {
-      const supervisedClientIds = new Set(
-        projects
-          .filter((p) => p.leadUserId === user.id || p.leadUserName === user.name)
-          .map((p) => p.clientId)
-      );
-      return clients.filter((c) => supervisedClientIds.has(c.id));
-    }
-
     return [];
-  }, [normalizedRole, user, clients, projects]);
+  }, [normalizedRole, user, clients]);
 
   // =========================================================================
   // FILTRADO ESTRICTO AL TECLEAR (Vacío al dar clic si no se ha tecleado nada)

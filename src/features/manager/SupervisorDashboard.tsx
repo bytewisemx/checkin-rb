@@ -4,6 +4,7 @@ import { useCheckinStore } from '../../store/useCheckinStore';
 import { useNotificationStore } from '../../store/useNotificationStore';
 import { getEffectiveModules, getEffectivePermissions, normalizeRole } from '../../services/rbac';
 import { ProjectsSupervisionTable } from './rayoner/ProjectsSupervisionTable';
+import { ClientsDirectoryView } from './rayoner/ClientsDirectoryView';
 import { RayonerTimeReport } from './rayoner/RayonerTimeReport';
 import { RayonerTaskModal } from './rayoner/RayonerTaskModal';
 import { TeamMembersView } from './rayoner/TeamMembersView';
@@ -12,9 +13,10 @@ import { ExecutiveAuditLogView } from '../audit/ExecutiveAuditLogView';
 import { AuditHierarchyView } from '../hierarchy/AuditHierarchyView';
 import { CheckinPanel } from '../checkin/CheckinPanel';
 import { useLiveTeamTimers, useOperationalCatalogSync } from '../../hooks/useLiveTeamTimers';
+import { canAccessClientsDirectory } from '../../services/companyService';
 import { Users, AlertTriangle, TrendingUp } from 'lucide-react';
 
-export type SupervisorTab = 'tree' | 'report' | 'attendance' | 'invitations' | 'audit_accounts' | 'my_checkin' | 'audit_logs';
+export type SupervisorTab = 'tree' | 'clients' | 'report' | 'attendance' | 'invitations' | 'audit_accounts' | 'my_checkin' | 'audit_logs';
 
 export interface SupervisorDashboardProps {
   initialTab?: SupervisorTab;
@@ -37,6 +39,7 @@ export function SupervisorDashboard({ initialTab }: SupervisorDashboardProps = {
 
   const normRole = normalizeRole(user?.role);
   const canSeeTree = effectiveModules.tasks || effectiveModules.clients || userPerms.canManageClientsAndProjects;
+  const canSeeClientsDirectory = canAccessClientsDirectory(user?.role);
   const canSeeReports = userPerms.canExportReports || effectiveModules.reports;
   const canInvite = userPerms.canInviteUsers;
   const canSeeAudit = userPerms.canViewExecutiveAuditLogs;
@@ -58,6 +61,9 @@ export function SupervisorDashboard({ initialTab }: SupervisorDashboardProps = {
   const [activeTab, setActiveTab] = useState<SupervisorTab>(defaultTab);
 
   const resolvedTab: SupervisorTab = (() => {
+    if (activeTab === 'clients' && !canSeeClientsDirectory) {
+      return canSeeTree ? 'tree' : 'attendance';
+    }
     if (activeTab === 'tree' && !canSeeTree) {
       return canSeeReports ? 'report' : 'attendance';
     }
@@ -149,6 +155,22 @@ export function SupervisorDashboard({ initialTab }: SupervisorDashboardProps = {
                 }`}
               >
                 Proyectos y Tiempos
+              </button>
+            )}
+
+            {/* Pestaña Directorio de Clientes y Empresas: Exclusivo Socio, Gerente y TI */}
+            {canSeeClientsDirectory && (
+              <button
+                type="button"
+                data-tour="nav-clients-tab"
+                onClick={() => setActiveTab('clients')}
+                className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                  resolvedTab === 'clients'
+                    ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                }`}
+              >
+                Clientes y Empresas
               </button>
             )}
 
@@ -360,6 +382,10 @@ export function SupervisorDashboard({ initialTab }: SupervisorDashboardProps = {
           }
           onSelectProjectForReport={handleOpenReportForProject}
         />
+      )}
+
+      {resolvedTab === 'clients' && canSeeClientsDirectory && (
+        <ClientsDirectoryView />
       )}
 
       {resolvedTab === 'report' && canSeeReports && (

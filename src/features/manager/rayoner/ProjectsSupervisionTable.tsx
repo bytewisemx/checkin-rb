@@ -209,8 +209,8 @@ export function ProjectsSupervisionTable({
         </div>
       </div>
 
-      {/* Franja Sobria de Empresas Registradas con Logotipo/Monograma y Fecha de Inicio */}
-      {clients.length > 0 && (
+      {/* Franja Sobria de Empresas Registradas con Logotipo/Monograma y Fecha de Inicio (Solo Socio, Gerente y TI) */}
+      {canCreateCompany && clients.length > 0 && (
         <div className="bg-white dark:bg-[#0B111E] border border-slate-200 dark:border-slate-800 px-4 py-3">
           <div className="flex flex-wrap items-center justify-between gap-2 mb-2.5">
             <span className="text-[11px] font-mono font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">

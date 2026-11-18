@@ -66,6 +66,15 @@ export function canCreateOrManageCompanies(role?: LegacyOrCurrentRole | null): b
 }
 
 /**
+ * Validación RBAC estricta para acceder a la pestaña y ruta del Directorio de Clientes y Empresas:
+ * Exclusivo para Socio, Gerente y TI (Supervisor, Colaborador y RH bloqueados).
+ */
+export function canAccessClientsDirectory(role?: LegacyOrCurrentRole | null): boolean {
+  const norm = normalizeRole(role ?? undefined);
+  return norm === 'Socio' || norm === 'Gerente' || norm === 'TI';
+}
+
+/**
  * Validación RBAC para leer empresas:
  * RH tiene bloqueo estricto (403).
  */

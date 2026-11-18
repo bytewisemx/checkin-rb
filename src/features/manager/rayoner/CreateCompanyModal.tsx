@@ -12,10 +12,12 @@ import {
   uploadCompanyLogo,
 } from '../../../services/companyService';
 import { normalizeRole } from '../../../services/rbac';
+import type { Client } from '../../../types/rayoner';
 
 export interface CreateCompanyModalProps {
   isOpen: boolean;
   onClose: () => void;
+  editingCompany?: Client | null;
   onCreated?: (companyId: string, companyName: string) => void;
 }
 
@@ -30,12 +32,14 @@ const COMMON_TAX_REGIMES = [
 export function CreateCompanyModal({
   isOpen,
   onClose,
+  editingCompany = null,
   onCreated,
 }: CreateCompanyModalProps) {
   const { groups, clients, addGroup } = useRayonerStore();
   const { user, addToast } = useCheckinStore();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
+  const isEditing = Boolean(editingCompany);
   const todayIso = new Date().toISOString().split('T')[0];
 
   // Identidad y Marca
@@ -58,10 +62,11 @@ export function CreateCompanyModal({
   const [contactEmail, setContactEmail] = useState('');
   const [contactPhone, setContactPhone] = useState('');
 
-  // Fechas y Vigencia Contractual
+  // Fechas, Vigencia Contractual y Estatus
   const [startDate, setStartDate] = useState(todayIso);
   const [renewalDate, setRenewalDate] = useState('');
   const [notes, setNotes] = useState('');
+  const [status, setStatus] = useState<'active' | 'inactive'>('active');
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
@@ -69,8 +74,28 @@ export function CreateCompanyModal({
   const canCreate = canCreateOrManageCompanies(user?.role);
 
   useEffect(() => {
-    if (isOpen) {
-      const today = new Date().toISOString().split('T')[0];
+    if (!isOpen) return;
+    const today = new Date().toISOString().split('T')[0];
+    if (editingCompany) {
+      setName(editingCompany.name || '');
+      setCommercialName(editingCompany.commercialName || '');
+      setCode(editingCompany.code || '');
+      setIsCodeManuallyEdited(true);
+      setLogoFile(null);
+      setLogoPreviewUrl(editingCompany.logoUrl || '');
+      setTaxId(editingCompany.taxId || '');
+      setTaxRegime(editingCompany.taxRegime || '');
+      setIndustry(editingCompany.industry || '');
+      setFiscalAddress(editingCompany.fiscalAddress || '');
+      setContactName(editingCompany.contactName || '');
+      setContactRole(editingCompany.contactRole || '');
+      setContactEmail(editingCompany.contactEmail || '');
+      setContactPhone(editingCompany.contactPhone || '');
+      setStartDate(editingCompany.startDate || today);
+      setRenewalDate(editingCompany.renewalDate || '');
+      setNotes(editingCompany.notes || '');
+      setStatus(editingCompany.isActive === false ? 'inactive' : 'active');
+    } else {
       setName('');
       setCommercialName('');
       setCode('');
@@ -88,10 +113,11 @@ export function CreateCompanyModal({
       setStartDate(today);
       setRenewalDate('');
       setNotes('');
-      setErrorMsg('');
-      setIsSubmitting(false);
+      setStatus('active');
     }
-  }, [isOpen]);
+    setErrorMsg('');
+    setIsSubmitting(false);
+  }, [isOpen, editingCompany]);
 
   if (!isOpen) return null;
 
@@ -184,7 +210,7 @@ export function CreateCompanyModal({
         finalLogoUrl = await uploadCompanyLogo(logoFile, cleanCode);
       }
 
-      const companyId = `cmp-${Date.now()}`;
+      const companyId = editingCompany ? editingCompany.id : `cmp-${Date.now()}`;
       const actorUid = user?.id || 'demo_socio';
       const actorRole = normalizeRole(user?.role);
 
@@ -205,51 +231,56 @@ export function CreateCompanyModal({
         startDate,
         renewalDate,
         notes: notes.trim(),
-        status: 'active',
-        createdBy: actorUid,
+        status,
+        createdBy: editingCompany?.createdBy || actorUid,
         createdByRole: actorRole,
+        isUpdate: isEditing,
       });
 
       if (!res.success || !res.data) {
-        setErrorMsg(res.error || 'No se pudo registrar la empresa en Firestore.');
-        addToast(res.error || 'Error al registrar la empresa.', 'error');
+        setErrorMsg(res.error || 'No se pudo guardar la empresa en Firestore.');
+        addToast(res.error || 'Error al guardar la empresa.', 'error');
         return;
       }
 
       // Reflejar inmediatamente en el store local
       useRayonerStore.setState((state) => {
+        const mappedClient: Client = {
+          id: companyId,
+          groupId: editingCompany?.groupId || targetGroupId,
+          name: res.data!.name,
+          commercialName: res.data!.commercialName,
+          code: res.data!.code,
+          logoUrl: res.data!.logoUrl,
+          taxId: res.data!.taxId,
+          taxRegime: res.data!.taxRegime,
+          industry: res.data!.industry,
+          fiscalAddress: res.data!.fiscalAddress,
+          contactName: res.data!.contactName,
+          contactRole: res.data!.contactRole,
+          contactEmail: res.data!.contactEmail,
+          contactPhone: res.data!.contactPhone,
+          startDate: res.data!.startDate,
+          renewalDate: res.data!.renewalDate,
+          notes: res.data!.notes,
+          createdBy: res.data!.createdBy,
+          createdByRole: res.data!.createdByRole,
+          isActive: res.data!.status !== 'inactive',
+        };
         const exists = state.clients.some((c) => c.id === companyId);
-        if (exists) return state;
         return {
-          clients: [
-            ...state.clients,
-            {
-              id: companyId,
-              groupId: targetGroupId,
-              name: res.data!.name,
-              commercialName: res.data!.commercialName,
-              code: res.data!.code,
-              logoUrl: res.data!.logoUrl,
-              taxId: res.data!.taxId,
-              taxRegime: res.data!.taxRegime,
-              industry: res.data!.industry,
-              fiscalAddress: res.data!.fiscalAddress,
-              contactName: res.data!.contactName,
-              contactRole: res.data!.contactRole,
-              contactEmail: res.data!.contactEmail,
-              contactPhone: res.data!.contactPhone,
-              startDate: res.data!.startDate,
-              renewalDate: res.data!.renewalDate,
-              notes: res.data!.notes,
-              createdBy: res.data!.createdBy,
-              createdByRole: res.data!.createdByRole,
-              isActive: true,
-            },
-          ],
+          clients: exists
+            ? state.clients.map((c) => (c.id === companyId ? mappedClient : c))
+            : [...state.clients, mappedClient],
         };
       });
 
-      addToast(`Empresa "${res.data.name}" (${res.data.code}) registrada correctamente.`, 'success');
+      addToast(
+        isEditing
+          ? `Expediente de "${res.data.name}" actualizado correctamente.`
+          : `Empresa "${res.data.name}" (${res.data.code}) registrada correctamente.`,
+        'success'
+      );
       onCreated?.(companyId, res.data.name);
       onClose();
     } catch (err: any) {
@@ -273,7 +304,7 @@ export function CreateCompanyModal({
         <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between shrink-0">
           <div>
             <h3 className="text-lg font-bold font-['Space_Grotesk'] text-slate-900 dark:text-white">
-              Registrar Empresa / Cliente
+              {isEditing ? 'Editar Expediente de Empresa' : 'Registrar Empresa / Cliente'}
             </h3>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
               Expediente corporativo, datos fiscales y vigencia de servicio
@@ -564,6 +595,27 @@ export function CreateCompanyModal({
                       className="w-full bg-slate-50 dark:bg-[#090E17] text-slate-900 dark:text-slate-100 border border-slate-300 dark:border-slate-700 px-3 py-2 text-sm focus:outline-none focus:border-blue-600 resize-none"
                     />
                   </div>
+
+                  {isEditing && (
+                    <div className="sm:col-span-2 flex items-center justify-between pt-2 border-t border-slate-200 dark:border-slate-800/80">
+                      <div>
+                        <span className="block text-xs font-semibold uppercase tracking-wider text-slate-700 dark:text-slate-300">
+                          Estatus Comercial
+                        </span>
+                        <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                          Controla si la empresa está activa para nuevos proyectos.
+                        </span>
+                      </div>
+                      <select
+                        value={status}
+                        onChange={(e) => setStatus(e.target.value as 'active' | 'inactive')}
+                        className="bg-slate-50 dark:bg-[#090E17] text-slate-900 dark:text-slate-100 text-xs font-semibold border border-slate-300 dark:border-slate-700 px-3 py-1.5 focus:outline-none focus:border-blue-600"
+                      >
+                        <option value="active">Activa</option>
+                        <option value="inactive">Inactiva / En pausa</option>
+                      </select>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -589,7 +641,11 @@ export function CreateCompanyModal({
                 disabled={isSubmitting}
                 className="px-5 py-2 text-xs font-semibold text-white bg-blue-700 hover:bg-blue-600 disabled:opacity-50 transition cursor-pointer"
               >
-                {isSubmitting ? 'Guardando...' : 'Guardar Empresa'}
+                {isSubmitting
+                  ? 'Guardando...'
+                  : isEditing
+                  ? 'Guardar Cambios'
+                  : 'Guardar Empresa'}
               </button>
             </div>
           </form>

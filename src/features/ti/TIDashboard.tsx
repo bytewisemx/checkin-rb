@@ -8,6 +8,7 @@ import { saveInvitationToFirestore } from '../../services/invitations';
 import { useAuditStore } from '../../store/useAuditStore';
 import { RBAC_MATRIX, getAllowedRolesToInvite, normalizeRole } from '../../services/rbac';
 import { SupervisorDashboard } from '../manager/SupervisorDashboard';
+import { ClientsDirectoryView } from '../manager/rayoner/ClientsDirectoryView';
 import { UserPermissionsTable } from './UserPermissionsTable';
 import { SystemDiagnostics } from './SystemDiagnostics';
 import { ExecutiveAuditLogView } from '../audit/ExecutiveAuditLogView';
@@ -18,7 +19,7 @@ import { syncUsersDirectoryFromFirestore } from '../../services/userService';
 import { Send, Loader2, X, RefreshCw, Trash2, AlertTriangle } from 'lucide-react';
 
 export interface TIDashboardProps {
-  initialTab?: 'invitations' | 'users_permissions' | 'audit_accounts' | 'rbac_matrix' | 'supervisor_view' | 'audit_logs' | 'system_diagnostics';
+  initialTab?: 'invitations' | 'users_permissions' | 'audit_accounts' | 'rbac_matrix' | 'supervisor_view' | 'clients_directory' | 'audit_logs' | 'system_diagnostics';
 }
 
 export function TIDashboard({ initialTab = 'users_permissions' }: TIDashboardProps) {
@@ -44,7 +45,7 @@ export function TIDashboard({ initialTab = 'users_permissions' }: TIDashboardPro
   // Carga global de todos los equipos activos (TI no pertenece a un equipo operativo)
   const activeTeams = useMemo(() => teams.filter((t) => t.status !== 'inactive'), [teams]);
 
-  const [activeTab, setActiveTab] = useState<'invitations' | 'users_permissions' | 'audit_accounts' | 'rbac_matrix' | 'supervisor_view' | 'audit_logs' | 'system_diagnostics'>(initialTab);
+  const [activeTab, setActiveTab] = useState<'invitations' | 'users_permissions' | 'audit_accounts' | 'rbac_matrix' | 'supervisor_view' | 'clients_directory' | 'audit_logs' | 'system_diagnostics'>(initialTab);
 
   // Formulario para invitar a nuevos usuarios (filtrado dinámicamente según rol)
   const allowedRoles = useMemo(() => {
@@ -424,6 +425,18 @@ export function TIDashboard({ initialTab = 'users_permissions' }: TIDashboardPro
           </button>
           <button
             type="button"
+            data-tour="nav-clients-tab"
+            onClick={() => setActiveTab('clients_directory')}
+            className={`px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer whitespace-nowrap ${
+              activeTab === 'clients_directory'
+                ? 'bg-white dark:bg-slate-900 text-blue-700 dark:text-sky-400 font-semibold shadow-xs border border-slate-200/80 dark:border-slate-700/80'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+            }`}
+          >
+            Clientes y Empresas
+          </button>
+          <button
+            type="button"
             onClick={() => setActiveTab('system_diagnostics')}
             className={`px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer whitespace-nowrap ${
               activeTab === 'system_diagnostics'
@@ -437,7 +450,7 @@ export function TIDashboard({ initialTab = 'users_permissions' }: TIDashboardPro
       </div>
 
       {/* 2. Tarjetas de Métricas (KPIs) */}
-      {activeTab !== 'system_diagnostics' && (
+      {activeTab !== 'system_diagnostics' && activeTab !== 'clients_directory' && (
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <div className="bg-white dark:bg-[#0B111E] p-4 rounded-xl border border-slate-100 dark:border-slate-800 shadow-xs">
           <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
@@ -772,6 +785,9 @@ export function TIDashboard({ initialTab = 'users_permissions' }: TIDashboardPro
 
       {/* PESTAÑA 4: PROYECTOS Y TAREAS (SUPERVISOR DASHBOARD AUDITABLE) */}
       {activeTab === 'supervisor_view' && <SupervisorDashboard />}
+
+      {/* PESTAÑA 4B: DIRECTORIO DE CLIENTES Y EMPRESAS */}
+      {activeTab === 'clients_directory' && <ClientsDirectoryView />}
 
       {/* PESTAÑA 5: DIAGNÓSTICO DE INFRAESTRUCTURA Y BASE DE DATOS (EXCLUSIVO TI) */}
       {activeTab === 'system_diagnostics' && <SystemDiagnostics />}
