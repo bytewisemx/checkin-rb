@@ -17,6 +17,8 @@ const authorizeRole = (allowedRoles = []) => {
   };
 };
 
+
+
 /**
  * Middleware de Permisos Granulares por Módulo (user.modules)
  * Protege los endpoints validando no solo el role, sino también la bandera del módulo

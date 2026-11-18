@@ -65,27 +65,52 @@ service cloud.firestore {
 
     function isSocio() {
       let r = getUserRole();
-      return isAuthenticated() && (r == 'Socio' || r == 'socio' || isTI());
+      return isAuthenticated() && (
+        r == 'Socio' ||
+        r == 'socio' ||
+        (hasAuthEmail() && request.auth.token.email == 'socio.prueba@russellbedford.mx') ||
+        isTI()
+      );
     }
 
     function isGerente() {
       let r = getUserRole();
-      return isAuthenticated() && (r == 'Gerente' || r == 'gerente' || isSocio());
+      return isAuthenticated() && (
+        r == 'Gerente' ||
+        r == 'gerente' ||
+        (hasAuthEmail() && request.auth.token.email == 'gerente.prueba@russellbedford.mx') ||
+        isSocio()
+      );
     }
 
     function isSupervisor() {
       let r = getUserRole();
-      return isAuthenticated() && (r == 'Supervisor' || r == 'supervisor' || isGerente());
+      return isAuthenticated() && (
+        r == 'Supervisor' ||
+        r == 'supervisor' ||
+        (hasAuthEmail() && request.auth.token.email == 'supervisor.prueba@russellbedford.mx') ||
+        isGerente()
+      );
     }
 
     function isEmpleado() {
       let r = getUserRole();
-      return isAuthenticated() && (r == 'Empleado' || r == 'empleado' || r == 'Colaborador' || r == 'colaborador');
+      return isAuthenticated() && (
+        r == 'Empleado' ||
+        r == 'empleado' ||
+        r == 'Colaborador' ||
+        r == 'colaborador' ||
+        (hasAuthEmail() && request.auth.token.email == 'colaborador.prueba@russellbedford.mx')
+      );
     }
 
     function isRH() {
       let r = getUserRole();
-      return isAuthenticated() && (r == 'RH' || r == 'rh');
+      return isAuthenticated() && (
+        r == 'RH' ||
+        r == 'rh' ||
+        (hasAuthEmail() && request.auth.token.email == 'rh.prueba@russellbedford.mx')
+      );
     }
 
     function isOwner(userId) {

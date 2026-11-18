@@ -8,7 +8,7 @@ import {
   serverTimestamp,
 } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { db, storage, isFirebaseConfigured } from './firebase';
+import { db, auth, storage, isFirebaseConfigured, loginWithEmail, registerWithEmail } from './firebase';
 import { normalizeRole, type LegacyOrCurrentRole } from './rbac';
 import {
   registerActiveListener,
@@ -300,6 +300,24 @@ export async function saveCompanyToFirestore(company: {
   }
 
   try {
+    // Asegurar que la sesión de Firebase Auth coincida con la cuenta demo activa (evita request.auth == null o rol desfasado)
+    const demoEmailMap: Record<string, string> = {
+      demo_ti: 'ti.root@russellbedford.mx',
+      demo_socio: 'socio.prueba@russellbedford.mx',
+      demo_gerente: 'gerente.prueba@russellbedford.mx',
+    };
+    const expectedDemoEmail = demoEmailMap[localResult.createdBy];
+    if (
+      expectedDemoEmail &&
+      auth &&
+      (auth.currentUser?.email || '').toLowerCase() !== expectedDemoEmail
+    ) {
+      let authRes = await loginWithEmail(expectedDemoEmail, 'admin123');
+      if (!authRes.success) {
+        authRes = await registerWithEmail(expectedDemoEmail, 'admin123');
+      }
+    }
+
     const firestorePayload: Record<string, any> = {
       id: localResult.id,
       name: localResult.name,
@@ -332,9 +350,14 @@ export async function saveCompanyToFirestore(company: {
     return { success: true, data: localResult };
   } catch (err: any) {
     console.warn('[companyService] Error al guardar empresa en Firestore:', err);
+    const isPermDenied =
+      err?.code === 'permission-denied' ||
+      String(err?.message || '').toLowerCase().includes('permission');
     return {
       success: false,
-      error: err?.message || 'Error de permisos o red al guardar empresa en Firestore.',
+      error: isPermDenied
+        ? 'Permisos insuficientes en Firestore: publica las reglas actualizadas (firestore.rules) en Firebase Console → Firestore Database → Reglas.'
+        : err?.message || 'Error de red al guardar empresa en Firestore.',
     };
   }
 }

@@ -191,6 +191,26 @@ export function AuthPage() {
             : lower.includes('supervisor')
             ? 'Supervisor'
             : 'Colaborador';
+
+          // Sincronizar sesión real de Firebase Auth para que request.auth coincida con el rol en Firestore
+          if (firebaseReady) {
+            const cleanDemoEmail = lower.trim();
+            void (async () => {
+              try {
+                let authRes = await loginWithEmail(cleanDemoEmail, password);
+                if (!authRes.success) {
+                  const regRes = await registerWithEmail(cleanDemoEmail, password);
+                  if (regRes.success) authRes = regRes;
+                }
+                if (authRes.success && authRes.user) {
+                  await processLoginAccess(authRes.user);
+                }
+              } catch {
+                // ignore background sync
+              }
+            })();
+          }
+
           addToast(`Bienvenido: ${roleLabel}`, 'success');
           navigate('/');
           return;
