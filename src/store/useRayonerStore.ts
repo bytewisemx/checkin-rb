@@ -2,7 +2,12 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { doc, setDoc } from 'firebase/firestore';
 import { db, isFirebaseConfigured } from '../services/firebase';
-import { saveCompanyToFirestore, deleteCompanyFromFirestore } from '../services/companyService';
+import {
+  saveCompanyToFirestore,
+  deleteCompanyFromFirestore,
+  saveProjectToFirestore,
+  deleteProjectFromFirestore,
+} from '../services/companyService';
 import { saveTaskToFirestore, deleteTaskFromFirestore } from '../services/taskService';
 import { trackFirestoreWrite } from '../services/firestoreTelemetry';
 import { useNotificationStore } from './useNotificationStore';
@@ -243,16 +248,19 @@ export const useRayonerStore = create<RayonerState>()(
       },
 
       addClient: (groupId, name, taxId = '') => {
-        const id = `cli-${Date.now()}`;
+        const id = `cmp-${Date.now()}`;
+        const code = (taxId || id).trim().toUpperCase();
         set((state) => ({
-          clients: [...state.clients, { id, groupId, name, taxId, isActive: true }],
+          clients: [...state.clients, { id, groupId, name, code, taxId, isActive: true }],
         }));
         void saveCompanyToFirestore({
           id,
           name,
-          code: taxId || id.toUpperCase(),
+          code,
+          taxId,
           status: 'active',
-          createdBy: 'system',
+          createdBy: 'demo_socio',
+          createdByRole: 'Socio',
         });
         broadcastRayonerSync('CLIENT_ADDED');
         return id;
@@ -266,9 +274,13 @@ export const useRayonerStore = create<RayonerState>()(
           void saveCompanyToFirestore({
             id,
             name: data.name,
-            code: data.taxId || id.toUpperCase(),
+            code: data.code || data.taxId || id.toUpperCase(),
+            taxId: data.taxId || '',
+            contactName: data.contactName || '',
             status: data.isActive === false ? 'inactive' : 'active',
-            createdBy: 'system',
+            createdBy: data.createdBy || 'demo_socio',
+            createdByRole: data.createdByRole || 'Socio',
+            isUpdate: true,
           });
         }
         broadcastRayonerSync('CLIENT_UPDATED');
@@ -285,17 +297,47 @@ export const useRayonerStore = create<RayonerState>()(
 
       addProject: (projectData) => {
         const id = `prj-${Date.now()}`;
+        const plannedMinutes =
+          typeof projectData.plannedMinutes === 'number'
+            ? Math.max(0, Math.round(projectData.plannedMinutes))
+            : Math.max(0, Math.round((projectData.totalBudgetHours || 0) * 60));
+        const normalizedProject: Project = {
+          ...projectData,
+          id,
+          plannedMinutes,
+          totalBudgetHours: Number((plannedMinutes / 60).toFixed(4)),
+          isActive: projectData.isActive !== false,
+        };
         set((state) => ({
-          projects: [...state.projects, { ...projectData, id, isActive: true }],
+          projects: [...state.projects, normalizedProject],
         }));
+        void saveProjectToFirestore(normalizedProject);
         broadcastRayonerSync('PROJECT_ADDED');
         return id;
       },
 
       updateProject: (id, data) => {
+        let updatedProj: Project | null = null;
         set((state) => ({
-          projects: state.projects.map((p) => (p.id === id ? { ...p, ...data } : p)),
+          projects: state.projects.map((p) => {
+            if (p.id !== id) return p;
+            const nextHours = data.totalBudgetHours ?? p.totalBudgetHours;
+            const plannedMinutes =
+              typeof data.plannedMinutes === 'number'
+                ? Math.max(0, Math.round(data.plannedMinutes))
+                : Math.max(0, Math.round((nextHours || 0) * 60));
+            updatedProj = {
+              ...p,
+              ...data,
+              plannedMinutes,
+              totalBudgetHours: Number((plannedMinutes / 60).toFixed(4)),
+            };
+            return updatedProj;
+          }),
         }));
+        if (updatedProj) {
+          void saveProjectToFirestore(updatedProj);
+        }
         broadcastRayonerSync('PROJECT_UPDATED');
       },
 
@@ -304,6 +346,7 @@ export const useRayonerStore = create<RayonerState>()(
           projects: state.projects.filter((p) => p.id !== id),
           tasks: state.tasks.filter((t) => t.projectId !== id),
         }));
+        void deleteProjectFromFirestore(id);
         broadcastRayonerSync('PROJECT_DELETED');
       },
 

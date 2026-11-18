@@ -7,7 +7,10 @@ import {
   UserPlus 
 } from 'lucide-react';
 import { useRayonerStore } from '../../../store/useRayonerStore';
+import { useCheckinStore } from '../../../store/useCheckinStore';
+import { canCreateOrManageCompanies } from '../../../services/companyService';
 import type { Project, TeamMember } from '../../../types/rayoner';
+import { CreateCompanyModal } from './CreateCompanyModal';
 import { RayonerProjectModal } from './RayonerProjectModal';
 import { ProjectTeamAssignmentModal } from './ProjectTeamAssignmentModal';
 import { ProjectTasksDrawerModal } from './ProjectTasksDrawerModal';
@@ -35,13 +38,18 @@ export function ProjectsSupervisionTable({
     activeWorkers,
   } = useRayonerStore();
 
+  const user = useCheckinStore((state) => state.user);
+  const canCreateCompany = canCreateOrManageCompanies(user?.role);
+
   // Estados de filtros y búsqueda
   const [searchQuery, setSearchQuery] = useState('');
   const [budgetFilter, setBudgetFilter] = useState<'all' | 'overbudget' | 'warning' | 'normal'>('all');
 
   // Modales
+  const [isCompanyModalOpen, setIsCompanyModalOpen] = useState(false);
   const [isProjectModalOpen, setIsProjectModalOpen] = useState(false);
   const [selectedProjectIdForEdit, setSelectedProjectIdForEdit] = useState<string | null>(null);
+  const [preselectedClientIdForProject, setPreselectedClientIdForProject] = useState<string | null>(null);
 
   const [teamAssignmentProject, setTeamAssignmentProject] = useState<Project | null>(null);
   const [tasksDrawerProject, setTasksDrawerProject] = useState<Project | null>(null);
@@ -147,8 +155,8 @@ export function ProjectsSupervisionTable({
           />
         </div>
 
-        {/* Filtro y Botón Nuevo Proyecto */}
-        <div className="flex items-center gap-2">
+        {/* Filtro y Botones de Acción Sobrios (+ Nueva Empresa y + Nuevo Proyecto) */}
+        <div className="flex flex-wrap items-center gap-2">
           <select
             value={budgetFilter}
             onChange={(e) => setBudgetFilter(e.target.value as any)}
@@ -160,20 +168,71 @@ export function ProjectsSupervisionTable({
             <option value="normal">En margen (&lt;80%)</option>
           </select>
 
+          {canCreateCompany && (
+            <button
+              type="button"
+              data-tour="btn-new-company"
+              onClick={() => setIsCompanyModalOpen(true)}
+              className="px-4 py-2 text-xs font-semibold text-slate-800 dark:text-slate-100 bg-white dark:bg-[#101726] border border-slate-300 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 transition cursor-pointer shrink-0"
+            >
+              + Nueva Empresa
+            </button>
+          )}
+
           <button
             type="button"
             data-tour="btn-new-project"
             onClick={() => {
               setSelectedProjectIdForEdit(null);
+              setPreselectedClientIdForProject(clients[0]?.id || null);
               setIsProjectModalOpen(true);
             }}
-            className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-xs transition cursor-pointer shrink-0"
+            className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-blue-700 hover:bg-blue-600 transition cursor-pointer shrink-0"
           >
             <Plus className="w-3.5 h-3.5" />
             Nuevo Proyecto
           </button>
         </div>
       </div>
+
+      {/* Franja Sobria de Empresas Registradas (visible cuando hay empresas activas en el catálogo) */}
+      {clients.length > 0 && (
+        <div className="bg-white dark:bg-[#0B111E] border border-slate-200 dark:border-slate-800 px-4 py-3">
+          <div className="flex flex-wrap items-center justify-between gap-2 mb-2.5">
+            <span className="text-[11px] font-mono font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+              Empresas / Clientes Registrados ({clients.length})
+            </span>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {clients.map((company) => (
+              <div
+                key={company.id}
+                className="inline-flex items-center gap-2.5 px-3 py-1.5 bg-slate-50 dark:bg-[#101726] border border-slate-200 dark:border-slate-800 text-xs"
+              >
+                <span className="font-semibold text-slate-900 dark:text-slate-100">
+                  {company.name}
+                </span>
+                {company.code && (
+                  <span className="font-mono text-[10px] text-slate-500 dark:text-slate-400">
+                    {company.code}
+                  </span>
+                )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedProjectIdForEdit(null);
+                    setPreselectedClientIdForProject(company.id);
+                    setIsProjectModalOpen(true);
+                  }}
+                  className="text-[11px] font-medium text-blue-700 dark:text-sky-400 hover:underline cursor-pointer"
+                >
+                  + Proyecto
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Tabla de Supervisión */}
       <div className="w-full bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-xs">
@@ -373,10 +432,25 @@ export function ProjectsSupervisionTable({
 
               {filteredProjects.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="text-center py-12 text-slate-400 text-xs">
-                    {projects.length === 0
-                      ? 'No hay proyectos registrados'
-                      : 'No se encontraron proyectos con los criterios de búsqueda o filtro seleccionados.'}
+                  <td colSpan={6} className="text-center py-12 text-slate-400 text-xs space-y-3">
+                    <div>
+                      {projects.length === 0
+                        ? clients.length === 0
+                          ? 'No hay empresas ni proyectos registrados.'
+                          : 'No hay proyectos registrados.'
+                        : 'No se encontraron proyectos con los criterios de búsqueda o filtro seleccionados.'}
+                    </div>
+                    {projects.length === 0 && clients.length === 0 && canCreateCompany && (
+                      <div>
+                        <button
+                          type="button"
+                          onClick={() => setIsCompanyModalOpen(true)}
+                          className="px-3.5 py-1.5 text-xs font-semibold text-white bg-blue-700 hover:bg-blue-600 transition cursor-pointer"
+                        >
+                          + Nueva Empresa
+                        </button>
+                      </div>
+                    )}
                   </td>
                 </tr>
               )}
@@ -385,14 +459,22 @@ export function ProjectsSupervisionTable({
         </div>
       </div>
 
+      {/* Modal Sobrio para Alta de Empresa / Cliente (Solo Socio, Gerente y TI) */}
+      <CreateCompanyModal
+        isOpen={isCompanyModalOpen}
+        onClose={() => setIsCompanyModalOpen(false)}
+      />
+
       {/* Modal para Crear o Editar Proyecto */}
       <RayonerProjectModal
         isOpen={isProjectModalOpen}
         onClose={() => {
           setIsProjectModalOpen(false);
           setSelectedProjectIdForEdit(null);
+          setPreselectedClientIdForProject(null);
         }}
         projectId={selectedProjectIdForEdit}
+        initialClientId={preselectedClientIdForProject}
       />
 
       {/* Modal para Asignar / Gestionar Equipo del Proyecto */}

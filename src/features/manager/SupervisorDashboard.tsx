@@ -11,7 +11,7 @@ import { SupervisorInvitationsView } from './invitations/SupervisorInvitationsVi
 import { ExecutiveAuditLogView } from '../audit/ExecutiveAuditLogView';
 import { AuditHierarchyView } from '../hierarchy/AuditHierarchyView';
 import { CheckinPanel } from '../checkin/CheckinPanel';
-import { useLiveTeamTimers } from '../../hooks/useLiveTeamTimers';
+import { useLiveTeamTimers, useOperationalCatalogSync } from '../../hooks/useLiveTeamTimers';
 import { Users, AlertTriangle, TrendingUp } from 'lucide-react';
 
 export type SupervisorTab = 'tree' | 'report' | 'attendance' | 'invitations' | 'audit_accounts' | 'my_checkin' | 'audit_logs';
@@ -22,6 +22,7 @@ export interface SupervisorDashboardProps {
 
 export function SupervisorDashboard({ initialTab }: SupervisorDashboardProps = {}) {
   useLiveTeamTimers();
+  useOperationalCatalogSync();
   const {
     activeWorkers,
     projects,

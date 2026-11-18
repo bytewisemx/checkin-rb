@@ -44,6 +44,7 @@ export function RayonerTaskModal({
   const {
     tasks,
     projects,
+    clients,
     assignments,
     geofences,
     teamMembers,
@@ -56,7 +57,7 @@ export function RayonerTaskModal({
   } = useRayonerStore();
 
   const user = useCheckinStore((state) => state.user);
-  const currentSupervisorId = user?.id || 'admin-99';
+  const currentSupervisorId = user?.id || 'demo_supervisor';
   const currentSupervisorName = `${user?.name || 'Supervisor'} ${user?.lastName || ''}`.trim();
 
   // Usuarios reales filtrados estrictamente por el supervisor_id del supervisor autenticado
@@ -73,7 +74,27 @@ export function RayonerTaskModal({
     return null;
   }, [taskId, tasks]);
 
-  const targetProjectId = currentTask?.projectId || propProjectId || (projects[0]?.id ?? '');
+  const initialProjId = currentTask?.projectId || propProjectId || (projects[0]?.id ?? '');
+  const initialProj = projects.find((p) => p.id === initialProjId);
+  const [selectedCompanyId, setSelectedCompanyId] = useState<string>(
+    initialProj?.clientId || clients[0]?.id || ''
+  );
+  const [selectedProjectId, setSelectedProjectId] = useState<string>(initialProjId);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const pId = currentTask?.projectId || propProjectId || (projects[0]?.id ?? '');
+    const pObj = projects.find((p) => p.id === pId);
+    setSelectedProjectId(pId);
+    setSelectedCompanyId(pObj?.clientId || clients[0]?.id || '');
+  }, [isOpen, currentTask?.projectId, propProjectId, projects, clients]);
+
+  const filteredProjectsForCompany = useMemo(() => {
+    if (!selectedCompanyId) return projects;
+    return projects.filter((p) => p.clientId === selectedCompanyId);
+  }, [projects, selectedCompanyId]);
+
+  const targetProjectId = selectedProjectId || filteredProjectsForCompany[0]?.id || '';
   const currentProject = projects.find((p) => p.id === targetProjectId);
 
   // 1. Estados Pestaña Propiedades y Asignación Directa (assigned_to)
@@ -83,7 +104,7 @@ export function RayonerTaskModal({
   const [isBillable, setIsBillable] = useState(currentTask?.isBillable ?? true);
   const [plannedHours, setPlannedHours] = useState(currentTask?.plannedHours || 20);
   const [assignedToUserId, setAssignedToUserId] = useState<string>(
-    currentTask?.assigned_to || supervisorTeamMembers[0]?.id || 'usr-ana'
+    currentTask?.assigned_to || supervisorTeamMembers[0]?.id || 'demo_colaborador'
   );
 
   // 2. Estados Pestaña Usuarios y Presupuesto
@@ -112,7 +133,7 @@ export function RayonerTaskModal({
       supervisorTeamMembers.find((m) => m.id === currentTask?.assigned_to) ||
       supervisorTeamMembers[0];
 
-    const initialAssigneeId = defaultMember?.id || 'usr-ana';
+    const initialAssigneeId = defaultMember?.id || 'demo_colaborador';
     setAssignedToUserId(initialAssigneeId);
 
     if (existingAssignments.length > 0) {
@@ -453,6 +474,60 @@ export function RayonerTaskModal({
           {/* PESTAÑA 1: PROPIEDADES Y ASIGNACIÓN DIRECTA */}
           {activeTab === 'properties' && (
             <div className="space-y-4 animate-fade-in">
+              {/* Selector encadenado Empresa -> Proyecto en tiempo real */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+                    Empresa / Cliente
+                  </label>
+                  <select
+                    value={selectedCompanyId}
+                    onChange={(e) => {
+                      const nextCompanyId = e.target.value;
+                      setSelectedCompanyId(nextCompanyId);
+                      const firstProj = projects.find((p) => p.clientId === nextCompanyId);
+                      setSelectedProjectId(firstProj?.id || '');
+                    }}
+                    className="w-full border border-slate-200 bg-slate-50 rounded-lg px-3 py-2 text-xs font-medium text-slate-800 focus:border-[#0D5C75] outline-none"
+                  >
+                    <option value="">Todas las empresas ({clients.length})</option>
+                    {clients.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name} {c.code ? `(${c.code})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+                    Proyecto Vinculado *
+                  </label>
+                  <select
+                    value={targetProjectId}
+                    required
+                    onChange={(e) => {
+                      const nextProjId = e.target.value;
+                      setSelectedProjectId(nextProjId);
+                      const proj = projects.find((p) => p.id === nextProjId);
+                      if (proj?.clientId) setSelectedCompanyId(proj.clientId);
+                    }}
+                    className="w-full border border-slate-200 bg-slate-50 rounded-lg px-3 py-2 text-xs font-medium text-slate-800 focus:border-[#0D5C75] outline-none"
+                  >
+                    <option value="">
+                      {filteredProjectsForCompany.length === 0
+                        ? 'Sin proyectos para esta empresa'
+                        : '-- Seleccionar proyecto --'}
+                    </option>
+                    {filteredProjectsForCompany.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name} ({p.code})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
               <div>
                 <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
                   Título de la Tarea (title)

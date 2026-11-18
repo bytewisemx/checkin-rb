@@ -3,6 +3,7 @@ import { Search, X } from 'lucide-react';
 import { useCheckinStore } from '../../store/useCheckinStore';
 import { useRayonerStore } from '../../store/useRayonerStore';
 import { useGamificationStore } from '../../store/useGamificationStore';
+import { useOperationalCatalogSync } from '../../hooks/useLiveTeamTimers';
 import type { TaskNode } from '../../types/rayoner';
 import { EditTaskTimeModal } from './EditTaskTimeModal';
 import { FinalizeTaskModal } from './FinalizeTaskModal';
@@ -48,6 +49,7 @@ const STAGES: {
 ];
 
 export function KanbanBoard() {
+  useOperationalCatalogSync();
   const { user, addToast } = useCheckinStore();
   const { 
     tasks, 

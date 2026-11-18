@@ -15,7 +15,11 @@ export interface Client {
   id: string;
   groupId: string;
   name: string;
+  code?: string;
   taxId?: string;
+  contactName?: string;
+  createdBy?: string;
+  createdByRole?: string;
   isActive: boolean;
 }
 
@@ -29,6 +33,7 @@ export interface Project {
   deadline: string; // ISO date YYYY-MM-DD
   budgetType: BudgetType;
   totalBudgetHours: number;
+  plannedMinutes?: number;
   hourlyRate: number;
   currency: string;
   notes?: string;

@@ -25,8 +25,10 @@ import {
 } from '../../services/attendanceService';
 import { loadFaceApiModels } from '../../services/facialBiometrics';
 import { DailyQuoteCard } from '../../components/common/DailyQuoteCard';
+import { useOperationalCatalogSync } from '../../hooks/useLiveTeamTimers';
 
 export function CheckinPanel() {
+  useOperationalCatalogSync();
   const {
     activeCheckin,
     startCheckin,

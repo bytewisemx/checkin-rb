@@ -6,8 +6,11 @@ import {
 } from 'lucide-react';
 import { useRayonerStore } from '../../../store/useRayonerStore';
 import { useCheckinStore } from '../../../store/useCheckinStore';
+import { canCreateOrManageCompanies } from '../../../services/companyService';
+import { normalizeRole } from '../../../services/rbac';
 import type { BudgetType, Project } from '../../../types/rayoner';
 import { TimeInputSexagesimal } from '../../../components/common/TimeInputSexagesimal';
+import { CreateCompanyModal } from './CreateCompanyModal';
 
 interface RayonerProjectModalProps {
   isOpen: boolean;
@@ -32,7 +35,17 @@ export function RayonerProjectModal({
     deleteProject 
   } = useRayonerStore();
 
-  const addToast = useCheckinStore(state => state.addToast);
+  const user = useCheckinStore((state) => state.user);
+  const addToast = useCheckinStore((state) => state.addToast);
+  const canCreateCompany = canCreateOrManageCompanies(user?.role);
+
+  const [isQuickCompanyOpen, setIsQuickCompanyOpen] = useState(false);
+
+  // Líderes operativos elegibles (Supervisor, Gerente, Socio; excluye TI y RH)
+  const eligibleLeads = teamMembers.filter((m) => {
+    const r = normalizeRole(m.role);
+    return r === 'Supervisor' || r === 'Gerente' || r === 'Socio';
+  });
 
   const existingProject = projectId ? projects.find(p => p.id === projectId) : null;
   const isEditing = !!existingProject;
@@ -51,14 +64,15 @@ export function RayonerProjectModal({
   const [notes, setNotes] = useState('');
   const [isActive, setIsActive] = useState(true);
 
-  // Sincronizar formulario al abrir o cambiar de proyecto
+  // Sincronizar formulario únicamente al abrir o cambiar de proyecto (sin borrar campos al crear empresa inline)
   useEffect(() => {
+    if (!isOpen) return;
     if (existingProject) {
       setClientId(existingProject.clientId);
       setName(existingProject.name);
       setCode(existingProject.code);
-      setLeadUserId(existingProject.leadUserId || 'admin-99');
-      setLeadUserName(existingProject.leadUserName || 'Supervisor Prueba (Socio / Líder)');
+      setLeadUserId(existingProject.leadUserId || 'demo_supervisor');
+      setLeadUserName(existingProject.leadUserName || 'Supervisor Prueba');
       setDeadline(existingProject.deadline || new Date().toISOString().split('T')[0]);
       setBudgetType(existingProject.budgetType || 'fixed_project');
       setTotalBudgetHours(existingProject.totalBudgetHours || 60);
@@ -71,10 +85,12 @@ export function RayonerProjectModal({
       setClientId(defaultClientId);
       setName('');
       setCode(`PRJ-${new Date().getFullYear()}-${Math.floor(100 + Math.random() * 900)}`);
-      setLeadUserId(teamMembers[0]?.id || 'admin-99');
-      setLeadUserName(teamMembers[0]?.name || 'Supervisor Prueba (Socio / Líder)');
+      const defaultLead =
+        eligibleLeads.find((m) => normalizeRole(m.role) === 'Supervisor') || eligibleLeads[0];
+      setLeadUserId(defaultLead?.id || 'demo_supervisor');
+      setLeadUserName(defaultLead ? `${defaultLead.name} (${defaultLead.roleTitle})` : 'Supervisor Prueba');
       
-      // Fecha límite sugerida: fin de mes actual o 30 días
+      // Fecha límite sugerida: 30 días
       const nextMonth = new Date();
       nextMonth.setDate(nextMonth.getDate() + 30);
       setDeadline(nextMonth.toISOString().split('T')[0]);
@@ -86,7 +102,15 @@ export function RayonerProjectModal({
       setNotes('');
       setIsActive(true);
     }
-  }, [existingProject, initialClientId, clients, teamMembers, isOpen]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [existingProject?.id, initialClientId, isOpen]);
+
+  // Si aún no había empresa seleccionada y aparece la primera en el catálogo, seleccionarla
+  useEffect(() => {
+    if (isOpen && !isEditing && !clientId && clients.length > 0) {
+      setClientId(clients[0].id);
+    }
+  }, [isOpen, isEditing, clientId, clients]);
 
   // Autogenerar código sugerido si cambia el nombre del proyecto
   const handleAutoGenerateCode = () => {
@@ -117,16 +141,18 @@ export function RayonerProjectModal({
 
     const selectedLead = teamMembers.find(m => m.id === leadUserId);
     const finalLeadName = selectedLead ? `${selectedLead.name} (${selectedLead.roleTitle})` : leadUserName;
+    const plannedMinutes = Math.max(0, Math.round((Number(totalBudgetHours) || 0) * 60));
 
     const projectPayload: Omit<Project, 'id'> = {
       clientId,
       name: name.trim(),
       code: code.trim() || `PRJ-${Date.now()}`,
-      leadUserId: leadUserId || 'admin-99',
+      leadUserId: leadUserId || 'demo_supervisor',
       leadUserName: finalLeadName,
       deadline,
       budgetType,
-      totalBudgetHours: Number(totalBudgetHours) || 0,
+      totalBudgetHours: Number((plannedMinutes / 60).toFixed(4)),
+      plannedMinutes,
       hourlyRate: Number(hourlyRate) || 0,
       currency,
       notes: notes.trim(),
@@ -192,24 +218,51 @@ export function RayonerProjectModal({
           {/* Fila 1: Cliente y Código */}
           <div className="grid grid-cols-1 sm:grid-cols-12 gap-4">
             
-            {/* Cliente */}
+            {/* Empresa / Cliente Asignado + Acceso Inline "+ Registrar nueva empresa" */}
             <div className="sm:col-span-7">
-              <label className="text-xs font-bold text-slate-700 block mb-1.5 flex items-center">
-                <Building2 className="w-3.5 h-3.5 mr-1 text-[#0D5C75]" />
-                Cliente Asignado *
-              </label>
-              <select
-                value={clientId}
-                onChange={e => setClientId(e.target.value)}
-                required
-                className="w-full px-3.5 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl font-medium text-slate-800 focus:ring-2 focus:ring-[#0D5C75]/20 focus:border-[#0D5C75] outline-none"
-              >
-                {clients.map(c => (
-                  <option key={c.id} value={c.id}>
-                    {c.name} {c.taxId ? `(${c.taxId})` : ''}
-                  </option>
-                ))}
-              </select>
+              <div className="flex items-center justify-between gap-2 mb-1.5">
+                <label className="text-xs font-bold text-slate-700 flex items-center">
+                  <Building2 className="w-3.5 h-3.5 mr-1 text-[#0D5C75]" />
+                  Empresa / Cliente Asignado *
+                </label>
+                {canCreateCompany && (
+                  <button
+                    type="button"
+                    onClick={() => setIsQuickCompanyOpen(true)}
+                    className="text-[11px] font-semibold text-blue-700 hover:text-blue-800 hover:underline cursor-pointer"
+                  >
+                    + Registrar nueva empresa
+                  </button>
+                )}
+              </div>
+              {clients.length === 0 ? (
+                <div className="w-full px-3.5 py-2 text-xs bg-slate-50 border border-dashed border-slate-300 rounded-xl text-slate-500 flex items-center justify-between gap-2">
+                  <span>No hay empresas registradas aún.</span>
+                  {canCreateCompany && (
+                    <button
+                      type="button"
+                      onClick={() => setIsQuickCompanyOpen(true)}
+                      className="text-xs font-semibold text-blue-700 hover:underline cursor-pointer shrink-0"
+                    >
+                      + Registrar nueva empresa
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <select
+                  value={clientId}
+                  onChange={e => setClientId(e.target.value)}
+                  required
+                  className="w-full px-3.5 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl font-medium text-slate-800 focus:ring-2 focus:ring-[#0D5C75]/20 focus:border-[#0D5C75] outline-none"
+                >
+                  <option value="">-- Seleccionar empresa --</option>
+                  {clients.map(c => (
+                    <option key={c.id} value={c.id}>
+                      {c.name} {c.code ? `(${c.code})` : c.taxId ? `(${c.taxId})` : ''}
+                    </option>
+                  ))}
+                </select>
+              )}
             </div>
 
             {/* Código del Proyecto */}
@@ -268,12 +321,12 @@ export function RayonerProjectModal({
                 value={leadUserId}
                 onChange={e => {
                   setLeadUserId(e.target.value);
-                  const member = teamMembers.find(m => m.id === e.target.value);
+                  const member = eligibleLeads.find(m => m.id === e.target.value);
                   if (member) setLeadUserName(`${member.name} (${member.roleTitle})`);
                 }}
                 className="w-full px-3.5 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl font-medium text-slate-800 focus:ring-2 focus:ring-[#0D5C75]/20 focus:border-[#0D5C75] outline-none"
               >
-                {teamMembers.map(m => (
+                {eligibleLeads.map(m => (
                   <option key={m.id} value={m.id}>
                     {m.name} — {m.roleTitle} ({m.team})
                   </option>
@@ -472,6 +525,15 @@ export function RayonerProjectModal({
         </form>
 
       </div>
+
+      {/* Acceso Rápido Inline: Registrar nueva empresa sin salir del modal de proyecto */}
+      <CreateCompanyModal
+        isOpen={isQuickCompanyOpen}
+        onClose={() => setIsQuickCompanyOpen(false)}
+        onCreated={(newCompanyId) => {
+          setClientId(newCompanyId);
+        }}
+      />
     </div>
   );
 }

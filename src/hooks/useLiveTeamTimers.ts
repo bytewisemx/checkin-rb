@@ -11,6 +11,13 @@ import {
   MAX_CONTINUOUS_SHIFT_MINUTES,
 } from '../services/attendanceService';
 import { useRayonerStore } from '../store/useRayonerStore';
+import { useCheckinStore } from '../store/useCheckinStore';
+import {
+  canReadCompanies,
+  subscribeCompaniesFromFirestore,
+  subscribeProjectsFromFirestore,
+  subscribeTasksFromFirestore,
+} from '../services/companyService';
 import type { ActiveWorker } from '../types/rayoner';
 
 /**
@@ -86,4 +93,58 @@ export function useLiveTeamTimers() {
       unregisterActiveListener(listenerId);
     };
   }, []);
+}
+
+/**
+ * Suscripción 100% Real-Time a las colecciones `companies`, `projects` y `tasks` de Cloud Firestore.
+ * Bloqueado estrictamente para el rol RH (403).
+ * Refleja al instante cualquier empresa, proyecto o tarea creada en todos los selectores y tablas.
+ */
+export function useOperationalCatalogSync() {
+  const userRole = useCheckinStore((state) => state.user?.role);
+
+  useEffect(() => {
+    if (!userRole || !canReadCompanies(userRole)) {
+      return;
+    }
+
+    const unsubCompanies = subscribeCompaniesFromFirestore(userRole, (companies) => {
+      useRayonerStore.setState((state) => {
+        const defaultGroupId = state.groups[0]?.id || 'grp-corp';
+        const nextGroups =
+          companies.length > 0 && state.groups.length === 0
+            ? [{ id: defaultGroupId, name: 'Cartera Corporativa', isInternal: false }]
+            : state.groups;
+
+        return {
+          groups: nextGroups,
+          clients: companies.map((c) => ({
+            id: c.id,
+            groupId: defaultGroupId,
+            name: c.name,
+            code: c.code,
+            taxId: c.taxId,
+            contactName: c.contactName,
+            createdBy: c.createdBy,
+            createdByRole: c.createdByRole,
+            isActive: c.status !== 'inactive',
+          })),
+        };
+      });
+    });
+
+    const unsubProjects = subscribeProjectsFromFirestore(userRole, (projects) => {
+      useRayonerStore.setState({ projects });
+    });
+
+    const unsubTasks = subscribeTasksFromFirestore(userRole, (tasks) => {
+      useRayonerStore.setState({ tasks });
+    });
+
+    return () => {
+      unsubCompanies();
+      unsubProjects();
+      unsubTasks();
+    };
+  }, [userRole]);
 }
