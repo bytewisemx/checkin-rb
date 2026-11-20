@@ -14,7 +14,6 @@ import { AuditHierarchyView } from '../hierarchy/AuditHierarchyView';
 import { CheckinPanel } from '../checkin/CheckinPanel';
 import { useLiveTeamTimers, useOperationalCatalogSync } from '../../hooks/useLiveTeamTimers';
 import { canAccessClientsDirectory } from '../../services/companyService';
-import { Users, AlertTriangle, TrendingUp } from 'lucide-react';
 
 export type SupervisorTab = 'tree' | 'clients' | 'report' | 'attendance' | 'invitations' | 'audit_accounts' | 'my_checkin' | 'audit_logs';
 
@@ -272,11 +271,10 @@ export function SupervisorDashboard({ initialTab }: SupervisorDashboardProps = {
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 animate-fade-in">
             {/* Métrica 1: Colaboradores Activos */}
             <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-xs flex flex-col justify-between">
-              <div className="flex items-center justify-between text-slate-500 dark:text-slate-400 mb-2">
+              <div className="text-slate-500 dark:text-slate-400 mb-2">
                 <span className="text-xs font-semibold uppercase tracking-wider">
                   Colaboradores Activos
                 </span>
-                <Users className="w-4 h-4 text-blue-600 dark:text-blue-400" />
               </div>
               <div>
                 <div className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight flex items-center gap-2">
@@ -295,11 +293,10 @@ export function SupervisorDashboard({ initialTab }: SupervisorDashboardProps = {
 
             {/* Métrica 2: En Observación */}
             <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-xs flex flex-col justify-between">
-              <div className="flex items-center justify-between text-slate-500 dark:text-slate-400 mb-2">
+              <div className="text-slate-500 dark:text-slate-400 mb-2">
                 <span className="text-xs font-semibold uppercase tracking-wider">
                   En Observación
                 </span>
-                <AlertTriangle className="w-4 h-4 text-amber-500" />
               </div>
               <div>
                 <div className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">
@@ -315,19 +312,24 @@ export function SupervisorDashboard({ initialTab }: SupervisorDashboardProps = {
 
             {/* Métrica 3: Eficiencia Global */}
             <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-xs flex flex-col justify-between">
-              <div className="flex items-center justify-between text-slate-500 dark:text-slate-400 mb-2">
+              <div className="text-slate-500 dark:text-slate-400 mb-2">
                 <span className="text-xs font-semibold uppercase tracking-wider">
                   Eficiencia Global
                 </span>
-                <TrendingUp className="w-4 h-4 text-emerald-500" />
               </div>
               <div>
                 <div className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">
                   {globalEfficiency}%
                 </div>
                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 truncate">
-                  {totalActualAllTasks}h auditadas vs. {totalBudgetedAllProjects}h presupuestadas
+                  {Number(totalActualAllTasks).toFixed(1)}h auditadas vs. {Number(totalBudgetedAllProjects).toFixed(1)}h presupuestadas
                 </p>
+                <div className="w-full bg-slate-100 dark:bg-slate-800 rounded-full h-1.5 overflow-hidden mt-3">
+                  <div
+                    className="h-1.5 rounded-full bg-blue-700 dark:bg-blue-600 transition-all duration-300"
+                    style={{ width: `${Math.min(globalEfficiency, 100)}%` }}
+                  />
+                </div>
               </div>
             </div>
           </div>

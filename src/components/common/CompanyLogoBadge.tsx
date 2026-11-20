@@ -9,10 +9,10 @@ export interface CompanyLogoBadgeProps {
 }
 
 const SIZE_CLASSES: Record<NonNullable<CompanyLogoBadgeProps['size']>, string> = {
-  xs: 'w-6 h-6 text-[10px]',
-  sm: 'w-8 h-8 text-xs',
-  md: 'w-10 h-10 text-sm',
-  lg: 'w-14 h-14 text-base',
+  xs: 'w-6 h-6 text-[10px] rounded-md',
+  sm: 'w-9 h-9 text-xs rounded-lg',
+  md: 'w-10 h-10 text-sm rounded-lg',
+  lg: 'w-14 h-14 text-base rounded-xl',
 };
 
 export function CompanyLogoBadge({
@@ -27,17 +27,17 @@ export function CompanyLogoBadge({
 
   return (
     <div
-      className={`${sizeClass} bg-slate-800 dark:bg-[#090E17] border border-slate-300 dark:border-slate-700 flex items-center justify-center shrink-0 overflow-hidden select-none ${className}`}
+      className={`${sizeClass} bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-900/60 text-blue-800 dark:text-blue-300 font-bold flex items-center justify-center shrink-0 overflow-hidden select-none tracking-tight ${className}`}
       title={commercialName || name || 'Empresa'}
     >
       {logoUrl ? (
         <img
           src={logoUrl}
           alt={commercialName || name || 'Logotipo empresa'}
-          className="w-full h-full object-contain p-0.5"
+          className="w-full h-full object-contain p-1"
         />
       ) : (
-        <span className="font-['Space_Grotesk'] font-bold tracking-tight text-sky-400">
+        <span className="font-sans font-bold tracking-tight text-blue-800 dark:text-blue-300">
           {initials}
         </span>
       )}

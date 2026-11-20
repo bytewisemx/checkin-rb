@@ -141,27 +141,27 @@ export function ProjectsSupervisionTable({
   return (
     <div className="w-full space-y-6">
       {/* Barra de Filtros y Acciones Rápidas */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5">
         {/* Buscador */}
-        <div className="relative flex-1 max-w-md">
-          <span className="absolute inset-y-0 left-0 flex items-center pl-3.5 text-slate-400">
-            <Search className="w-4 h-4" />
+        <div className="relative w-full sm:w-80">
+          <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-slate-400 pointer-events-none">
+            <Search className="w-3.5 h-3.5" />
           </span>
           <input
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Buscar proyecto, cliente o colaborador..."
-            className="w-full pl-10 pr-4 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:border-blue-600 focus:ring-2 focus:ring-blue-100 dark:focus:ring-blue-950/40 outline-none transition"
+            className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg text-xs py-2 pl-9 pr-3 text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:border-blue-700 outline-none transition-colors"
           />
         </div>
 
         {/* Filtro y Botones de Acción Sobrios (+ Nueva Empresa y + Nuevo Proyecto) */}
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex items-center gap-2.5">
           <select
             value={budgetFilter}
             onChange={(e) => setBudgetFilter(e.target.value as any)}
-            className="text-xs font-medium py-2 px-3 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 outline-none cursor-pointer focus:border-blue-600 transition"
+            className="h-9 text-xs font-medium border border-slate-200 dark:border-slate-800 rounded-lg px-3 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 outline-none cursor-pointer focus:border-blue-700 transition-colors"
           >
             <option value="all">Todos los presupuestos</option>
             <option value="overbudget">Sobregiro (&gt;100%)</option>
@@ -174,21 +174,9 @@ export function ProjectsSupervisionTable({
               type="button"
               data-tour="btn-new-company"
               onClick={() => setIsCompanyModalOpen(true)}
-              className="btn-corporate-secondary inline-flex items-center justify-center gap-2 px-4 py-2 text-xs font-semibold tracking-wide bg-[#101726] text-slate-100 border border-slate-700 hover:border-blue-600 hover:bg-[#151F33] cursor-pointer shrink-0"
+              className="h-9 px-3.5 text-xs font-semibold text-blue-800 dark:text-blue-300 bg-white dark:bg-slate-900 border border-blue-300 dark:border-blue-800/80 hover:bg-blue-50 dark:hover:bg-blue-950/40 rounded-lg transition-colors cursor-pointer inline-flex items-center gap-1.5 shrink-0"
             >
-              <svg
-                className="w-3.5 h-3.5 text-sky-400 shrink-0"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth={2.2}
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                aria-hidden="true"
-              >
-                <line x1="12" y1="5" x2="12" y2="19" />
-                <line x1="5" y1="12" x2="19" y2="12" />
-              </svg>
+              <Plus className="w-3.5 h-3.5 text-blue-700 dark:text-blue-400 shrink-0" />
               <span>Nueva Empresa</span>
             </button>
           )}
@@ -201,7 +189,7 @@ export function ProjectsSupervisionTable({
               setPreselectedClientIdForProject(clients[0]?.id || null);
               setIsProjectModalOpen(true);
             }}
-            className="inline-flex items-center justify-center gap-2 px-4 py-2 text-xs font-semibold tracking-wide text-white bg-blue-700 hover:bg-blue-600 transition cursor-pointer shrink-0"
+            className="h-9 px-4 text-xs font-semibold text-white bg-blue-700 hover:bg-blue-800 rounded-lg shadow-sm transition-colors cursor-pointer inline-flex items-center gap-1.5 shrink-0"
           >
             <Plus className="w-3.5 h-3.5 shrink-0" />
             <span>Nuevo Proyecto</span>
@@ -209,45 +197,45 @@ export function ProjectsSupervisionTable({
         </div>
       </div>
 
-      {/* Franja Sobria de Empresas Registradas con Logotipo/Monograma y Fecha de Inicio (Solo Socio, Gerente y TI) */}
+      {/* Tira de Empresas / Clientes Registrados */}
       {canCreateCompany && clients.length > 0 && (
-        <div className="bg-white dark:bg-[#0B111E] border border-slate-200 dark:border-slate-800 px-4 py-3">
-          <div className="flex flex-wrap items-center justify-between gap-2 mb-2.5">
-            <span className="text-[11px] font-mono font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-              Empresas / Clientes Registrados ({clients.length})
-            </span>
-          </div>
-          <div className="flex flex-wrap gap-2.5">
+        <div className="w-full">
+          <h3 className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2.5">
+            Empresas / Clientes Registrados ({clients.length})
+          </h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 mb-6">
             {clients.map((company) => (
               <div
                 key={company.id}
-                className="inline-flex items-center gap-3 px-3 py-2 bg-slate-50 dark:bg-[#101726] border border-slate-200 dark:border-slate-800 text-xs"
+                className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-blue-300 dark:hover:border-blue-700 rounded-xl p-3.5 transition-all flex items-center justify-between gap-3 shadow-xs"
               >
-                <CompanyLogoBadge
-                  name={company.name}
-                  commercialName={company.commercialName}
-                  logoUrl={company.logoUrl}
-                  size="sm"
-                />
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="font-semibold text-slate-900 dark:text-slate-100 truncate max-w-[200px]">
-                      {company.commercialName || company.name}
-                    </span>
-                    {company.code && (
-                      <span className="font-mono text-[10px] text-slate-500 dark:text-slate-400">
-                        {company.code}
+                <div className="flex items-center gap-3 min-w-0">
+                  <CompanyLogoBadge
+                    name={company.name}
+                    commercialName={company.commercialName}
+                    logoUrl={company.logoUrl}
+                    size="sm"
+                  />
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-semibold text-slate-900 dark:text-slate-100 truncate text-xs">
+                        {company.commercialName || company.name}
                       </span>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-2 text-[10px] text-slate-500 dark:text-slate-400 font-mono">
-                    {company.startDate && <span>Inicio: {company.startDate}</span>}
-                    {company.industry && (
-                      <>
-                        {company.startDate && <span>•</span>}
-                        <span className="font-sans truncate max-w-[140px]">{company.industry}</span>
-                      </>
-                    )}
+                      {company.code && (
+                        <span className="text-[10px] text-slate-500 dark:text-slate-400 font-medium tabular-nums">
+                          {company.code}
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-1.5 text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">
+                      {company.startDate && <span>Inicio: {company.startDate}</span>}
+                      {company.industry && (
+                        <>
+                          {company.startDate && <span>•</span>}
+                          <span className="truncate max-w-[140px]">{company.industry}</span>
+                        </>
+                      )}
+                    </div>
                   </div>
                 </div>
                 <button
@@ -257,7 +245,7 @@ export function ProjectsSupervisionTable({
                     setPreselectedClientIdForProject(company.id);
                     setIsProjectModalOpen(true);
                   }}
-                  className="inline-flex items-center gap-1 text-[11px] font-semibold text-blue-700 dark:text-sky-400 hover:underline cursor-pointer shrink-0 pl-1"
+                  className="inline-flex items-center gap-1 text-[11px] font-semibold text-blue-700 hover:text-blue-900 dark:text-sky-400 dark:hover:text-sky-300 hover:underline cursor-pointer shrink-0"
                 >
                   <Plus className="w-3 h-3 shrink-0" />
                   <span>Proyecto</span>
@@ -295,11 +283,15 @@ export function ProjectsSupervisionTable({
                   assignedMembers,
                   activeWorker,
                 }) => {
-                  const avatarPalette = [
-                    'bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-200',
-                    'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300',
-                    'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300',
+                  const bluePalette = [
+                    'bg-blue-700 text-white',
+                    'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200',
+                    'bg-blue-600 text-white',
+                    'bg-blue-50 text-blue-900 border border-blue-200 dark:bg-blue-950 dark:text-blue-200',
                   ];
+
+                  const formattedConsumed = Number(consumedHours).toFixed(1);
+                  const formattedBudget = Number(budgetHours).toFixed(1);
 
                   return (
                     <tr
@@ -329,24 +321,34 @@ export function ProjectsSupervisionTable({
 
                       {/* 2. Equipo Asignado */}
                       <td className="p-4">
-                        <div className="flex items-center gap-2">
-                          <div className="flex -space-x-2 overflow-hidden">
-                            {assignedMembers.slice(0, 3).map((m, idx) => {
+                        <div className="flex items-center gap-3">
+                          <div className="flex -space-x-2 items-center shrink-0">
+                            {assignedMembers.slice(0, 4).map((m, idx) => {
                               const initials = m.name
                                 .split(' ')
                                 .map((n) => n[0])
                                 .slice(0, 2)
                                 .join('')
                                 .toUpperCase();
-                              const colorClass = avatarPalette[idx % avatarPalette.length];
+                              const colorClass = bluePalette[idx % bluePalette.length];
+                              const photo = m.photoURL || (m as any).avatarUrl;
 
                               return (
                                 <div
                                   key={m.id}
                                   title={`${m.name} (${m.roleTitle || 'Colaborador'})`}
-                                  className={`inline-block h-7 w-7 rounded-full ring-2 ring-white dark:ring-slate-900 ${colorClass} flex items-center justify-center text-xs font-bold shrink-0 select-none`}
+                                  className={`w-7 h-7 rounded-full ring-2 ring-white dark:ring-slate-900 flex items-center justify-center text-[10px] font-bold flex-shrink-0 overflow-hidden select-none ${!photo ? colorClass : ''}`}
                                 >
-                                  {initials}
+                                  {photo ? (
+                                    <img
+                                      src={photo}
+                                      referrerPolicy="no-referrer"
+                                      className="w-full h-full rounded-full object-cover"
+                                      alt={m.name}
+                                    />
+                                  ) : (
+                                    <span>{initials}</span>
+                                  )}
                                 </div>
                               );
                             })}
@@ -356,7 +358,7 @@ export function ProjectsSupervisionTable({
                             type="button"
                             data-tour="project-actions-team"
                             onClick={() => setTeamAssignmentProject(project)}
-                            className="text-xs font-medium text-blue-600 dark:text-blue-400 hover:underline ml-1 cursor-pointer"
+                            className="inline-flex items-center text-xs font-semibold text-blue-700 hover:text-blue-900 dark:text-sky-400 dark:hover:text-sky-300 hover:underline whitespace-nowrap cursor-pointer"
                             title="Gestionar asignaciones del equipo"
                           >
                             Gestionar ({assignedMembers.length})
@@ -367,16 +369,16 @@ export function ProjectsSupervisionTable({
                       {/* 3. Consumo de Horas (Presupuesto vs. Real) */}
                       <td className="p-4" data-tour="project-card-metrics">
                         <div className="w-full max-w-[200px]">
-                          <div className="flex justify-between items-center text-xs mb-1">
+                          <div className="flex justify-between items-center text-xs mb-1 tabular-nums">
                             <span className="font-semibold text-slate-700 dark:text-slate-200">
-                              {consumedHours}h / {budgetHours}h
+                              {formattedConsumed}h / {formattedBudget}h
                             </span>
                             <span
                               className={`font-bold ${isOverBudget
                                   ? 'text-rose-600 dark:text-rose-400'
                                   : isWarning
                                     ? 'text-amber-600 dark:text-amber-400'
-                                    : 'text-blue-600 dark:text-blue-400'
+                                    : 'text-blue-700 dark:text-blue-400'
                                 }`}
                             >
                               {percent}%
@@ -385,10 +387,10 @@ export function ProjectsSupervisionTable({
                           <div className="w-full bg-slate-100 dark:bg-slate-800 rounded-full h-1.5 overflow-hidden">
                             <div
                               className={`h-1.5 rounded-full transition-all duration-300 ${isOverBudget
-                                  ? 'bg-rose-500'
+                                  ? 'bg-rose-600'
                                   : isWarning
                                     ? 'bg-amber-500'
-                                    : 'bg-blue-600 dark:bg-blue-500'
+                                    : 'bg-blue-700 dark:bg-blue-600'
                                 }`}
                               style={{ width: `${Math.min(percent, 100)}%` }}
                             />
@@ -486,21 +488,9 @@ export function ProjectsSupervisionTable({
                         <button
                           type="button"
                           onClick={() => setIsCompanyModalOpen(true)}
-                          className="btn-corporate-secondary inline-flex items-center justify-center gap-2 px-4 py-2 text-xs font-semibold tracking-wide bg-[#101726] text-slate-100 border border-slate-700 hover:border-blue-600 hover:bg-[#151F33] cursor-pointer"
+                          className="h-9 px-3.5 text-xs font-semibold text-blue-800 dark:text-blue-300 bg-white dark:bg-slate-900 border border-blue-300 dark:border-blue-800/80 hover:bg-blue-50 dark:hover:bg-blue-950/40 rounded-lg transition-colors cursor-pointer inline-flex items-center gap-1.5"
                         >
-                          <svg
-                            className="w-3.5 h-3.5 text-sky-400 shrink-0"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth={2.2}
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            aria-hidden="true"
-                          >
-                            <line x1="12" y1="5" x2="12" y2="19" />
-                            <line x1="5" y1="12" x2="19" y2="12" />
-                          </svg>
+                          <Plus className="w-3.5 h-3.5 text-blue-700 dark:text-blue-400 shrink-0" />
                           <span>Nueva Empresa</span>
                         </button>
                       </div>

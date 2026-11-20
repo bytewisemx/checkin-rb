@@ -65,7 +65,7 @@ export function CheckinPanel() {
 
   const hasEnrolledVector = Boolean(
     (user?.biometrics?.faceDescriptor && user.biometrics.faceDescriptor.length > 0) ||
-      (user?.faceDescriptor && user.faceDescriptor.length > 0)
+    (user?.faceDescriptor && user.faceDescriptor.length > 0)
   );
 
   const [isLocating, setIsLocating] = useState(false);
@@ -88,10 +88,10 @@ export function CheckinPanel() {
   // Detección de jornada pendiente de regularización (corte 12h o 23:59)
   const hasPendingRegularization = Boolean(
     activeCheckin?.requiresRegularization ||
-      activeCheckin?.requiresRealCheckout ||
-      activeCheckin?.status === 'truncated_12h' ||
-      activeCheckin?.status === 'pending_regularization' ||
-      activeCheckin?.status === 'pending_checkout_regularization'
+    activeCheckin?.requiresRealCheckout ||
+    activeCheckin?.status === 'truncated_12h' ||
+    activeCheckin?.status === 'pending_regularization' ||
+    activeCheckin?.status === 'pending_checkout_regularization'
   );
 
   // Abrir automáticamente el modal obligatorio si existe una jornada truncada/pendiente
@@ -206,9 +206,9 @@ export function CheckinPanel() {
 
   const isCurrentlyPaused = Boolean(
     activeCheckin &&
-      activeCheckin.pauses &&
-      activeCheckin.pauses.length > 0 &&
-      activeCheckin.pauses[activeCheckin.pauses.length - 1].endMs === null
+    activeCheckin.pauses &&
+    activeCheckin.pauses.length > 0 &&
+    activeCheckin.pauses[activeCheckin.pauses.length - 1].endMs === null
   );
 
   const activeTask = useMemo(() => {
@@ -420,10 +420,10 @@ export function CheckinPanel() {
       switchActiveTask(
         chosenTask
           ? {
-              taskId: chosenTask.id,
-              taskName: chosenTask.name,
-              company: chosenClient?.name || chosenProject?.name || 'Russell Bedford',
-            }
+            taskId: chosenTask.id,
+            taskName: chosenTask.name,
+            company: chosenClient?.name || chosenProject?.name || 'Russell Bedford',
+          }
           : null
       );
 
@@ -529,11 +529,10 @@ export function CheckinPanel() {
                   ? 'Reconocimiento facial activo'
                   : 'Reconocimiento facial inactivo'
               }
-              className={`p-1.5 rounded-md transition-colors ${
-                hasEnrolledVector
-                  ? 'text-emerald-500 dark:text-emerald-400'
-                  : 'text-rose-500 dark:text-rose-500'
-              }`}
+              className={`p-1.5 rounded-md transition-colors ${hasEnrolledVector
+                ? 'text-emerald-500 dark:text-emerald-400'
+                : 'text-rose-500 dark:text-rose-500'
+                }`}
             >
               <ScanFace className="w-5 h-5" />
             </div>
@@ -550,9 +549,8 @@ export function CheckinPanel() {
           {/* Indicador discreto de presencia / en línea */}
           <div className="flex items-center" title={isOffline ? 'Sin conexión' : 'En línea'}>
             <div
-              className={`w-2.5 h-2.5 rounded-full ${
-                isOffline ? 'bg-amber-500 animate-pulse' : 'bg-emerald-500'
-              }`}
+              className={`w-2.5 h-2.5 rounded-full ${isOffline ? 'bg-amber-500 animate-pulse' : 'bg-emerald-500'
+                }`}
             />
           </div>
         </div>
