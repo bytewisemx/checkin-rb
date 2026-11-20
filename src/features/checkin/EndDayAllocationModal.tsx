@@ -361,15 +361,21 @@ export function EndDayAllocationModal({
         // Si Firestore rechaza (por conexión, latencia o reglas), no bloquear la salida del trabajador.
         // La distribución se preserva en el cliente y se finaliza el turno sin fricción.
         console.warn('[EndDayAllocationModal] Guardado en Firestore no completado:', commitRes.error);
-        onConfirmCloseDay(allocationsInHours);
-        addToast(
-          'Jornada finalizada y distribución registrada correctamente.',
-          'success'
-        );
-        return;
       }
 
       onConfirmCloseDay(allocationsInHours);
+      addToast(
+        'Jornada finalizada y distribución registrada correctamente.',
+        'success'
+      );
+    } catch (err) {
+      console.warn('[EndDayAllocationModal] Excepción al finalizar jornada:', err);
+      const fallbackAllocations = entries.map((e) => ({
+        taskId: e.taskId,
+        hours: Number((e.minutes / 60).toFixed(4)),
+      }));
+      onConfirmCloseDay(fallbackAllocations);
+      addToast('Jornada finalizada correctamente.', 'success');
     } finally {
       setIsSaving(false);
     }

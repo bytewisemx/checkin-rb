@@ -67,7 +67,8 @@ export function RayonerTaskModal({
   const [selectedProjectId, setSelectedProjectId] = useState<string>('');
   const [taskTitle, setTaskTitle] = useState<string>('');
   const [description, setDescription] = useState<string>('');
-  const [assignedUserId, setAssignedUserId] = useState<string>('');
+  const [assignedUserIds, setAssignedUserIds] = useState<string[]>([]);
+  const [leadUserId, setLeadUserId] = useState<string>('');
   const [estimatedHours, setEstimatedHours] = useState<number>(2);
   const [estimatedMinutes, setEstimatedMinutes] = useState<number>(0);
   const [priority, setPriority] = useState<TaskPriority>('medium');
@@ -128,16 +129,31 @@ export function RayonerTaskModal({
     setEstimatedHours(Math.floor(totalMins / 60));
     setEstimatedMinutes(totalMins % 60);
 
-    // Colaborador asignado
-    const existingAssigneeId = currentTask?.assignedToId || currentTask?.assigned_to || '';
-    const existingAssigneeEmail = (currentTask?.assignedToEmail || '').toLowerCase();
-    const matchedMember =
-      eligibleCollaborators.find(
-        (m) =>
-          (existingAssigneeId && m.id === existingAssigneeId) ||
-          (existingAssigneeEmail && m.email.toLowerCase() === existingAssigneeEmail)
-      ) || eligibleCollaborators[0];
-    setAssignedUserId(matchedMember?.id || '');
+    // Participantes y Encargado Principal
+    const rawAssigned = Array.isArray(currentTask?.assignedUserIds) && currentTask.assignedUserIds.length > 0
+      ? currentTask.assignedUserIds
+      : Array.isArray(currentTask?.assignedToIds) && currentTask.assignedToIds.length > 0
+      ? currentTask.assignedToIds
+      : currentTask?.assignedToId || currentTask?.assigned_to
+      ? [currentTask.assignedToId || currentTask.assigned_to!]
+      : [];
+
+    const validAssigned = rawAssigned.filter((id) =>
+      eligibleCollaborators.some((m) => m.id === id)
+    );
+
+    const initialAssignedIds = validAssigned.length > 0
+      ? validAssigned
+      : eligibleCollaborators[0]
+      ? [eligibleCollaborators[0].id]
+      : [];
+
+    setAssignedUserIds(initialAssignedIds);
+
+    const initialLead = currentTask?.leadUserId && initialAssignedIds.includes(currentTask.leadUserId)
+      ? currentTask.leadUserId
+      : initialAssignedIds[0] || '';
+    setLeadUserId(initialLead);
 
     // Ubicación de ejecución
     const existingGeo = resolvedProjectId ? geofences[resolvedProjectId] : undefined;
@@ -218,14 +234,20 @@ export function RayonerTaskModal({
       return;
     }
 
-    const selectedMember =
-      eligibleCollaborators.find((m) => m.id === assignedUserId) || eligibleCollaborators[0];
-
-    if (!selectedMember) {
-      setErrorMessage('Selecciona un colaborador para asignar la tarea.');
+    if (assignedUserIds.length === 0) {
+      setErrorMessage('Selecciona al menos un participante para asignar la tarea.');
       setActiveTab('properties');
       return;
     }
+
+    const effectiveLeadId = leadUserId && assignedUserIds.includes(leadUserId)
+      ? leadUserId
+      : assignedUserIds[0];
+    const leadMember = eligibleCollaborators.find((m) => m.id === effectiveLeadId) || eligibleCollaborators[0];
+
+    const assignedMembers = eligibleCollaborators.filter((m) =>
+      assignedUserIds.includes(m.id)
+    );
 
     const totalPlannedMinutes = Math.max(
       0,
@@ -256,30 +278,30 @@ export function RayonerTaskModal({
     const resolvedCompanyName =
       currentCompany?.commercialName || currentCompany?.name || '';
     const resolvedProjectName = currentProject?.name || '';
-    const memberEmail = (selectedMember.email || '').trim().toLowerCase();
+    const leadEmail = (leadMember?.email || '').trim().toLowerCase();
 
-    // Normalización Universal de Cadena de Mando e Identidades Múltiples (punto 1)
+    // Normalización Universal de Cadena de Mando e Identidades Múltiples
     const normUserRole = (user?.role || '').toLowerCase();
     const resolvedGerenteId =
       normUserRole === 'gerente'
         ? (user?.id || currentIssuerId)
-        : ((selectedMember as any).gerenteId || (currentProject as any)?.gerenteId || '');
+        : ((leadMember as any)?.gerenteId || (currentProject as any)?.gerenteId || '');
 
     const resolvedSupervisorId =
       normUserRole === 'supervisor'
         ? (user?.id || currentIssuerId)
-        : (selectedMember.supervisorId || (currentProject as any)?.supervisorId || currentIssuerId);
+        : (leadMember?.supervisorId || (currentProject as any)?.supervisorId || currentIssuerId);
 
     const resolvedTeamId =
-      (selectedMember as any).teamId || (currentProject as any)?.teamId || (user as any)?.teamId || 'team-prueba-01';
+      (leadMember as any)?.teamId || (currentProject as any)?.teamId || (user as any)?.teamId || 'team-prueba-01';
 
     const resolvedTeamIds = Array.from(
       new Set(
         [
           resolvedTeamId,
-          (selectedMember as any).teamId,
+          (leadMember as any)?.teamId,
           (currentProject as any)?.teamId,
-          ...(selectedMember.assignedTeams || []),
+          ...assignedMembers.flatMap((m) => [m.teamId, ...(m.assignedTeams || [])]),
           'team-prueba-01',
         ]
           .map((v) => (v || '').trim())
@@ -290,25 +312,30 @@ export function RayonerTaskModal({
     const resolvedAssignedToIds = Array.from(
       new Set(
         [
-          selectedMember.id,
-          (selectedMember as any).uid,
-          memberEmail,
+          ...assignedUserIds,
+          effectiveLeadId,
+          leadMember?.id,
+          (leadMember as any)?.uid,
+          leadEmail,
+          ...assignedMembers.map((m) => m.id),
+          ...assignedMembers.map((m) => (m as any).uid),
+          ...assignedMembers.map((m) => (m.email || '').toLowerCase()),
         ]
           .map((v) => (v || '').trim())
           .filter(Boolean)
       )
     );
 
-    const assignmentEntry: TaskAssignment = {
-      id: `asg-${Date.now()}`,
+    const perMemberHours = Number((totalPlannedHours / Math.max(1, assignedMembers.length)).toFixed(4));
+    const assignmentEntries: TaskAssignment[] = assignedMembers.map((member) => ({
+      id: `asg-${member.id}-${Date.now()}`,
       taskId: currentTask?.id || '',
-      userId: selectedMember.id,
-      userName: selectedMember.name,
-      userRoleTitle: selectedMember.roleTitle || 'Colaborador',
-      allocatedHours: totalPlannedHours,
-      hourlyRateOverride: currentProject?.hourlyRate || 0,
+      userId: member.id,
+      userName: member.name,
+      userRoleTitle: member.roleTitle || 'Colaborador',
+      allocatedHours: perMemberHours,
       blockOnLimit: false,
-    };
+    }));
 
     if (currentTask) {
       updateTask(currentTask.id, {
@@ -327,11 +354,14 @@ export function RayonerTaskModal({
         dueDate: dueDate || undefined,
         plannedHours: totalPlannedHours,
         plannedMinutes: totalPlannedMinutes,
-        assigned_to: selectedMember.id,
-        assignedToId: selectedMember.id,
+        assignedUserIds,
+        leadUserId: effectiveLeadId,
+        leadUserName: leadMember?.name || 'Encargado',
+        assigned_to: effectiveLeadId,
+        assignedToId: effectiveLeadId,
         assignedToIds: resolvedAssignedToIds,
-        assignedToEmail: memberEmail,
-        assignedToName: selectedMember.name,
+        assignedToEmail: leadEmail,
+        assignedToName: leadMember?.name || 'Encargado',
         created_by: currentTask.created_by || currentIssuerId,
         locationMode,
         locationAddress: resolvedLocationAddress,
@@ -340,12 +370,12 @@ export function RayonerTaskModal({
 
       setAssignmentsForTask(
         currentTask.id,
-        [{ ...assignmentEntry, taskId: currentTask.id }],
+        assignmentEntries.map((a) => ({ ...a, taskId: currentTask.id })),
         currentIssuerId,
         currentIssuerName
       );
 
-      addToast(`Tarea "${cleanTitle}" actualizada y asignada a ${selectedMember.name}.`, 'success');
+      addToast(`Tarea "${cleanTitle}" actualizada con ${assignedMembers.length} participante(s).`, 'success');
     } else {
       const newTaskId = addTask(
         {
@@ -360,11 +390,14 @@ export function RayonerTaskModal({
           parentTaskId: null,
           title: cleanTitle,
           name: cleanTitle,
-          assigned_to: selectedMember.id,
-          assignedToId: selectedMember.id,
+          assignedUserIds,
+          leadUserId: effectiveLeadId,
+          leadUserName: leadMember?.name || 'Encargado',
+          assigned_to: effectiveLeadId,
+          assignedToId: effectiveLeadId,
           assignedToIds: resolvedAssignedToIds,
-          assignedToEmail: memberEmail,
-          assignedToName: selectedMember.name,
+          assignedToEmail: leadEmail,
+          assignedToName: leadMember?.name || 'Encargado',
           created_by: currentIssuerId,
           status: 'pending',
           created_at: new Date().toISOString(),
@@ -386,12 +419,12 @@ export function RayonerTaskModal({
 
       setAssignmentsForTask(
         newTaskId,
-        [{ ...assignmentEntry, taskId: newTaskId }],
+        assignmentEntries.map((a) => ({ ...a, taskId: newTaskId })),
         currentIssuerId,
         currentIssuerName
       );
 
-      addToast(`Tarea "${cleanTitle}" asignada a ${selectedMember.name}.`, 'success');
+      addToast(`Tarea "${cleanTitle}" creada con ${assignedMembers.length} participante(s).`, 'success');
     }
 
     if (currentProject) {
@@ -564,27 +597,95 @@ export function RayonerTaskModal({
                 />
               </div>
 
-              {/* Colaborador Asignado */}
+              {/* Participantes Asignados (Selección Múltiple N) */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400">
+                    Participantes Asignados * ({assignedUserIds.length})
+                  </label>
+                  <span className="text-[11px] text-slate-500">
+                    Selecciona 1 o más colaboradores
+                  </span>
+                </div>
+
+                <div className="max-h-36 overflow-y-auto border border-slate-300 dark:border-slate-700 divide-y divide-slate-200 dark:divide-slate-800 bg-white dark:bg-[#101726]">
+                  {eligibleCollaborators.length === 0 ? (
+                    <div className="p-3 text-xs text-slate-500 text-center">Sin colaboradores disponibles</div>
+                  ) : (
+                    eligibleCollaborators.map((member) => {
+                      const isSelected = assignedUserIds.includes(member.id);
+                      return (
+                        <label
+                          key={member.id}
+                          className={`flex items-center justify-between px-3 py-2 text-xs cursor-pointer transition-colors ${
+                            isSelected
+                              ? 'bg-blue-50/70 dark:bg-blue-950/30 text-blue-900 dark:text-blue-200'
+                              : 'hover:bg-slate-50 dark:hover:bg-slate-800/40 text-slate-700 dark:text-slate-300'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={() => {
+                                setAssignedUserIds((prev) => {
+                                  const exists = prev.includes(member.id);
+                                  const next = exists
+                                    ? prev.filter((id) => id !== member.id)
+                                    : [...prev, member.id];
+                                  if (exists && leadUserId === member.id) {
+                                    setLeadUserId(next[0] || '');
+                                  } else if (!exists && prev.length === 0) {
+                                    setLeadUserId(member.id);
+                                  }
+                                  return next;
+                                });
+                              }}
+                              className="w-4 h-4 text-blue-700 rounded border-slate-300 focus:ring-blue-600"
+                            />
+                            <span className="font-medium truncate">{member.name}</span>
+                            <span className="text-[11px] text-slate-500 truncate">
+                              ({member.roleTitle || 'Colaborador'})
+                            </span>
+                          </div>
+                          {leadUserId === member.id && (
+                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-200 border border-blue-300 dark:border-blue-700 shrink-0">
+                              Encargado
+                            </span>
+                          )}
+                        </label>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+
+              {/* Encargado Principal de la Actividad (Reasignable dinámicamente) */}
               <div>
                 <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1.5">
-                  Colaborador Asignado *
+                  Encargado Principal de la Actividad *
                 </label>
                 <select
                   required
-                  value={assignedUserId}
-                  onChange={(e) => setAssignedUserId(e.target.value)}
+                  value={leadUserId}
+                  onChange={(e) => setLeadUserId(e.target.value)}
                   className="w-full px-3 py-2 text-sm font-medium bg-white dark:bg-[#101726] border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 focus:border-blue-700 dark:focus:border-sky-400 outline-none cursor-pointer"
                 >
-                  {eligibleCollaborators.length === 0 ? (
-                    <option value="">Sin colaboradores disponibles</option>
+                  {assignedUserIds.length === 0 ? (
+                    <option value="">Selecciona al menos un participante primero</option>
                   ) : (
-                    eligibleCollaborators.map((member) => (
-                      <option key={member.id} value={member.id}>
-                        {member.name} — {member.roleTitle || 'Colaborador'} ({member.email})
-                      </option>
-                    ))
+                    eligibleCollaborators
+                      .filter((m) => assignedUserIds.includes(m.id))
+                      .map((member) => (
+                        <option key={member.id} value={member.id}>
+                          {member.name} ({member.email})
+                        </option>
+                      ))
                   )}
                 </select>
+                <p className="text-[11px] text-slate-500 mt-1">
+                  El encargado principal lidera el avance operativo y puede reasignarse dinámicamente en cualquier momento.
+                </p>
               </div>
 
               {/* Tiempo Estimado (Horas y Minutos 0-59), Prioridad y Fecha Límite */}
@@ -602,13 +703,13 @@ export function RayonerTaskModal({
                         value={estimatedHours}
                         onChange={(e) => handleHoursChange(e.target.value)}
                         aria-label="Horas estimadas"
-                        className="w-full px-2.5 py-2 pr-7 text-xs font-mono font-semibold text-right bg-white dark:bg-[#101726] border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 focus:border-blue-700 dark:focus:border-sky-400 outline-none"
+                        className="w-full px-2.5 py-2 pr-7 text-xs font-semibold tabular-nums text-right bg-white dark:bg-[#101726] border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 focus:border-blue-700 dark:focus:border-sky-400 outline-none"
                       />
-                      <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[11px] font-mono text-slate-400 pointer-events-none">
+                      <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[11px] text-slate-400 pointer-events-none">
                         h
                       </span>
                     </div>
-                    <span className="text-slate-400 font-mono text-xs">:</span>
+                    <span className="text-slate-400 text-xs">:</span>
                     <div className="relative flex-1">
                       <input
                         type="number"
@@ -618,9 +719,9 @@ export function RayonerTaskModal({
                         value={estimatedMinutes}
                         onChange={(e) => handleMinutesChange(e.target.value)}
                         aria-label="Minutos estimados"
-                        className="w-full px-2.5 py-2 pr-7 text-xs font-mono font-semibold text-right bg-white dark:bg-[#101726] border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 focus:border-blue-700 dark:focus:border-sky-400 outline-none"
+                        className="w-full px-2.5 py-2 pr-7 text-xs font-semibold tabular-nums text-right bg-white dark:bg-[#101726] border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 focus:border-blue-700 dark:focus:border-sky-400 outline-none"
                       />
-                      <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[11px] font-mono text-slate-400 pointer-events-none">
+                      <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[11px] text-slate-400 pointer-events-none">
                         m
                       </span>
                     </div>

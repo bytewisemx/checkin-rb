@@ -49,7 +49,7 @@ service cloud.firestore {
     // Máximo 1 lectura cacheada por petición (Zero-Read con Custom Claims)
     function getUserData() {
       let uidPath = getEffectiveUid();
-      return exists(/databases/$(database)/documents/users/$(uidPath))
+      return (uidPath != '' && exists(/databases/$(database)/documents/users/$(uidPath)))
         ? get(/databases/$(database)/documents/users/$(uidPath)).data
         : {};
     }
@@ -276,17 +276,17 @@ service cloud.firestore {
         (isSupervisorOnly() && isManagedBySupervisor(request.resource.data)) ||
         isAssignedToTaskData(request.resource.data) ||
         request.resource.data.get('isExtraordinary', false) == true ||
-        request.resource.data.keys().hasAny(['loggedMinutes', 'title', 'name', 'status'])
+        request.resource.data.keys().hasAny(['loggedMinutes', 'title', 'name', 'status', 'assignedUserIds', 'leadUserId'])
       );
 
       allow update: if isAuthenticated() && !isRH() && (
         isSocio() ||
         (isGerenteOnly() && isManagedByGerente(resource.data)) ||
         (isSupervisorOnly() && isManagedBySupervisor(resource.data)) ||
-        // Registro de tiempos de jornada y avance por cualquier colaborador autenticado:
+        // Registro de tiempos de jornada, avance y notas por cualquier colaborador autenticado:
         request.resource.data.diff(resource.data).affectedKeys().hasAny([
           'loggedMinutes', 'actualHours', 'status', 'updatedAt', 'completedAt',
-          'notes', 'history', 'taskIntervals'
+          'notes', 'history', 'taskIntervals', 'leadUserId', 'leadUserName', 'assignedUserIds'
         ]) ||
         isAssignedToTaskData(resource.data) ||
         isAssignedToTaskData(request.resource.data) ||

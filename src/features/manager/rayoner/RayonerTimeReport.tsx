@@ -125,21 +125,23 @@ export function RayonerTimeReport({ initialProjectId }: RayonerTimeReportProps) 
       const pct = task.plannedHours > 0 ? ((actualH / task.plannedHours) * 100).toFixed(1) : '0';
       const isSubtask = Boolean(task.parentTaskId);
 
-      csvContent += `"${isSubtask ? 'Subtarea' : 'Tarea'}","${task.name.replace(/"/g, '""')}","-","${formatHoursToSexagesimal(task.plannedHours)}","${formatHoursToSexagesimal(actualH)}","${formatHoursToSexagesimal(remH)}",${pct}%,${currentProject.hourlyRate},${(actualH * currentProject.hourlyRate).toFixed(2)}\r\n`;
+      const projRate = currentProject.hourlyRate || 0;
+      csvContent += `"${isSubtask ? 'Subtarea' : 'Tarea'}","${task.name.replace(/"/g, '""')}","-","${formatHoursToSexagesimal(task.plannedHours)}","${formatHoursToSexagesimal(actualH)}","${formatHoursToSexagesimal(remH)}",${pct}%,${projRate},${(actualH * projRate).toFixed(2)}\r\n`;
 
       const taskAsgs = assignments.filter(a => a.taskId === task.id);
       taskAsgs.forEach(asg => {
         const userActual = userTaskActualHours[`${task.id}_${asg.userId}`] || (actualH / Math.max(1, taskAsgs.length));
         const userRem = Math.max(0, asg.allocatedHours - userActual);
         const userPct = asg.allocatedHours > 0 ? ((userActual / asg.allocatedHours) * 100).toFixed(1) : '0';
-        const rate = asg.hourlyRateOverride || currentProject.hourlyRate;
+        const rate = asg.hourlyRateOverride || projRate;
 
         csvContent += `"Asignado","-","${asg.userName}","${formatHoursToSexagesimal(asg.allocatedHours)}","${formatHoursToSexagesimal(userActual)}","${formatHoursToSexagesimal(userRem)}",${userPct}%,${rate},${(userActual * rate).toFixed(2)}\r\n`;
       });
     });
 
     // Fila Total
-    csvContent += `"TOTAL","Proyecto Consolidado","-","${formatHoursToSexagesimal(totalPlannedHours)}","${formatHoursToSexagesimal(totalActualHours)}","${formatHoursToSexagesimal(totalRemainingHours)}",${percentConsumed.toFixed(1)}%,${currentProject.hourlyRate},${estimatedCost.toFixed(2)}\r\n`;
+    const finalProjRate = currentProject.hourlyRate || 0;
+    csvContent += `"TOTAL","Proyecto Consolidado","-","${formatHoursToSexagesimal(totalPlannedHours)}","${formatHoursToSexagesimal(totalActualHours)}","${formatHoursToSexagesimal(totalRemainingHours)}",${percentConsumed.toFixed(1)}%,${finalProjRate},${estimatedCost.toFixed(2)}\r\n`;
 
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement('a');

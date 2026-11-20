@@ -18,7 +18,7 @@ export function ProjectTasksDrawerModal({
   project,
   onOpenTaskModal,
 }: ProjectTasksDrawerModalProps) {
-  const { tasks, taskActualHours, teamMembers, clients } = useRayonerStore();
+  const { tasks, taskActualHours, teamMembers, clients, updateTask } = useRayonerStore();
 
   const projectTasks = useMemo(() => {
     if (!project) return [];
@@ -121,69 +121,120 @@ export function ProjectTasksDrawerModal({
             const isOver = percent >= 100;
             const isAlert = percent >= 80 && percent < 100;
 
-            const assignee = teamMembers.find(
-              (m) =>
-                m.id === (task.assignedToId || task.assigned_to) ||
-                (task.assignedToEmail &&
-                  m.email.toLowerCase() === task.assignedToEmail.toLowerCase())
-            );
-            const assigneeDisplayName = assignee?.name || task.assignedToName || 'Sin asignar';
+            const rawAssigned = Array.isArray(task.assignedUserIds) && task.assignedUserIds.length > 0
+              ? task.assignedUserIds
+              : Array.isArray(task.assignedToIds) && task.assignedToIds.length > 0
+              ? task.assignedToIds
+              : task.assignedToId || task.assigned_to
+              ? [task.assignedToId || task.assigned_to!]
+              : [];
+
+            const assignedMembers = teamMembers.filter((m) => rawAssigned.includes(m.id));
+
+            const effectiveLeadId =
+              task.leadUserId ||
+              task.assignedToId ||
+              task.assigned_to ||
+              rawAssigned[0] ||
+              '';
+
+            const leadMember = teamMembers.find((m) => m.id === effectiveLeadId);
+            const leadDisplayName =
+              task.leadUserName || leadMember?.name || task.assignedToName || 'Sin asignar';
+
+            const handleReassignLead = (newLeadId: string) => {
+              const target = teamMembers.find((m) => m.id === newLeadId);
+              if (!target) return;
+              updateTask(task.id, {
+                leadUserId: target.id,
+                leadUserName: target.name,
+                assigned_to: target.id,
+                assignedToId: target.id,
+                assignedToName: target.name,
+                assignedToEmail: (target.email || '').toLowerCase(),
+              });
+            };
 
             return (
               <div
                 key={task.id}
-                className="p-3.5 rounded-xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900/60 hover:bg-slate-50 dark:hover:bg-slate-800/40 transition flex items-center justify-between gap-3"
+                className="p-3.5 rounded-xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900/60 hover:bg-slate-50 dark:hover:bg-slate-800/40 transition space-y-2.5"
               >
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-bold text-slate-800 dark:text-slate-100 truncate">
-                      {task.name}
-                    </span>
-                    {task.isExtraordinary && (
-                      <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
-                        Extraordinaria
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-xs font-bold text-slate-800 dark:text-slate-100 truncate">
+                        {task.name}
                       </span>
+                      {task.isExtraordinary && (
+                        <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
+                          Extraordinaria
+                        </span>
+                      )}
+                      <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-md bg-blue-50 text-blue-800 border border-blue-200 dark:bg-blue-950/60 dark:text-sky-300 dark:border-blue-900">
+                        Encargado: {leadDisplayName}
+                      </span>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-2 mt-1.5 text-[11px] text-slate-500">
+                      <span className="inline-flex items-center gap-1">
+                        <User className="w-3 h-3 text-slate-400" />
+                        {assignedMembers.length > 0
+                          ? `${assignedMembers.length} participante(s)`
+                          : '1 asignado'}
+                      </span>
+                      <span>•</span>
+                      <span className="inline-flex items-center gap-1 font-medium tabular-nums">
+                        <Clock className="w-3 h-3 text-slate-400" />
+                        {formatMinutesSexagesimal(actualMinutes)} / {formatMinutesSexagesimal(plannedMinutes)} ({percent}%)
+                      </span>
+                    </div>
+
+                    {/* Selector rápido para reasignar encargado si hay múltiples participantes */}
+                    {assignedMembers.length > 1 && (
+                      <div className="flex items-center gap-2 mt-2 pt-1 border-t border-slate-100 dark:border-slate-800">
+                        <span className="text-[10px] font-medium text-slate-400">Reasignar encargado:</span>
+                        <select
+                          value={effectiveLeadId}
+                          onChange={(e) => handleReassignLead(e.target.value)}
+                          className="text-[11px] font-medium bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded px-2 py-0.5 text-slate-700 dark:text-slate-200 focus:outline-none focus:border-blue-700"
+                        >
+                          {assignedMembers.map((m) => (
+                            <option key={m.id} value={m.id}>
+                              {m.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
                     )}
+
+                    {/* Barra de progreso de la tarea */}
+                    <div className="w-full bg-slate-100 dark:bg-slate-800 rounded-full h-1 mt-2 overflow-hidden">
+                      <div
+                        className={`h-1 rounded-full ${
+                          isOver
+                            ? 'bg-rose-500'
+                            : isAlert
+                            ? 'bg-amber-500'
+                            : 'bg-blue-600 dark:bg-blue-500'
+                        }`}
+                        style={{ width: `${Math.min(percent, 100)}%` }}
+                      />
+                    </div>
                   </div>
 
-                  <div className="flex items-center gap-3 mt-1.5 text-[11px] text-slate-400">
-                    <span className="inline-flex items-center gap-1">
-                      <User className="w-3 h-3 text-slate-400" />
-                      {assigneeDisplayName}
-                    </span>
-                    <span>•</span>
-                    <span className="inline-flex items-center gap-1 font-mono font-medium">
-                      <Clock className="w-3 h-3" />
-                      {formatMinutesSexagesimal(actualMinutes)} / {formatMinutesSexagesimal(plannedMinutes)} ({percent}%)
-                    </span>
+                  <div className="shrink-0 flex items-center gap-2 pt-0.5">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onOpenTaskModal(task.id, project.id);
+                      }}
+                      className="p-1.5 text-slate-400 hover:text-slate-700 dark:hover:text-white rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+                      title="Editar tarea"
+                    >
+                      <Edit2 className="w-3.5 h-3.5" />
+                    </button>
                   </div>
-
-                  {/* Barra de progreso de la tarea */}
-                  <div className="w-full bg-slate-100 dark:bg-slate-800 rounded-full h-1 mt-2 overflow-hidden">
-                    <div
-                      className={`h-1 rounded-full ${
-                        isOver
-                          ? 'bg-rose-500'
-                          : isAlert
-                          ? 'bg-amber-500'
-                          : 'bg-blue-600 dark:bg-blue-500'
-                      }`}
-                      style={{ width: `${Math.min(percent, 100)}%` }}
-                    />
-                  </div>
-                </div>
-
-                <div className="shrink-0 flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      onOpenTaskModal(task.id, project.id);
-                    }}
-                    className="p-1.5 text-slate-400 hover:text-slate-700 dark:hover:text-white rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition"
-                    title="Editar tarea"
-                  >
-                    <Edit2 className="w-3.5 h-3.5" />
-                  </button>
                 </div>
               </div>
             );

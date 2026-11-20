@@ -1,7 +1,8 @@
 import { useState, useMemo } from 'react';
-import { X, Search, Check, Users, UserPlus } from 'lucide-react';
+import { X, Search, Check, UserPlus } from 'lucide-react';
 import { useRayonerStore } from '../../../store/useRayonerStore';
 import { useCheckinStore } from '../../../store/useCheckinStore';
+import { normalizeRole } from '../../../services/rbac';
 import type { Project, TeamMember } from '../../../types/rayoner';
 
 interface ProjectTeamAssignmentModalProps {
@@ -20,6 +21,14 @@ export function ProjectTeamAssignmentModal({
   const user = useCheckinStore((state) => state.user);
 
   const [searchQuery, setSearchQuery] = useState('');
+
+  // Regla de negocio 2.3: Exclusión total de RH y TI en el equipo del proyecto
+  const eligibleTeamMembers = useMemo(() => {
+    return teamMembers.filter((m) => {
+      const r = normalizeRole(m.role);
+      return r !== 'RH' && r !== 'TI';
+    });
+  }, [teamMembers]);
 
   // Identificar los IDs de los usuarios actualmente asignados a este proyecto
   const currentAssignedIds = useMemo(() => {
@@ -52,7 +61,7 @@ export function ProjectTeamAssignmentModal({
   }
 
   const filteredMembers = useMemo(() => {
-    return teamMembers.filter((m) => {
+    return eligibleTeamMembers.filter((m) => {
       const q = searchQuery.toLowerCase();
       return (
         m.name.toLowerCase().includes(q) ||
@@ -60,7 +69,7 @@ export function ProjectTeamAssignmentModal({
         (m.roleTitle && m.roleTitle.toLowerCase().includes(q))
       );
     });
-  }, [teamMembers, searchQuery]);
+  }, [eligibleTeamMembers, searchQuery]);
 
   if (!isOpen || !project) return null;
 
@@ -70,7 +79,7 @@ export function ProjectTeamAssignmentModal({
       if (next.has(memberId)) {
         // No permitir revocar al líder principal desde este modal si es el único
         if (memberId === project.leadUserId && next.size === 1) {
-          addToast('El líder del proyecto debe permanecer asignado.', 'error');
+          addToast('El responsable del proyecto debe permanecer asignado.', 'error');
           return prev;
         }
         next.delete(memberId);
@@ -88,6 +97,7 @@ export function ProjectTeamAssignmentModal({
       .filter(Boolean);
     updateProject(project.id, {
       assignedUserIds: assignedArray,
+      assignedToIds: assignedArray,
       assignedUserEmails: Array.from(new Set(assignedEmails)),
     });
 
@@ -117,7 +127,7 @@ export function ProjectTeamAssignmentModal({
       setAssignmentsForTask(primaryTask.id, updatedTaskAssignments, user?.id, user?.name);
     }
 
-    addToast(`Equipo asignado actualizado (${assignedArray.length} colaboradores).`, 'success');
+    addToast(`Equipo asignado actualizado (${assignedArray.length} participantes).`, 'success');
     onClose();
   };
 
@@ -131,18 +141,17 @@ export function ProjectTeamAssignmentModal({
         className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-5 animate-scale-up"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Cabecera */}
+        {/* Cabecera sin iconos decorativos */}
         <div className="flex items-start justify-between">
           <div>
-            <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-blue-600 dark:text-blue-400">
-              <Users className="w-4 h-4" />
-              <span>Gestión de Equipo</span>
+            <div className="text-xs font-semibold uppercase tracking-wider text-blue-700 dark:text-blue-400">
+              Gestión de Equipo del Proyecto
             </div>
             <h3 className="text-lg font-bold text-slate-900 dark:text-white mt-1">
               {project.name}
             </h3>
             <p className="text-xs text-slate-500 dark:text-slate-400">
-              {project.code} • Asigna o revoca colaboradores para este proyecto.
+              {project.code} • Asigna o revoca participantes operativos para este proyecto (excluye RH y TI).
             </p>
           </div>
 
@@ -163,7 +172,7 @@ export function ProjectTeamAssignmentModal({
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Buscar por nombre, cargo o correo..."
-            className="w-full pl-9 pr-4 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-100 placeholder-slate-400 outline-none focus:border-blue-600 transition"
+            className="w-full pl-9 pr-4 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-100 placeholder-slate-400 outline-none focus:border-blue-700 transition"
           />
         </div>
 
@@ -172,6 +181,7 @@ export function ProjectTeamAssignmentModal({
           {filteredMembers.map((member: TeamMember) => {
             const isAssigned = selectedUserIds.has(member.id);
             const isLeader = member.id === project.leadUserId;
+            const photo = (member as any).photoURL || (member as any).avatarUrl;
 
             return (
               <div
@@ -179,18 +189,27 @@ export function ProjectTeamAssignmentModal({
                 onClick={() => handleToggleUser(member.id)}
                 className={`flex items-center justify-between p-3 rounded-xl border transition-all cursor-pointer ${
                   isAssigned
-                    ? 'border-blue-200 dark:border-blue-900/60 bg-blue-50/40 dark:bg-blue-950/20'
+                    ? 'border-blue-200 dark:border-blue-900/60 bg-blue-50/50 dark:bg-blue-950/30'
                     : 'border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900/60 hover:bg-slate-50 dark:hover:bg-slate-800/40'
                 }`}
               >
                 <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 font-bold text-xs flex items-center justify-center shrink-0 border border-slate-200 dark:border-slate-700">
-                    {member.name
-                      .split(' ')
-                      .map((n) => n[0])
-                      .slice(0, 2)
-                      .join('')
-                      .toUpperCase()}
+                  <div className="w-9 h-9 rounded-full bg-blue-50 dark:bg-blue-950/40 text-blue-800 dark:text-blue-300 font-bold text-xs flex items-center justify-center shrink-0 border border-blue-200 dark:border-blue-900/60 overflow-hidden select-none">
+                    {photo ? (
+                      <img
+                        src={photo}
+                        referrerPolicy="no-referrer"
+                        className="w-full h-full rounded-full object-cover"
+                        alt={member.name}
+                      />
+                    ) : (
+                      member.name
+                        .split(' ')
+                        .map((n) => n[0])
+                        .slice(0, 2)
+                        .join('')
+                        .toUpperCase()
+                    )}
                   </div>
 
                   <div className="text-left">
@@ -200,7 +219,7 @@ export function ProjectTeamAssignmentModal({
                       </span>
                       {isLeader && (
                         <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300">
-                          Líder
+                          Responsable
                         </span>
                       )}
                     </div>
@@ -212,7 +231,7 @@ export function ProjectTeamAssignmentModal({
 
                 <div className="shrink-0">
                   {isAssigned ? (
-                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-blue-600 text-white text-xs font-semibold shadow-xs">
+                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-blue-700 text-white text-xs font-semibold shadow-xs">
                       <Check className="w-3.5 h-3.5 stroke-[2.5]" />
                       Asignado
                     </span>
@@ -229,7 +248,7 @@ export function ProjectTeamAssignmentModal({
 
           {filteredMembers.length === 0 && (
             <p className="text-center text-xs text-slate-400 py-6">
-              No se encontraron colaboradores con ese criterio.
+              No se encontraron participantes operativos con ese criterio.
             </p>
           )}
         </div>
@@ -237,21 +256,21 @@ export function ProjectTeamAssignmentModal({
         {/* Resumen y Acciones */}
         <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
           <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
-            {selectedUserIds.size} de {teamMembers.length} seleccionados
+            {selectedUserIds.size} de {eligibleTeamMembers.length} seleccionados
           </span>
 
           <div className="flex items-center gap-2">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition"
+              className="px-4 py-2 text-xs font-semibold text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700 rounded-lg transition-colors cursor-pointer"
             >
               Cancelar
             </button>
             <button
               type="button"
               onClick={handleSave}
-              className="px-4 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-xl shadow-xs transition"
+              className="px-4 py-2 text-xs font-semibold text-white bg-blue-700 hover:bg-blue-800 rounded-lg shadow-sm transition-colors cursor-pointer"
             >
               Guardar Asignaciones
             </button>

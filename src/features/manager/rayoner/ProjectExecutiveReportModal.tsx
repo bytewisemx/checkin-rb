@@ -8,7 +8,7 @@ import {
   CheckCircle2,
   AlertTriangle,
   Briefcase,
-  DollarSign,
+  Clock,
 } from 'lucide-react';
 import type { Project } from '../../../types/rayoner';
 import { useRayonerStore } from '../../../store/useRayonerStore';
@@ -45,7 +45,7 @@ export function ProjectExecutiveReportModal({
     return tasks.filter((t) => t.projectId === project.id);
   }, [project, tasks]);
 
-  // Cálculos de horas y costos
+  // Cálculos operativos estrictos en horas (sin cálculos monetarios)
   const totalPlannedHours = project?.totalBudgetHours || 0;
   const totalActualHours = useMemo(() => {
     return projectTasks.reduce((acc, t) => acc + (taskActualHours[t.id] || 0), 0);
@@ -53,10 +53,6 @@ export function ProjectExecutiveReportModal({
 
   const totalRemainingHours = Math.max(0, totalPlannedHours - totalActualHours);
   const percentConsumed = totalPlannedHours > 0 ? (totalActualHours / totalPlannedHours) * 100 : 0;
-  const hourlyRate = project?.hourlyRate || 1500;
-  const budgetCost = totalPlannedHours * hourlyRate;
-  const estimatedCost = totalActualHours * hourlyRate;
-  const remainingCost = totalRemainingHours * hourlyRate;
 
   // Desglose consolidado por colaborador
   const collaboratorStats = useMemo(() => {
@@ -133,7 +129,7 @@ export function ProjectExecutiveReportModal({
             />
             <div>
               <div className="flex flex-wrap items-center gap-2">
-                <span className="text-[10px] font-mono font-bold uppercase bg-blue-50 dark:bg-[#002D42] text-blue-700 dark:text-[#00E5FF] px-2 py-0.5 rounded border border-blue-200 dark:border-[#00E5FF]/30">
+                <span className="text-[10px] font-bold uppercase bg-blue-50 dark:bg-[#002D42] text-blue-700 dark:text-[#00E5FF] px-2 py-0.5 rounded border border-blue-200 dark:border-[#00E5FF]/30 tracking-tight">
                   {project.code}
                 </span>
                 <span className="text-xs text-slate-500 dark:text-[#94A3B8]">•</span>
@@ -143,7 +139,7 @@ export function ProjectExecutiveReportModal({
                 {client?.startDate && (
                   <>
                     <span className="text-xs text-slate-500 dark:text-[#94A3B8]">•</span>
-                    <span className="text-[11px] font-mono text-slate-500 dark:text-slate-400">
+                    <span className="text-[11px] text-slate-500 dark:text-slate-400">
                       Inicio: {client.startDate}
                     </span>
                   </>
@@ -162,7 +158,7 @@ export function ProjectExecutiveReportModal({
               type="button"
               onClick={handleDownloadPDF}
               className="flex items-center space-x-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-lg text-xs font-heading font-medium transition-colors cursor-pointer"
-              title="Descargar documento PDF con formato corporativo Russell Bedford"
+              title="Descargar documento PDF con formato corporativo"
             >
               <Printer className="w-3.5 h-3.5 text-slate-400" />
               <span>PDF</span>
@@ -173,7 +169,7 @@ export function ProjectExecutiveReportModal({
               type="button"
               onClick={handleDownloadExcel}
               className="flex items-center space-x-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-lg text-xs font-heading font-medium transition-colors cursor-pointer"
-              title="Descargar hoja de cálculo Excel con estilos y fórmulas"
+              title="Descargar hoja de cálculo Excel con estilos"
             >
               <FileSpreadsheet className="w-3.5 h-3.5 text-slate-400" />
               <span>Excel</span>
@@ -197,11 +193,11 @@ export function ProjectExecutiveReportModal({
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-slate-50 dark:bg-[#1A2742]/70 p-4 rounded-xl border border-slate-200 dark:border-[#233354] text-xs">
             <div>
               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
-                Socio / Líder
+                Responsable del Proyecto
               </span>
               <span className="font-semibold text-slate-800 dark:text-[#F8FAFC] flex items-center gap-1 mt-0.5">
                 <User className="w-3.5 h-3.5 text-blue-600 dark:text-[#38BDF8]" />
-                {project.leadUserName}
+                {project.leadUserName || project.managerName || 'Responsable'}
               </span>
             </div>
             <div>
@@ -215,16 +211,16 @@ export function ProjectExecutiveReportModal({
             </div>
             <div>
               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
-                Tarifa por Hora
+                Presupuesto Operativo
               </span>
-              <span className="font-mono font-bold text-slate-800 dark:text-[#F8FAFC] flex items-center gap-1 mt-0.5">
-                <DollarSign className="w-3.5 h-3.5 text-emerald-500" />
-                ${hourlyRate.toLocaleString('es-MX')} {project.currency || 'MXN'}
+              <span className="font-bold text-slate-800 dark:text-[#F8FAFC] flex items-center gap-1 mt-0.5 tabular-nums">
+                <Clock className="w-3.5 h-3.5 text-blue-600 dark:text-sky-400" />
+                {formatHoursToSexagesimal(totalPlannedHours)}
               </span>
             </div>
             <div>
               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
-                Estado Presupuestal
+                Estado Operativo
               </span>
               <span className="mt-0.5 inline-flex items-center">
                 {percentConsumed >= 100 ? (
@@ -247,72 +243,72 @@ export function ProjectExecutiveReportModal({
             </div>
           </div>
 
-          {/* 4 KPIs Financieros y Operativos */}
+          {/* 4 KPIs Operativos (Sin costos monetarios) */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
             {/* Presupuesto */}
-            <div className="bg-slate-50 dark:bg-[#101726] p-4 border border-slate-200 dark:border-slate-800">
+            <div className="bg-slate-50 dark:bg-[#101726] p-4 border border-slate-200 dark:border-slate-800 rounded-lg">
               <span className="text-[11px] font-heading font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">
-                Presupuesto Planeado
+                Horas Presupuestadas
               </span>
               <div className="flex items-baseline space-x-2 mt-1">
-                <span className="text-2xl font-heading font-bold text-slate-900 dark:text-white font-mono">
+                <span className="text-2xl font-heading font-bold text-slate-900 dark:text-white tabular-nums">
                   {formatHoursToSexagesimal(totalPlannedHours)}
                 </span>
               </div>
-              <span className="text-xs text-slate-500 dark:text-slate-400 font-mono mt-0.5 block">
-                ${budgetCost.toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN
+              <span className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 block">
+                Meta operativa del proyecto
               </span>
             </div>
 
             {/* Consumido */}
-            <div className="bg-slate-50 dark:bg-[#101726] p-4 border border-slate-200 dark:border-slate-800">
+            <div className="bg-slate-50 dark:bg-[#101726] p-4 border border-slate-200 dark:border-slate-800 rounded-lg">
               <span className="text-[11px] font-heading font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">
-                Tiempo Consumido
+                Horas Incurridas
               </span>
               <div className="flex items-baseline space-x-2 mt-1">
-                <span className="text-2xl font-heading font-bold font-mono text-[#1D4ED8] dark:text-sky-400">
+                <span className="text-2xl font-heading font-bold text-[#1D4ED8] dark:text-sky-400 tabular-nums">
                   {formatHoursToSexagesimal(totalActualHours)}
                 </span>
               </div>
-              <span className="text-xs text-slate-500 dark:text-slate-400 font-mono mt-0.5 block">
-                ${estimatedCost.toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN
+              <span className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 block">
+                Tiempo laborado auditado
               </span>
             </div>
 
             {/* Horas Restantes */}
-            <div className="bg-slate-50 dark:bg-[#101726] p-4 border border-slate-200 dark:border-slate-800">
+            <div className="bg-slate-50 dark:bg-[#101726] p-4 border border-slate-200 dark:border-slate-800 rounded-lg">
               <span className="text-[11px] font-heading font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">
-                Tiempo Restante
+                Horas Disponibles
               </span>
               <div className="flex items-baseline space-x-2 mt-1">
-                <span className="text-2xl font-heading font-bold font-mono text-slate-700 dark:text-slate-300">
+                <span className="text-2xl font-heading font-bold text-slate-700 dark:text-slate-300 tabular-nums">
                   {formatHoursToSexagesimal(totalRemainingHours)}
                 </span>
               </div>
-              <span className="text-xs text-slate-500 dark:text-slate-400 font-mono mt-0.5 block">
-                ${remainingCost.toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN
+              <span className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 block">
+                Margen operativo restante
               </span>
             </div>
 
-            {/* Desviación Presupuestal */}
-            <div className="bg-slate-50 dark:bg-[#101726] p-4 border border-slate-200 dark:border-slate-800">
+            {/* Avance Operativo */}
+            <div className="bg-slate-50 dark:bg-[#101726] p-4 border border-slate-200 dark:border-slate-800 rounded-lg">
               <span className="text-[11px] font-heading font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">
-                Desviación Presupuestal
+                % Avance Operativo
               </span>
               <div className="flex items-center space-x-2 mt-1">
-                <span className={`text-2xl font-heading font-bold font-mono ${
-                  percentConsumed > 100 ? 'text-rose-400' : 'text-slate-900 dark:text-slate-200'
+                <span className={`text-2xl font-heading font-bold tabular-nums ${
+                  percentConsumed > 100 ? 'text-rose-500' : 'text-slate-900 dark:text-slate-200'
                 }`}>
                   {percentConsumed.toFixed(1)}%
                 </span>
                 {percentConsumed > 100 && (
-                  <span className="text-xs font-medium px-2 py-0.5 rounded bg-rose-950/60 border border-rose-800 text-rose-300">
+                  <span className="text-xs font-medium px-2 py-0.5 rounded bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:border dark:border-rose-800 dark:text-rose-300">
                     Excedido
                   </span>
                 )}
               </div>
-              <span className="text-xs text-slate-500 font-mono mt-0.5 block">
-                {percentConsumed > 100 ? 'Requiere reasignación' : 'Dentro de límite'}
+              <span className="text-xs text-slate-500 mt-0.5 block">
+                {percentConsumed > 100 ? 'Requiere reasignación' : 'Dentro del margen'}
               </span>
             </div>
           </div>
@@ -323,11 +319,11 @@ export function ProjectExecutiveReportModal({
               <div className="flex items-center space-x-2">
                 <Briefcase className="w-4 h-4 text-[#0D5C75] dark:text-[#38BDF8]" />
                 <h3 className="text-xs font-heading font-bold text-slate-900 dark:text-white uppercase tracking-wider">
-                  1. Desglose de Tareas y Asignaciones ({projectTasks.length})
+                  1. Desglose de Tareas y Actividades ({projectTasks.length})
                 </h3>
               </div>
               <span className="text-[11px] text-slate-500 dark:text-[#94A3B8]">
-                Tiempos auditados por tarea
+                Tiempos operativos auditados por tarea
               </span>
             </div>
 
@@ -337,10 +333,9 @@ export function ProjectExecutiveReportModal({
                   <tr className="bg-slate-100/70 dark:bg-[#0B111E] text-slate-600 dark:text-[#94A3B8] font-heading font-bold text-[10px] uppercase tracking-wider border-b border-slate-200 dark:border-[#233354]">
                     <th className="py-2.5 px-4 min-w-[260px]">Concepto / Tarea</th>
                     <th className="py-2.5 px-3 text-right">Planeado</th>
-                    <th className="py-2.5 px-3 text-right">Actual</th>
+                    <th className="py-2.5 px-3 text-right">Incurrido</th>
                     <th className="py-2.5 px-3 text-right">Restante</th>
                     <th className="py-2.5 px-3 text-center min-w-[120px]">% Consumido</th>
-                    <th className="py-2.5 px-3 text-right">Costo Imputado</th>
                     <th className="py-2.5 px-4 text-center">Estado</th>
                   </tr>
                 </thead>
@@ -385,7 +380,7 @@ export function ProjectExecutiveReportModal({
                                       className="inline-flex items-center gap-1 text-[10px] bg-slate-100 dark:bg-[#0F172A] px-2 py-0.5 rounded border border-slate-200 dark:border-[#233354] text-slate-700 dark:text-slate-300"
                                     >
                                       <span>👤 {asg.userName}</span>
-                                      <span className="font-mono font-bold text-blue-600 dark:text-[#38BDF8]">
+                                      <span className="font-semibold text-blue-600 dark:text-[#38BDF8] tabular-nums">
                                         ({formatHoursToSexagesimal(uActual)})
                                       </span>
                                     </span>
@@ -394,14 +389,14 @@ export function ProjectExecutiveReportModal({
                               </div>
                             )}
                           </td>
-                          <td className="py-3 px-3 text-right font-mono font-bold text-slate-700 dark:text-slate-300">
+                          <td className="py-3 px-3 text-right font-semibold tabular-nums text-slate-700 dark:text-slate-300">
                             {formatHoursToSexagesimal(task.plannedHours)}
                           </td>
-                          <td className="py-3 px-3 text-right font-mono font-extrabold text-slate-900 dark:text-white">
+                          <td className="py-3 px-3 text-right font-extrabold tabular-nums text-slate-900 dark:text-white">
                             {formatHoursToSexagesimal(actualH)}
                           </td>
                           <td
-                            className={`py-3 px-3 text-right font-mono font-bold ${
+                            className={`py-3 px-3 text-right font-semibold tabular-nums ${
                               remH <= 2 ? 'text-rose-600' : 'text-slate-600 dark:text-slate-400'
                             }`}
                           >
@@ -422,7 +417,7 @@ export function ProjectExecutiveReportModal({
                                 />
                               </div>
                               <span
-                                className={`text-[11px] font-bold font-mono ${
+                                className={`text-[11px] font-bold tabular-nums ${
                                   pct >= 100
                                     ? 'text-rose-600'
                                     : pct >= 80
@@ -433,9 +428,6 @@ export function ProjectExecutiveReportModal({
                                 {pct.toFixed(0)}%
                               </span>
                             </div>
-                          </td>
-                          <td className="py-3 px-3 text-right font-mono font-bold text-slate-800 dark:text-slate-200">
-                            ${(actualH * hourlyRate).toLocaleString('es-MX', { minimumFractionDigits: 2 })}
                           </td>
                           <td className="py-3 px-4 text-center">
                             {pct >= 100 ? (
@@ -461,20 +453,17 @@ export function ProjectExecutiveReportModal({
                     <td className="py-3 px-4 uppercase text-[#0D5C75] dark:text-[#38BDF8]">
                       Total del Proyecto
                     </td>
-                    <td className="py-3 px-3 text-right font-mono font-bold text-slate-900 dark:text-white">
+                    <td className="py-3 px-3 text-right font-bold tabular-nums text-slate-900 dark:text-white">
                       {formatHoursToSexagesimal(totalPlannedHours)}
                     </td>
-                    <td className="py-3 px-3 text-right font-mono font-extrabold text-blue-600 dark:text-[#38BDF8]">
+                    <td className="py-3 px-3 text-right font-extrabold tabular-nums text-blue-600 dark:text-[#38BDF8]">
                       {formatHoursToSexagesimal(totalActualHours)}
                     </td>
-                    <td className="py-3 px-3 text-right font-mono font-bold text-slate-700 dark:text-slate-300">
+                    <td className="py-3 px-3 text-right font-bold tabular-nums text-slate-700 dark:text-slate-300">
                       {formatHoursToSexagesimal(totalRemainingHours)}
                     </td>
-                    <td className="py-3 px-3 text-center font-mono font-bold">
+                    <td className="py-3 px-3 text-center tabular-nums font-bold">
                       {percentConsumed.toFixed(1)}%
-                    </td>
-                    <td className="py-3 px-3 text-right font-mono font-extrabold text-emerald-600 dark:text-emerald-400">
-                      ${estimatedCost.toLocaleString('es-MX', { minimumFractionDigits: 2 })}
                     </td>
                     <td className="py-3 px-4 text-center">
                       <span
@@ -509,7 +498,7 @@ export function ProjectExecutiveReportModal({
                 </h3>
               </div>
               <span className="text-[11px] text-slate-500 dark:text-[#94A3B8]">
-                Participación individual en el proyecto
+                Participación operativa en el proyecto
               </span>
             </div>
 
@@ -522,14 +511,13 @@ export function ProjectExecutiveReportModal({
                     <th className="py-2.5 px-3 text-center">Tareas</th>
                     <th className="py-2.5 px-3 text-right">Horas Asignadas</th>
                     <th className="py-2.5 px-3 text-right">Horas Trabajadas</th>
-                    <th className="py-2.5 px-3 text-center">% Participación</th>
-                    <th className="py-2.5 px-4 text-right">Importe Devengado</th>
+                    <th className="py-2.5 px-4 text-center">% Participación</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-[#233354]">
                   {collaboratorStats.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="py-6 text-center text-slate-400 italic">
+                      <td colSpan={6} className="py-6 text-center text-slate-400 italic">
                         Sin colaboradores asignados individualmente aún
                       </td>
                     </tr>
@@ -537,7 +525,6 @@ export function ProjectExecutiveReportModal({
                     collaboratorStats.map((c) => {
                       const share =
                         totalActualHours > 0 ? (c.actualHours / totalActualHours) * 100 : 0;
-                      const cost = c.actualHours * hourlyRate;
 
                       return (
                         <tr
@@ -550,20 +537,17 @@ export function ProjectExecutiveReportModal({
                           <td className="py-2.5 px-3 text-slate-600 dark:text-slate-400">
                             {c.role}
                           </td>
-                          <td className="py-2.5 px-3 text-center font-mono font-bold">
+                          <td className="py-2.5 px-3 text-center font-bold tabular-nums">
                             {c.taskCount}
                           </td>
-                          <td className="py-2.5 px-3 text-right font-mono font-bold text-slate-600 dark:text-slate-400">
+                          <td className="py-2.5 px-3 text-right font-semibold tabular-nums text-slate-600 dark:text-slate-400">
                             {formatHoursToSexagesimal(c.plannedHours)}
                           </td>
-                          <td className="py-2.5 px-3 text-right font-mono font-extrabold text-blue-600 dark:text-[#38BDF8]">
+                          <td className="py-2.5 px-3 text-right font-extrabold tabular-nums text-blue-600 dark:text-[#38BDF8]">
                             {formatHoursToSexagesimal(c.actualHours)}
                           </td>
-                          <td className="py-2.5 px-3 text-center font-mono font-bold text-slate-700 dark:text-slate-300">
+                          <td className="py-2.5 px-4 text-center font-bold tabular-nums text-slate-700 dark:text-slate-300">
                             {share.toFixed(1)}%
-                          </td>
-                          <td className="py-2.5 px-4 text-right font-mono font-bold text-slate-900 dark:text-white">
-                            ${cost.toLocaleString('es-MX', { minimumFractionDigits: 2 })}
                           </td>
                         </tr>
                       );

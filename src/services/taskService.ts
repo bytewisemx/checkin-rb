@@ -20,10 +20,13 @@ export interface TaskDocument {
   teamId?: string;
   teamIds?: string[];
   gerenteId?: string;
-  // Identificadores unificados del colaborador asignado (multi-usuario `assignedToIds`)
+  // Identificadores unificados del colaborador asignado (multi-usuario `assignedToIds` y `assignedUserIds`)
   assignedTo: string;
   assignedToId: string;
   assignedToIds: string[];
+  assignedUserIds?: string[];
+  leadUserId?: string;
+  leadUserName?: string;
   assigned_to: string;
   assignedToEmail: string;
   assignedToName?: string;
@@ -322,6 +325,9 @@ export async function saveTaskToFirestore(
     assignedTo: unifiedAssignedId,
     assignedToId: unifiedAssignedId,
     assignedToIds: unifiedAssignedIds,
+    assignedUserIds: Array.isArray(task.assignedUserIds) && task.assignedUserIds.length > 0 ? task.assignedUserIds : [unifiedAssignedId],
+    leadUserId: task.leadUserId || unifiedAssignedId,
+    leadUserName: (task.leadUserName || task.assignedToName || '').trim(),
     assigned_to: unifiedAssignedId,
     assignedToEmail: resolvedEmail,
     assignedToName: (task.assignedToName || '').trim(),
@@ -459,6 +465,9 @@ function mapRawDocToTaskDocument(docId: string, d: Record<string, any>): TaskDoc
     assignedTo: unifiedId,
     assignedToId: unifiedId,
     assignedToIds: unifiedIds,
+    assignedUserIds: Array.isArray(d.assignedUserIds) && d.assignedUserIds.length > 0 ? d.assignedUserIds : unifiedIds,
+    leadUserId: d.leadUserId ? String(d.leadUserId) : unifiedId,
+    leadUserName: d.leadUserName ? String(d.leadUserName) : String(d.assignedToName || ''),
     assigned_to: unifiedId,
     assignedToEmail: String(d.assignedToEmail || DEMO_ID_TO_EMAIL[unifiedId] || '').toLowerCase(),
     assignedToName: d.assignedToName ? String(d.assignedToName) : '',

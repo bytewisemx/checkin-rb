@@ -41,16 +41,19 @@ export interface Project {
   code: string;
   leadUserId: string;
   leadUserName: string;
+  managerId?: string;
+  managerName?: string;
+  partnerId?: string;
   gerenteId?: string;
   supervisorId?: string;
   teamId?: string;
   teamIds?: string[];
   deadline: string; // ISO date YYYY-MM-DD
-  budgetType: BudgetType;
+  budgetType?: BudgetType;
   totalBudgetHours: number;
   plannedMinutes?: number;
-  hourlyRate: number;
-  currency: string;
+  hourlyRate?: number;
+  currency?: string;
   notes?: string;
   isActive: boolean;
   assignedToIds?: string[];
@@ -75,6 +78,9 @@ export interface TaskNode {
   assigned_to?: string;      // Compatibilidad: ID del colaborador
   assignedToId?: string;     // ID unificado del colaborador principal (uid / demo_colaborador)
   assignedToIds?: string[];  // Array de UIDs asignados (modelo multi-usuario)
+  assignedUserIds?: string[]; // Array de UIDs participantes asignados
+  leadUserId?: string;       // Encargado principal de la actividad
+  leadUserName?: string;     // Nombre legible del encargado de la actividad
   assignedToEmail?: string;  // Correo del colaborador en minúsculas
   assignedToName?: string;   // Nombre legible del colaborador
   companyId?: string;        // ID de la empresa vinculada

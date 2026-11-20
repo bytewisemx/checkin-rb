@@ -1,14 +1,10 @@
 import { useState, useEffect } from 'react';
-import { 
-  X, Briefcase, Building2, User, 
-  DollarSign, Calendar, FileText, Check, 
-  Trash2, Sparkles, Hash 
-} from 'lucide-react';
+import { X, Check, Trash2, Sparkles } from 'lucide-react';
 import { useRayonerStore } from '../../../store/useRayonerStore';
 import { useCheckinStore } from '../../../store/useCheckinStore';
 import { canCreateOrManageCompanies } from '../../../services/companyService';
 import { normalizeRole } from '../../../services/rbac';
-import type { BudgetType, Project } from '../../../types/rayoner';
+import type { Project } from '../../../types/rayoner';
 import { TimeInputSexagesimal } from '../../../components/common/TimeInputSexagesimal';
 import { CreateCompanyModal } from './CreateCompanyModal';
 
@@ -41,43 +37,27 @@ export function RayonerProjectModal({
 
   const [isQuickCompanyOpen, setIsQuickCompanyOpen] = useState(false);
 
-  // Líderes operativos elegibles (Supervisor, Gerente, Socio; excluye TI y RH)
-  const eligibleLeads = teamMembers.filter((m) => {
-    const r = normalizeRole(m.role);
-    return r === 'Supervisor' || r === 'Gerente' || r === 'Socio';
-  });
-
   const existingProject = projectId ? projects.find(p => p.id === projectId) : null;
   const isEditing = !!existingProject;
 
-  // Estados del formulario
+  // Estados del formulario (operativos únicamente, sin tarifas ni costos)
   const [clientId, setClientId] = useState('');
   const [name, setName] = useState('');
   const [code, setCode] = useState('');
-  const [leadUserId, setLeadUserId] = useState('');
-  const [leadUserName, setLeadUserName] = useState('');
   const [deadline, setDeadline] = useState('');
-  const [budgetType, setBudgetType] = useState<BudgetType>('fixed_project');
   const [totalBudgetHours, setTotalBudgetHours] = useState(60);
-  const [hourlyRate, setHourlyRate] = useState(1500);
-  const [currency, setCurrency] = useState('MXN');
   const [notes, setNotes] = useState('');
   const [isActive, setIsActive] = useState(true);
 
-  // Sincronizar formulario únicamente al abrir o cambiar de proyecto (sin borrar campos al crear empresa inline)
+  // Sincronizar formulario al abrir o cambiar de proyecto
   useEffect(() => {
     if (!isOpen) return;
     if (existingProject) {
       setClientId(existingProject.clientId);
       setName(existingProject.name);
       setCode(existingProject.code);
-      setLeadUserId(existingProject.leadUserId || 'demo_supervisor');
-      setLeadUserName(existingProject.leadUserName || 'Supervisor Prueba');
       setDeadline(existingProject.deadline || new Date().toISOString().split('T')[0]);
-      setBudgetType(existingProject.budgetType || 'fixed_project');
       setTotalBudgetHours(existingProject.totalBudgetHours || 60);
-      setHourlyRate(existingProject.hourlyRate || 1500);
-      setCurrency(existingProject.currency || 'MXN');
       setNotes(existingProject.notes || '');
       setIsActive(existingProject.isActive ?? true);
     } else {
@@ -85,24 +65,16 @@ export function RayonerProjectModal({
       setClientId(defaultClientId);
       setName('');
       setCode(`PRJ-${new Date().getFullYear()}-${Math.floor(100 + Math.random() * 900)}`);
-      const defaultLead =
-        eligibleLeads.find((m) => normalizeRole(m.role) === 'Supervisor') || eligibleLeads[0];
-      setLeadUserId(defaultLead?.id || 'demo_supervisor');
-      setLeadUserName(defaultLead ? `${defaultLead.name} (${defaultLead.roleTitle})` : 'Supervisor Prueba');
       
       // Fecha límite sugerida: 30 días
       const nextMonth = new Date();
       nextMonth.setDate(nextMonth.getDate() + 30);
       setDeadline(nextMonth.toISOString().split('T')[0]);
 
-      setBudgetType('fixed_project');
       setTotalBudgetHours(60);
-      setHourlyRate(1500);
-      setCurrency('MXN');
       setNotes('');
       setIsActive(true);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [existingProject?.id, initialClientId, isOpen]);
 
   // Si aún no había empresa seleccionada y aparece la primera en el catálogo, seleccionarla
@@ -139,24 +111,55 @@ export function RayonerProjectModal({
       return;
     }
 
-    const selectedLead = teamMembers.find(m => m.id === leadUserId);
-    const finalLeadName = selectedLead ? `${selectedLead.name} (${selectedLead.roleTitle})` : leadUserName;
+    const currentUserId = user?.id || 'demo_gerente';
+    const currentUserName = user?.name 
+      ? `${user.name} ${user.lastName || ''}`.trim() 
+      : (user?.email || 'Gerente');
+
+    // Regla de negocio 2: Encargado automático (el usuario creador)
+    const effectiveLeadId = isEditing && existingProject 
+      ? (existingProject.leadUserId || currentUserId) 
+      : currentUserId;
+    const effectiveLeadName = isEditing && existingProject 
+      ? (existingProject.leadUserName || currentUserName) 
+      : currentUserName;
+
+    // Regla de negocio 2.2: Asignación automática del Socio por defecto
+    const socioMember = teamMembers.find((m) => normalizeRole(m.role) === 'Socio');
+    const partnerId = isEditing && existingProject
+      ? (existingProject.partnerId || socioMember?.id || '')
+      : (socioMember?.id || '');
+
+    const baseAssignedIds = isEditing && existingProject?.assignedUserIds
+      ? existingProject.assignedUserIds
+      : [currentUserId];
+
+    const finalAssignedUserIds = Array.from(
+      new Set([
+        ...baseAssignedIds,
+        effectiveLeadId,
+        ...(socioMember ? [socioMember.id] : []),
+      ].filter(Boolean))
+    );
+
     const plannedMinutes = Math.max(0, Math.round((Number(totalBudgetHours) || 0) * 60));
 
     const projectPayload: Omit<Project, 'id'> = {
       clientId,
       name: name.trim(),
       code: code.trim() || `PRJ-${Date.now()}`,
-      leadUserId: leadUserId || 'demo_supervisor',
-      leadUserName: finalLeadName,
+      leadUserId: effectiveLeadId,
+      leadUserName: effectiveLeadName,
+      managerId: effectiveLeadId,
+      managerName: effectiveLeadName,
+      partnerId,
       deadline,
-      budgetType,
       totalBudgetHours: Number((plannedMinutes / 60).toFixed(4)),
       plannedMinutes,
-      hourlyRate: Number(hourlyRate) || 0,
-      currency,
       notes: notes.trim(),
       isActive,
+      assignedUserIds: finalAssignedUserIds,
+      assignedToIds: finalAssignedUserIds,
     };
 
     if (isEditing && existingProject) {
@@ -174,7 +177,7 @@ export function RayonerProjectModal({
     if (!existingProject) return;
     const projectTasksCount = tasks.filter(t => t.projectId === existingProject.id).length;
     const confirmMsg = projectTasksCount > 0
-      ? `¿Estás seguro de eliminar el proyecto "${existingProject.name}"? Se eliminarán también sus ${projectTasksCount} tareas asociadas.`
+      ? `¿Estás seguro de eliminar el proyecto "${existingProject.name}"? Se eliminarán también sus ${projectTasksCount} actividades asociadas.`
       : `¿Estás seguro de eliminar el proyecto "${existingProject.name}"?`;
 
     if (window.confirm(confirmMsg)) {
@@ -186,27 +189,24 @@ export function RayonerProjectModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-fade-in overflow-y-auto">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden border border-slate-200 my-8 flex flex-col">
+      <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden border border-slate-200 dark:border-slate-800 my-8 flex flex-col">
         
-        {/* Cabecera del Modal */}
-        <div className="px-6 py-4.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
-          <div className="flex items-center space-x-2.5">
-            <div className="w-9 h-9 rounded-xl bg-emerald-600/10 text-emerald-700 flex items-center justify-center">
-              <Briefcase className="w-5 h-5" />
-            </div>
-            <div>
-              <h3 className="font-bold text-slate-800 text-sm">
-                {isEditing ? 'Editar Proyecto' : 'Nuevo Proyecto'}
-              </h3>
-              <p className="text-[11px] text-slate-500">
-                {isEditing ? 'Modifica el presupuesto, fechas y alcance del proyecto' : 'Asigna presupuesto, horas estimadas y responsable del proyecto'}
-              </p>
-            </div>
+        {/* Cabecera del Modal (Diseño sobrio corporativo sin iconos decorativos en título) */}
+        <div className="px-6 py-4.5 bg-slate-50 dark:bg-slate-800/50 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
+          <div>
+            <h3 className="font-bold text-slate-900 dark:text-white text-base tracking-tight">
+              {isEditing ? 'Editar Proyecto / Servicio' : 'Nuevo Proyecto / Servicio'}
+            </h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+              {isEditing 
+                ? 'Modifica el alcance operativo, fechas y horas estimadas del proyecto.' 
+                : 'Registra un nuevo proyecto o servicio para asignación de actividades y seguimiento de horas.'}
+            </p>
           </div>
 
           <button
             onClick={onClose}
-            className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-200 rounded-lg transition-colors"
+            className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
@@ -218,59 +218,32 @@ export function RayonerProjectModal({
           {/* Fila 1: Cliente y Código */}
           <div className="grid grid-cols-1 sm:grid-cols-12 gap-4">
             
-            {/* Empresa / Cliente Asignado + Acceso Inline "+ Registrar nueva empresa" */}
+            {/* Empresa / Cliente Asignado */}
             <div className="sm:col-span-7">
               <div className="flex items-center justify-between gap-2 mb-1.5">
-                <label className="text-xs font-bold text-slate-700 flex items-center">
-                  <Building2 className="w-3.5 h-3.5 mr-1 text-[#0D5C75]" />
+                <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
                   Empresa / Cliente Asignado *
                 </label>
                 {canCreateCompany && (
                   <button
                     type="button"
                     onClick={() => setIsQuickCompanyOpen(true)}
-                    className="inline-flex items-center gap-1 text-[11px] font-semibold text-blue-700 hover:text-blue-800 hover:underline cursor-pointer"
+                    className="inline-flex items-center gap-1 text-[11px] font-semibold text-blue-700 dark:text-sky-400 hover:underline cursor-pointer"
                   >
-                    <svg
-                      className="w-3 h-3 shrink-0"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth={2.2}
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      aria-hidden="true"
-                    >
-                      <line x1="12" y1="5" x2="12" y2="19" />
-                      <line x1="5" y1="12" x2="19" y2="12" />
-                    </svg>
-                    <span>Registrar nueva empresa</span>
+                    <span>+ Registrar empresa</span>
                   </button>
                 )}
               </div>
               {clients.length === 0 ? (
-                <div className="w-full px-3.5 py-2 text-xs bg-slate-50 border border-dashed border-slate-300 rounded-xl text-slate-500 flex items-center justify-between gap-2">
+                <div className="w-full px-3.5 py-2 text-xs bg-slate-50 dark:bg-slate-800/40 border border-dashed border-slate-300 dark:border-slate-700 rounded-xl text-slate-500 flex items-center justify-between gap-2">
                   <span>No hay empresas registradas aún.</span>
                   {canCreateCompany && (
                     <button
                       type="button"
                       onClick={() => setIsQuickCompanyOpen(true)}
-                      className="inline-flex items-center gap-1 text-xs font-semibold text-blue-700 hover:underline cursor-pointer shrink-0"
+                      className="inline-flex items-center text-xs font-semibold text-blue-700 dark:text-sky-400 hover:underline cursor-pointer shrink-0"
                     >
-                      <svg
-                        className="w-3 h-3 shrink-0"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth={2.2}
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        aria-hidden="true"
-                      >
-                        <line x1="12" y1="5" x2="12" y2="19" />
-                        <line x1="5" y1="12" x2="19" y2="12" />
-                      </svg>
-                      <span>Registrar nueva empresa</span>
+                      + Registrar empresa
                     </button>
                   )}
                 </div>
@@ -279,7 +252,7 @@ export function RayonerProjectModal({
                   value={clientId}
                   onChange={e => setClientId(e.target.value)}
                   required
-                  className="w-full px-3.5 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl font-medium text-slate-800 focus:ring-2 focus:ring-[#0D5C75]/20 focus:border-[#0D5C75] outline-none"
+                  className="w-full px-3.5 py-2 text-xs bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-xl font-medium text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-blue-600/20 focus:border-blue-700 outline-none"
                 >
                   <option value="">-- Seleccionar empresa --</option>
                   {clients.map(c => (
@@ -294,14 +267,13 @@ export function RayonerProjectModal({
             {/* Código del Proyecto */}
             <div className="sm:col-span-5">
               <div className="flex items-center justify-between mb-1.5">
-                <label className="text-xs font-bold text-slate-700 flex items-center">
-                  <Hash className="w-3.5 h-3.5 mr-1 text-slate-400" />
-                  Código *
+                <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                  Código del Proyecto *
                 </label>
                 <button
                   type="button"
                   onClick={handleAutoGenerateCode}
-                  className="text-[10px] font-bold text-[#0D5C75] hover:underline flex items-center"
+                  className="text-[10px] font-semibold text-blue-700 dark:text-sky-400 hover:underline flex items-center cursor-pointer"
                 >
                   <Sparkles className="w-3 h-3 mr-0.5" />
                   Sugerir
@@ -313,7 +285,7 @@ export function RayonerProjectModal({
                 placeholder="AUD-2026-01"
                 value={code}
                 onChange={e => setCode(e.target.value.toUpperCase())}
-                className="w-full px-3.5 py-2 text-xs bg-white border border-slate-200 rounded-xl font-mono text-slate-800 focus:ring-2 focus:ring-[#0D5C75]/20 focus:border-[#0D5C75] outline-none"
+                className="w-full px-3.5 py-2 text-xs bg-white dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl font-sans font-medium tabular-nums text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-blue-600/20 focus:border-blue-700 outline-none"
               />
             </div>
 
@@ -321,8 +293,8 @@ export function RayonerProjectModal({
 
           {/* Fila 2: Nombre del Proyecto */}
           <div>
-            <label className="text-xs font-bold text-slate-700 block mb-1.5">
-              Nombre del Proyecto *
+            <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block mb-1.5">
+              Nombre del Proyecto o Servicio *
             </label>
             <input
               type="text"
@@ -330,183 +302,71 @@ export function RayonerProjectModal({
               placeholder="Ej. Auditoría Fiscal Anual 2026 / Dictamen SAT"
               value={name}
               onChange={e => setName(e.target.value)}
-              className="w-full px-3.5 py-2.5 text-xs bg-white border border-slate-200 rounded-xl font-medium text-slate-800 placeholder-slate-400 focus:ring-2 focus:ring-[#0D5C75]/20 focus:border-[#0D5C75] outline-none"
+              className="w-full px-3.5 py-2.5 text-xs bg-white dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl font-medium text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:ring-2 focus:ring-blue-600/20 focus:border-blue-700 outline-none"
             />
           </div>
 
-          {/* Fila 3: Responsable y Fecha Límite */}
-          <div className="grid grid-cols-1 sm:grid-cols-12 gap-4">
-            
-            {/* Responsable */}
-            <div className="sm:col-span-7">
-              <label className="text-xs font-bold text-slate-700 block mb-1.5 flex items-center">
-                <User className="w-3.5 h-3.5 mr-1 text-[#0D5C75]" />
-                Líder / Socio Responsable
-              </label>
-              <select
-                value={leadUserId}
-                onChange={e => {
-                  setLeadUserId(e.target.value);
-                  const member = eligibleLeads.find(m => m.id === e.target.value);
-                  if (member) setLeadUserName(`${member.name} (${member.roleTitle})`);
-                }}
-                className="w-full px-3.5 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl font-medium text-slate-800 focus:ring-2 focus:ring-[#0D5C75]/20 focus:border-[#0D5C75] outline-none"
-              >
-                {eligibleLeads.map(m => (
-                  <option key={m.id} value={m.id}>
-                    {m.name} — {m.roleTitle} ({m.team})
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {/* Fecha Límite */}
-            <div className="sm:col-span-5">
-              <label className="text-xs font-bold text-slate-700 block mb-1.5 flex items-center">
-                <Calendar className="w-3.5 h-3.5 mr-1 text-slate-400" />
-                Fecha Límite / Entrega
-              </label>
-              <input
-                type="date"
-                required
-                value={deadline}
-                onChange={e => setDeadline(e.target.value)}
-                className="w-full px-3.5 py-2 text-xs bg-white border border-slate-200 rounded-xl font-medium text-slate-800 focus:ring-2 focus:ring-[#0D5C75]/20 focus:border-[#0D5C75] outline-none"
-              />
-            </div>
-
+          {/* Fila 3: Fecha Límite */}
+          <div>
+            <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block mb-1.5">
+              Fecha Límite / Entrega *
+            </label>
+            <input
+              type="date"
+              required
+              value={deadline}
+              onChange={e => setDeadline(e.target.value)}
+              className="w-full px-3.5 py-2 text-xs bg-white dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl font-medium text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-blue-600/20 focus:border-blue-700 outline-none"
+            />
           </div>
 
-          {/* Fila 4: Tipo de Presupuesto y Horas */}
-          <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-4">
-            <span className="text-xs font-bold text-slate-700 uppercase tracking-wider block">
-              Control Presupuestario y Tarifas
-            </span>
-
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              
-              {/* Opción 1: Presupuesto Fijo */}
-              <button
-                type="button"
-                onClick={() => setBudgetType('fixed_project')}
-                className={`p-3 rounded-xl border text-left transition-all ${
-                  budgetType === 'fixed_project'
-                    ? 'bg-[#0D5C75]/10 border-[#0D5C75] text-[#0D5C75] shadow-xs'
-                    : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'
-                }`}
-              >
-                <span className="text-xs font-bold block">Bolsa Fija Proyecto</span>
-                <span className="text-[10px] text-slate-400 block mt-0.5">
-                  Límite total de horas para todo el proyecto.
-                </span>
-              </button>
-
-              {/* Opción 2: Suma de Tareas */}
-              <button
-                type="button"
-                onClick={() => setBudgetType('by_tasks')}
-                className={`p-3 rounded-xl border text-left transition-all ${
-                  budgetType === 'by_tasks'
-                    ? 'bg-[#0D5C75]/10 border-[#0D5C75] text-[#0D5C75] shadow-xs'
-                    : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'
-                }`}
-              >
-                <span className="text-xs font-bold block">Suma de Tareas</span>
-                <span className="text-[10px] text-slate-400 block mt-0.5">
-                  Se calcula sumando las subtareas del proyecto.
-                </span>
-              </button>
-
-              {/* Opción 3: Por Colaborador */}
-              <button
-                type="button"
-                onClick={() => setBudgetType('by_person')}
-                className={`p-3 rounded-xl border text-left transition-all ${
-                  budgetType === 'by_person'
-                    ? 'bg-[#0D5C75]/10 border-[#0D5C75] text-[#0D5C75] shadow-xs'
-                    : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'
-                }`}
-              >
-                <span className="text-xs font-bold block">Por Colaborador</span>
-                <span className="text-[10px] text-slate-400 block mt-0.5">
-                  Límites independientes asignados por persona.
-                </span>
-              </button>
-
+          {/* Fila 4: Control Operativo de Horas Estimadas (Sin Tarifas ni Costos) */}
+          <div className="bg-slate-50 dark:bg-slate-800/40 p-4 rounded-xl border border-slate-200 dark:border-slate-800 space-y-3">
+            <div>
+              <span className="text-xs font-bold text-slate-800 dark:text-slate-100 uppercase tracking-wider block">
+                Horas Estimadas / Presupuestadas
+              </span>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                Bolsa total de horas estimadas para la ejecución y seguimiento operativo del proyecto o servicio.
+              </p>
             </div>
 
-            {/* Horas Presupuestadas y Tarifa */}
-            <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 pt-2">
-              
-              <div className="sm:col-span-4" data-tour="project-budget-input">
-                <TimeInputSexagesimal
-                  label="Presupuesto Total"
-                  totalHours={totalBudgetHours}
-                  onChange={(newH) => setTotalBudgetHours(newH)}
-                />
-              </div>
-
-              <div className="sm:col-span-5">
-                <label className="text-[11px] font-bold text-slate-600 block mb-1 flex items-center">
-                  <DollarSign className="w-3 h-3 mr-1 text-emerald-600" />
-                  Tarifa por Hora Base
-                </label>
-                <input
-                  type="number"
-                  min="0"
-                  step="50"
-                  value={hourlyRate}
-                  onChange={e => setHourlyRate(parseFloat(e.target.value) || 0)}
-                  className="w-full px-3 py-1.5 text-xs bg-white border border-slate-200 rounded-lg font-bold text-slate-800 focus:ring-2 focus:ring-[#0D5C75]/20 focus:border-[#0D5C75] outline-none"
-                />
-              </div>
-
-              <div className="sm:col-span-3">
-                <label className="text-[11px] font-bold text-slate-600 block mb-1">
-                  Moneda
-                </label>
-                <select
-                  value={currency}
-                  onChange={e => setCurrency(e.target.value)}
-                  className="w-full px-3 py-1.5 text-xs bg-white border border-slate-200 rounded-lg font-bold text-slate-800 focus:ring-2 focus:ring-[#0D5C75]/20 focus:border-[#0D5C75] outline-none"
-                >
-                  <option value="MXN">MXN ($)</option>
-                  <option value="USD">USD ($)</option>
-                  <option value="EUR">EUR (€)</option>
-                </select>
-              </div>
-
+            <div className="max-w-xs" data-tour="project-budget-input">
+              <TimeInputSexagesimal
+                label="Total de Horas Estimadas"
+                totalHours={totalBudgetHours}
+                onChange={(newH) => setTotalBudgetHours(newH)}
+              />
             </div>
           </div>
 
           {/* Fila 5: Notas y Observaciones */}
           <div>
-            <label className="text-xs font-bold text-slate-700 block mb-1.5 flex items-center">
-              <FileText className="w-3.5 h-3.5 mr-1 text-slate-400" />
+            <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block mb-1.5">
               Notas u Observaciones del Proyecto
             </label>
             <textarea
               rows={2}
-              placeholder="Instrucciones especiales para el equipo, alcance o detalles del contrato..."
+              placeholder="Instrucciones especiales para el equipo, alcance operativo o requerimientos técnicos..."
               value={notes}
               onChange={e => setNotes(e.target.value)}
-              className="w-full px-3.5 py-2 text-xs bg-white border border-slate-200 rounded-xl text-slate-800 placeholder-slate-400 focus:ring-2 focus:ring-[#0D5C75]/20 focus:border-[#0D5C75] outline-none resize-none"
+              className="w-full px-3.5 py-2 text-xs bg-white dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:ring-2 focus:ring-blue-600/20 focus:border-blue-700 outline-none resize-none"
             />
           </div>
 
           {/* Fila 6: Estado Activo / Inactivo */}
-          <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 flex items-center justify-between">
+          <div className="p-3 bg-slate-50 dark:bg-slate-800/40 rounded-xl border border-slate-200 dark:border-slate-800 flex items-center justify-between">
             <div>
-              <span className="text-xs font-bold text-slate-800 block">Proyecto Activo</span>
-              <span className="text-[11px] text-slate-500">
+              <span className="text-xs font-bold text-slate-800 dark:text-slate-100 block">Proyecto Activo</span>
+              <span className="text-[11px] text-slate-500 dark:text-slate-400">
                 Los colaboradores solo pueden registrar tiempo en proyectos activos.
               </span>
             </div>
             <button
               type="button"
               onClick={() => setIsActive(!isActive)}
-              className={`w-11 h-6 flex items-center rounded-full p-1 transition-colors duration-200 ${
-                isActive ? 'bg-[#0D5C75]' : 'bg-slate-300'
+              className={`w-11 h-6 flex items-center rounded-full p-1 transition-colors duration-200 cursor-pointer ${
+                isActive ? 'bg-blue-700' : 'bg-slate-300 dark:bg-slate-700'
               }`}
             >
               <div
@@ -518,12 +378,12 @@ export function RayonerProjectModal({
           </div>
 
           {/* Botones de Acción */}
-          <div className="flex items-center justify-between pt-4 border-t border-slate-100">
+          <div className="flex items-center justify-between pt-4 border-t border-slate-100 dark:border-slate-800">
             {isEditing ? (
               <button
                 type="button"
                 onClick={handleDelete}
-                className="flex items-center text-xs font-bold text-rose-600 hover:text-rose-700 hover:bg-rose-50 px-3 py-1.5 rounded-lg transition-colors"
+                className="flex items-center text-xs font-semibold text-rose-600 hover:text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-950/30 px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
               >
                 <Trash2 className="w-3.5 h-3.5 mr-1" />
                 Eliminar Proyecto
@@ -534,13 +394,13 @@ export function RayonerProjectModal({
               <button
                 type="button"
                 onClick={onClose}
-                className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-xl transition-colors"
+                className="px-4 py-2 text-xs font-semibold text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700 rounded-lg transition-colors cursor-pointer"
               >
                 Cancelar
               </button>
               <button
                 type="submit"
-                className="flex items-center px-4 py-2 bg-[#0D5C75] hover:bg-[#0A485C] text-white text-xs font-bold rounded-xl shadow-xs transition-all"
+                className="flex items-center px-4 py-2 bg-blue-700 hover:bg-blue-800 text-white text-xs font-semibold rounded-lg shadow-sm transition-all cursor-pointer"
               >
                 <Check className="w-3.5 h-3.5 mr-1.5" />
                 {isEditing ? 'Guardar Cambios' : 'Crear Proyecto'}
