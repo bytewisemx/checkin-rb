@@ -7,7 +7,8 @@ export type AuditEventType =
   | 'STATUS_CHANGED'
   | 'ATTENDANCE_ADJUSTED'
   | 'USER_ROLE_CHANGED'
-  | 'INVITATION_CREATED';
+  | 'INVITATION_CREATED'
+  | 'INVITATION_REVOKED';
 
 export interface AuditLogEntry {
   id: string;

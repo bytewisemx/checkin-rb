@@ -179,8 +179,8 @@ export function RHDashboard() {
             type="button"
             onClick={() => setRhTab('fortnight_sheet')}
             className={`px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer ${rhTab === 'fortnight_sheet'
-                ? 'bg-white dark:bg-slate-900 text-blue-700 dark:text-sky-400 font-semibold shadow-xs border border-slate-200/80 dark:border-slate-700/80'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+              ? 'bg-white dark:bg-slate-900 text-blue-700 dark:text-sky-400 font-semibold shadow-xs border border-slate-200/80 dark:border-slate-700/80'
+              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
               }`}
           >
             Sábana Quincenal por Equipo
@@ -191,8 +191,8 @@ export function RHDashboard() {
             data-tour="rh-kardex-tab"
             onClick={() => setRhTab('individual_audit')}
             className={`px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer ${rhTab === 'individual_audit'
-                ? 'bg-white dark:bg-slate-900 text-blue-700 dark:text-sky-400 font-semibold shadow-xs border border-slate-200/80 dark:border-slate-700/80'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+              ? 'bg-white dark:bg-slate-900 text-blue-700 dark:text-sky-400 font-semibold shadow-xs border border-slate-200/80 dark:border-slate-700/80'
+              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
               }`}
           >
             Historial y Auditoría por Colaborador
@@ -203,8 +203,8 @@ export function RHDashboard() {
               type="button"
               onClick={() => setRhTab('my_checkin')}
               className={`px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer ${rhTab === 'my_checkin'
-                  ? 'bg-white dark:bg-slate-900 text-blue-700 dark:text-sky-400 font-semibold shadow-xs border border-slate-200/80 dark:border-slate-700/80'
-                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                ? 'bg-white dark:bg-slate-900 text-blue-700 dark:text-sky-400 font-semibold shadow-xs border border-slate-200/80 dark:border-slate-700/80'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
                 }`}
             >
               Mi Asistencia
@@ -265,3 +265,4 @@ export function RHDashboard() {
     </div>
   );
 }
+

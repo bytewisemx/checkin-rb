@@ -8,14 +8,13 @@ import { ClientsDirectoryView } from './rayoner/ClientsDirectoryView';
 import { RayonerTimeReport } from './rayoner/RayonerTimeReport';
 import { RayonerTaskModal } from './rayoner/RayonerTaskModal';
 import { TeamMembersView } from './rayoner/TeamMembersView';
-import { SupervisorInvitationsView } from './invitations/SupervisorInvitationsView';
 import { ExecutiveAuditLogView } from '../audit/ExecutiveAuditLogView';
 import { AuditHierarchyView } from '../hierarchy/AuditHierarchyView';
 import { CheckinPanel } from '../checkin/CheckinPanel';
 import { useLiveTeamTimers, useOperationalCatalogSync } from '../../hooks/useLiveTeamTimers';
 import { canAccessClientsDirectory } from '../../services/companyService';
 
-export type SupervisorTab = 'tree' | 'clients' | 'report' | 'attendance' | 'invitations' | 'audit_accounts' | 'my_checkin' | 'audit_logs';
+export type SupervisorTab = 'tree' | 'clients' | 'report' | 'attendance' | 'audit_accounts' | 'my_checkin' | 'audit_logs';
 
 export interface SupervisorDashboardProps {
   initialTab?: SupervisorTab;
@@ -40,7 +39,6 @@ export function SupervisorDashboard({ initialTab }: SupervisorDashboardProps = {
   const canSeeTree = effectiveModules.tasks || effectiveModules.clients || userPerms.canManageClientsAndProjects;
   const canSeeClientsDirectory = canAccessClientsDirectory(user?.role);
   const canSeeReports = userPerms.canExportReports || effectiveModules.reports;
-  const canInvite = userPerms.canInviteUsers;
   const canSeeAudit = userPerms.canViewExecutiveAuditLogs;
   const canSeeHierarchy = normRole === 'Socio' || normRole === 'Gerente';
   const forcedFacialByTI = effectiveModules.facialCheckIn;
@@ -69,8 +67,8 @@ export function SupervisorDashboard({ initialTab }: SupervisorDashboardProps = {
     if (activeTab === 'report' && !canSeeReports) {
       return canSeeTree ? 'tree' : 'attendance';
     }
-    if (activeTab === 'invitations' && !canInvite) {
-      return canSeeTree ? 'tree' : 'attendance';
+    if ((activeTab as string) === 'invitations') {
+      return 'attendance';
     }
     if (activeTab === 'audit_logs' && !canSeeAudit) {
       return canSeeTree ? 'tree' : 'attendance';
@@ -185,22 +183,6 @@ export function SupervisorDashboard({ initialTab }: SupervisorDashboardProps = {
             >
               Asistencia y Equipos
             </button>
-
-            {/* Pestaña Invitaciones: SOLO para Gerente, Socio y TI */}
-            {canInvite && (
-              <button
-                type="button"
-                data-tour="nav-invitations-tab"
-                onClick={() => setActiveTab('invitations')}
-                className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                  resolvedTab === 'invitations'
-                    ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs'
-                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-                }`}
-              >
-                Invitaciones
-              </button>
-            )}
 
             {/* Pestaña Informes: SOLO roles autorizados (Gerente, Socio, TI) */}
             {canSeeReports && (
@@ -402,13 +384,11 @@ export function SupervisorDashboard({ initialTab }: SupervisorDashboardProps = {
         />
       )}
 
-      {resolvedTab === 'invitations' && canInvite && <SupervisorInvitationsView />}
-
       {resolvedTab === 'audit_logs' && canSeeAudit && <ExecutiveAuditLogView />}
 
       {resolvedTab === 'audit_accounts' && canSeeHierarchy && (
         <div className="bg-white dark:bg-[#0B111E] rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs">
-          <AuditHierarchyView onNavigateToInvitations={() => setActiveTab('invitations')} />
+          <AuditHierarchyView onNavigateToInvitations={() => setActiveTab('attendance')} />
         </div>
       )}
 

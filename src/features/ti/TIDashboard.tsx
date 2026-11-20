@@ -13,6 +13,7 @@ import { UserPermissionsTable } from './UserPermissionsTable';
 import { SystemDiagnostics } from './SystemDiagnostics';
 import { ExecutiveAuditLogView } from '../audit/ExecutiveAuditLogView';
 import { AuditHierarchyView } from '../hierarchy/AuditHierarchyView';
+import { InviteMemberModal } from '../manager/rayoner/InviteMemberModal';
 import { normalizeCorporateDatabase } from '../../services/dataNormalizationService';
 import { resetCleanEnvironment } from '../../services/adminResetService';
 import { syncUsersDirectoryFromFirestore } from '../../services/userService';
@@ -46,6 +47,7 @@ export function TIDashboard({ initialTab = 'users_permissions' }: TIDashboardPro
   const activeTeams = useMemo(() => teams.filter((t) => t.status !== 'inactive'), [teams]);
 
   const [activeTab, setActiveTab] = useState<'invitations' | 'users_permissions' | 'audit_accounts' | 'rbac_matrix' | 'supervisor_view' | 'clients_directory' | 'audit_logs' | 'system_diagnostics'>(initialTab);
+  const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
 
   // Formulario para invitar a nuevos usuarios (filtrado dinámicamente según rol)
   const allowedRoles = useMemo(() => {
@@ -367,18 +369,6 @@ export function TIDashboard({ initialTab = 'users_permissions' }: TIDashboardPro
           </button>
           <button
             type="button"
-            data-tour="ti-invite-tab"
-            onClick={() => setActiveTab('invitations')}
-            className={`px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer ${
-              activeTab === 'invitations'
-                ? 'bg-white dark:bg-slate-900 text-blue-700 dark:text-sky-400 font-semibold shadow-xs border border-slate-200/80 dark:border-slate-700/80'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-            }`}
-          >
-            Invitar Supervisores
-          </button>
-          <button
-            type="button"
             onClick={() => setActiveTab('audit_logs')}
             className={`px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer ${
               activeTab === 'audit_logs'
@@ -496,7 +486,7 @@ export function TIDashboard({ initialTab = 'users_permissions' }: TIDashboardPro
 
       {/* PESTAÑA 0: MATRIZ EJECUTIVA Y TABLA DE PERMISOS */}
       {activeTab === 'users_permissions' && (
-        <UserPermissionsTable onNewUser={() => setActiveTab('invitations')} />
+        <UserPermissionsTable onNewUser={() => setIsInviteModalOpen(true)} />
       )}
 
       {/* PESTAÑA 1: GENERACIÓN DE ENLACES DE INVITACIÓN PARA SUPERVISORES */}
@@ -723,7 +713,7 @@ export function TIDashboard({ initialTab = 'users_permissions' }: TIDashboardPro
       {/* PESTAÑA 2: AUDITORÍA DE JERARQUÍA */}
       {activeTab === 'audit_accounts' && (
         <div className="animate-fade-in">
-          <AuditHierarchyView onNavigateToInvitations={() => setActiveTab('invitations')} />
+          <AuditHierarchyView onNavigateToInvitations={() => setIsInviteModalOpen(true)} />
         </div>
       )}
 
@@ -940,6 +930,11 @@ export function TIDashboard({ initialTab = 'users_permissions' }: TIDashboardPro
           </div>
         </div>
       )}
+      {/* Modal de Invitación Unificado */}
+      <InviteMemberModal
+        isOpen={isInviteModalOpen}
+        onClose={() => setIsInviteModalOpen(false)}
+      />
     </div>
   );
 }

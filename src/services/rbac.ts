@@ -351,6 +351,12 @@ export function getAllowedRolesToInvite(issuerRole?: LegacyOrCurrentRole): Array
 }> {
   const norm = normalizeRole(issuerRole);
 
+  if (norm === 'Supervisor') {
+    return [
+      { value: 'colaborador', label: 'Colaborador' },
+    ];
+  }
+
   if (norm === 'Gerente') {
     return [
       { value: 'colaborador', label: 'Colaborador' },
