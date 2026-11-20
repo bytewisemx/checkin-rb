@@ -52,8 +52,8 @@ export function SupervisorDashboard({ initialTab }: SupervisorDashboardProps = {
   const defaultTab: SupervisorTab = initialTab
     ? initialTab
     : canSeeTree
-    ? 'tree'
-    : 'attendance';
+      ? 'tree'
+      : 'attendance';
 
   const [activeTab, setActiveTab] = useState<SupervisorTab>(defaultTab);
 
@@ -145,11 +145,10 @@ export function SupervisorDashboard({ initialTab }: SupervisorDashboardProps = {
                 type="button"
                 data-tour="nav-projects-tab"
                 onClick={() => setActiveTab('tree')}
-                className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                  resolvedTab === 'tree'
-                    ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs'
-                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-                }`}
+                className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${resolvedTab === 'tree'
+                  ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                  }`}
               >
                 Proyectos y Tiempos
               </button>
@@ -161,11 +160,10 @@ export function SupervisorDashboard({ initialTab }: SupervisorDashboardProps = {
                 type="button"
                 data-tour="nav-clients-tab"
                 onClick={() => setActiveTab('clients')}
-                className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                  resolvedTab === 'clients'
-                    ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs'
-                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-                }`}
+                className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${resolvedTab === 'clients'
+                  ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                  }`}
               >
                 Clientes y Empresas
               </button>
@@ -175,11 +173,10 @@ export function SupervisorDashboard({ initialTab }: SupervisorDashboardProps = {
               type="button"
               data-tour="nav-team-tab"
               onClick={() => setActiveTab('attendance')}
-              className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                resolvedTab === 'attendance'
-                  ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs'
-                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-              }`}
+              className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${resolvedTab === 'attendance'
+                ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                }`}
             >
               Asistencia y Equipos
             </button>
@@ -190,11 +187,10 @@ export function SupervisorDashboard({ initialTab }: SupervisorDashboardProps = {
                 type="button"
                 data-tour="nav-reports-tab"
                 onClick={() => setActiveTab('report')}
-                className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                  resolvedTab === 'report'
-                    ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs'
-                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-                }`}
+                className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${resolvedTab === 'report'
+                  ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                  }`}
               >
                 Informes
               </button>
@@ -206,11 +202,10 @@ export function SupervisorDashboard({ initialTab }: SupervisorDashboardProps = {
                 type="button"
                 data-tour="nav-audit-logs"
                 onClick={() => setActiveTab('audit_logs')}
-                className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                  resolvedTab === 'audit_logs'
-                    ? 'bg-white dark:bg-slate-900 text-blue-700 dark:text-sky-400 font-bold shadow-xs'
-                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-                }`}
+                className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${resolvedTab === 'audit_logs'
+                  ? 'bg-white dark:bg-slate-900 text-blue-700 dark:text-sky-400 font-bold shadow-xs'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                  }`}
               >
                 Bitácora de Movimientos
               </button>
@@ -222,11 +217,10 @@ export function SupervisorDashboard({ initialTab }: SupervisorDashboardProps = {
                 type="button"
                 data-tour="nav-audit-hierarchy"
                 onClick={() => setActiveTab('audit_accounts')}
-                className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                  resolvedTab === 'audit_accounts'
-                    ? 'bg-white dark:bg-slate-900 text-blue-700 dark:text-sky-400 font-bold shadow-xs'
-                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-                }`}
+                className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${resolvedTab === 'audit_accounts'
+                  ? 'bg-white dark:bg-slate-900 text-blue-700 dark:text-sky-400 font-bold shadow-xs'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                  }`}
               >
                 Auditar Jerarquía
               </button>
@@ -236,11 +230,10 @@ export function SupervisorDashboard({ initialTab }: SupervisorDashboardProps = {
               <button
                 type="button"
                 onClick={() => setActiveTab('my_checkin')}
-                className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                  resolvedTab === 'my_checkin'
-                    ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs'
-                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-                }`}
+                className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${resolvedTab === 'my_checkin'
+                  ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                  }`}
               >
                 {forcedFacialByTI ? 'Mi Check-in Facial' : 'Mi Asistencia'}
               </button>

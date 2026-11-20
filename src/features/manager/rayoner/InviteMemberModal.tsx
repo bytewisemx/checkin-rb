@@ -272,7 +272,7 @@ export function InviteMemberModal({ isOpen, onClose, onSuccess }: InviteMemberMo
         <div className="flex items-start justify-between gap-3 pb-3 border-b border-slate-100 dark:border-slate-800">
           <div>
             <h3 className="text-base font-bold text-slate-900 dark:text-white tracking-tight">
-              + Invitar Miembro al Equipo
+              Invitar Miembro al Equipo
             </h3>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
               Genera tokens criptográficos de acceso y envía el correo oficial vía webhook de n8n.

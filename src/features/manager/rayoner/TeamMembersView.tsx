@@ -1,9 +1,9 @@
 import { useState, useMemo, useEffect } from 'react';
-import { 
-  Users, 
-  Clock, 
-  CheckCircle2, 
-  AlertCircle, 
+import {
+  Users,
+  Clock,
+  CheckCircle2,
+  AlertCircle,
   Search,
   Check,
   Plus,
@@ -268,23 +268,23 @@ export function TeamMembersView({ onNavigateToTree }: TeamMembersViewProps) {
               setSubTab('invitations');
               setInvitationStatusFilter('pending');
             }}
-            className="bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 text-xs font-semibold px-3.5 py-2 rounded-lg cursor-pointer transition-colors inline-flex items-center gap-1.5 shadow-2xs"
+            className="h-9 px-3.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800/60 text-xs font-semibold rounded-lg cursor-pointer transition-all inline-flex items-center gap-2 shadow-2xs"
           >
             <span>Invitaciones Pendientes</span>
-            <span className="bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 px-1.5 py-0.2 rounded-full text-[10px] font-bold tabular-nums">
+            <span className="bg-blue-50 dark:bg-blue-950/60 text-blue-800 dark:text-blue-300 border border-blue-200/80 dark:border-blue-900 px-1.5 py-0.5 rounded-md text-[10px] font-bold tabular-nums">
               {pendingInvitationsCount}
             </span>
           </button>
 
-          {/* Botón Primario: + Invitar Miembro al Equipo */}
+          {/* Botón Primario: Invitar Miembro al Equipo */}
           <button
             type="button"
             data-tour="btn-invite-member"
             onClick={() => setIsInviteModalOpen(true)}
-            className="bg-blue-700 hover:bg-blue-800 text-white text-xs font-semibold px-4 py-2 rounded-lg shadow-sm transition-colors cursor-pointer inline-flex items-center gap-1.5 shrink-0"
+            className="h-9 px-4 bg-blue-800 hover:bg-blue-900 active:bg-blue-950 text-white text-xs font-semibold rounded-lg shadow-xs hover:shadow transition-all cursor-pointer inline-flex items-center gap-2 shrink-0 border border-blue-700/60"
           >
-            <Plus className="w-3.5 h-3.5 shrink-0" />
-            <span>+ Invitar Miembro al Equipo</span>
+            <Plus className="w-4 h-4 shrink-0 stroke-[2.25]" />
+            <span>Invitar Miembro al Equipo</span>
           </button>
         </div>
       </div>
@@ -374,17 +374,15 @@ export function TeamMembersView({ onNavigateToTree }: TeamMembersViewProps) {
           <button
             type="button"
             onClick={() => setSubTab('members')}
-            className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer inline-flex items-center gap-2 ${
-              subTab === 'members'
-                ? 'bg-blue-800 text-white shadow-xs'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white bg-slate-100 dark:bg-slate-800/60'
-            }`}
+            className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer inline-flex items-center gap-2 ${subTab === 'members'
+              ? 'bg-blue-800 text-white shadow-xs'
+              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white bg-slate-100 dark:bg-slate-800/60'
+              }`}
           >
             <span>Miembros Activos</span>
             <span
-              className={`text-[11px] font-bold tabular-nums ${
-                subTab === 'members' ? 'text-blue-100' : 'text-slate-500'
-              }`}
+              className={`text-[11px] font-bold tabular-nums ${subTab === 'members' ? 'text-blue-100' : 'text-slate-500'
+                }`}
             >
               ({teamMembers.length})
             </span>
@@ -393,17 +391,15 @@ export function TeamMembersView({ onNavigateToTree }: TeamMembersViewProps) {
           <button
             type="button"
             onClick={() => setSubTab('invitations')}
-            className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer inline-flex items-center gap-2 ${
-              subTab === 'invitations'
-                ? 'bg-blue-800 text-white shadow-xs'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white bg-slate-100 dark:bg-slate-800/60'
-            }`}
+            className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer inline-flex items-center gap-2 ${subTab === 'invitations'
+              ? 'bg-blue-800 text-white shadow-xs'
+              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white bg-slate-100 dark:bg-slate-800/60'
+              }`}
           >
             <span>Invitaciones Enviadas</span>
             <span
-              className={`text-[11px] font-bold tabular-nums ${
-                subTab === 'invitations' ? 'text-blue-100' : 'text-slate-500'
-              }`}
+              className={`text-[11px] font-bold tabular-nums ${subTab === 'invitations' ? 'text-blue-100' : 'text-slate-500'
+                }`}
             >
               ({relevantInvitations.length})
             </span>
@@ -567,10 +563,10 @@ export function TeamMembersView({ onNavigateToTree }: TeamMembersViewProps) {
                           <button
                             type="button"
                             onClick={() => setIsInviteModalOpen(true)}
-                            className="h-8 px-3.5 text-xs font-semibold text-white bg-blue-700 hover:bg-blue-800 rounded-lg shadow-sm transition-colors cursor-pointer inline-flex items-center gap-1.5"
+                            className="h-9 px-4 text-xs font-semibold text-white bg-blue-800 hover:bg-blue-900 active:bg-blue-950 rounded-lg shadow-xs hover:shadow transition-all cursor-pointer inline-flex items-center gap-2 border border-blue-700/60"
                           >
-                            <Plus className="w-3.5 h-3.5 shrink-0" />
-                            <span>+ Invitar Miembro al Equipo</span>
+                            <Plus className="w-4 h-4 shrink-0 stroke-[2.25]" />
+                            <span>Invitar Miembro al Equipo</span>
                           </button>
                         </div>
                       </div>
@@ -584,12 +580,12 @@ export function TeamMembersView({ onNavigateToTree }: TeamMembersViewProps) {
 
                     const createdDateStr = inv.createdAt
                       ? new Date(inv.createdAt).toLocaleDateString('es-MX', {
-                          day: '2-digit',
-                          month: 'short',
-                          year: 'numeric',
-                          hour: '2-digit',
-                          minute: '2-digit',
-                        })
+                        day: '2-digit',
+                        month: 'short',
+                        year: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })
                       : '—';
 
                     return (
@@ -682,9 +678,8 @@ export function TeamMembersView({ onNavigateToTree }: TeamMembersViewProps) {
                               title="Reenviar invitación por correo"
                             >
                               <RefreshCw
-                                className={`w-4 h-4 ${
-                                  resendingId === inv.id ? 'animate-spin text-blue-700' : ''
-                                }`}
+                                className={`w-4 h-4 ${resendingId === inv.id ? 'animate-spin text-blue-700' : ''
+                                  }`}
                               />
                             </button>
 

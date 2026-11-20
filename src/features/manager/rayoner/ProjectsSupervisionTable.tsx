@@ -372,7 +372,7 @@ export function ProjectsSupervisionTable({
           className="h-8 px-3 text-xs font-semibold text-white bg-blue-700 hover:bg-blue-800 rounded-lg shadow-xs transition-colors cursor-pointer inline-flex items-center gap-1.5 shrink-0 self-start sm:self-auto"
         >
           <Plus className="w-3.5 h-3.5 shrink-0" />
-          <span>+ Nuevo Proyecto en esta Empresa</span>
+          <span>Nuevo Proyecto en esta Empresa</span>
         </button>
       </div>
 
@@ -628,7 +628,7 @@ export function ProjectsSupervisionTable({
                                   className="inline-flex items-center gap-1.5 text-xs font-semibold text-blue-700 hover:text-blue-800 dark:text-blue-300 bg-white dark:bg-slate-900 border border-blue-200 dark:border-blue-900 px-2.5 py-1 rounded-md shadow-2xs hover:bg-blue-50 dark:hover:bg-blue-950/40 transition cursor-pointer"
                                 >
                                   <Plus className="w-3.5 h-3.5" />
-                                  <span>+ Agregar Actividad</span>
+                                  <span>Agregar Actividad</span>
                                 </button>
                               </div>
 
@@ -841,7 +841,7 @@ export function ProjectsSupervisionTable({
                             className="h-9 px-4 text-xs font-semibold text-white bg-blue-700 hover:bg-blue-800 rounded-lg shadow-sm transition-colors cursor-pointer inline-flex items-center gap-1.5"
                           >
                             <Plus className="w-3.5 h-3.5 shrink-0" />
-                            <span>+ Crear Primer Proyecto</span>
+                            <span>Crear Primer Proyecto</span>
                           </button>
                         </div>
                       </div>
