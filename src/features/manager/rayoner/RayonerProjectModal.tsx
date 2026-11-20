@@ -124,23 +124,27 @@ export function RayonerProjectModal({
       ? (existingProject.leadUserName || currentUserName) 
       : currentUserName;
 
-    // Regla de negocio 2.2: Asignación automática del Socio por defecto
+    // Regla directiva: Socio y Gerente acceden y supervisan por default (partnerId y managerId).
+    // assignedUserIds está reservado exclusivamente para los colaboradores y supervisores operativos asignados.
     const socioMember = teamMembers.find((m) => normalizeRole(m.role) === 'Socio');
     const partnerId = isEditing && existingProject
       ? (existingProject.partnerId || socioMember?.id || '')
       : (socioMember?.id || '');
 
-    const baseAssignedIds = isEditing && existingProject?.assignedUserIds
-      ? existingProject.assignedUserIds
-      : [currentUserId];
-
-    const finalAssignedUserIds = Array.from(
-      new Set([
-        ...baseAssignedIds,
-        effectiveLeadId,
-        ...(socioMember ? [socioMember.id] : []),
-      ].filter(Boolean))
+    const eligibleOpIds = new Set(
+      teamMembers
+        .filter((m) => {
+          const r = normalizeRole(m.role);
+          return r !== 'Socio' && r !== 'Gerente' && r !== 'RH' && r !== 'TI';
+        })
+        .map((m) => m.id)
     );
+
+    const baseAssignedIds = isEditing && existingProject?.assignedUserIds
+      ? existingProject.assignedUserIds.filter((id) => eligibleOpIds.has(id))
+      : [];
+
+    const finalAssignedUserIds = Array.from(new Set(baseAssignedIds));
 
     const plannedMinutes = Math.max(0, Math.round((Number(totalBudgetHours) || 0) * 60));
 

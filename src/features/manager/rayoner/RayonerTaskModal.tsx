@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect } from 'react';
 import { X } from 'lucide-react';
 import { useRayonerStore } from '../../../store/useRayonerStore';
 import { useCheckinStore } from '../../../store/useCheckinStore';
+import { normalizeRole } from '../../../services/rbac';
 import type { TaskAssignment, TaskPriority } from '../../../types/rayoner';
 
 interface RayonerTaskModalProps {
@@ -44,14 +45,13 @@ export function RayonerTaskModal({
   const currentIssuerId = user?.id || 'demo_supervisor';
   const currentIssuerName = `${user?.name || 'Responsable'} ${user?.lastName || ''}`.trim();
 
-  // Colaboradores de la línea operativa autorizados para asignación
+  // Colaboradores de la línea operativa autorizados para asignación (Socio y Gerente supervisan por default)
   const eligibleCollaborators = useMemo(() => {
     const list = getTeamMembersBySupervisor(currentIssuerId, user?.role);
-    if (list.length > 0) return list;
-    // Respaldo operativo limpio si el catálogo aún está sincronizando
-    return teamMembers.filter((m) => {
-      const r = (m.role || '').toUpperCase();
-      return r !== 'TI' && r !== 'RH';
+    const source = list.length > 0 ? list : teamMembers;
+    return source.filter((m) => {
+      const r = normalizeRole(m.role);
+      return r !== 'Socio' && r !== 'Gerente' && r !== 'TI' && r !== 'RH';
     });
   }, [teamMembers, currentIssuerId, user?.role, getTeamMembersBySupervisor]);
 

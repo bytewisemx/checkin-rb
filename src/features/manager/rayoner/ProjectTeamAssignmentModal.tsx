@@ -22,34 +22,42 @@ export function ProjectTeamAssignmentModal({
 
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Regla de negocio 2.3: Exclusión total de RH y TI en el equipo del proyecto
+  // Regla directiva: Exclusión total de Socio, Gerente, RH y TI en el equipo operativo.
+  // Socio y Gerente tienen visualización y acceso ejecutivo por default (no se asignan manualmente).
   const eligibleTeamMembers = useMemo(() => {
     return teamMembers.filter((m) => {
       const r = normalizeRole(m.role);
-      return r !== 'RH' && r !== 'TI';
+      return r !== 'Socio' && r !== 'Gerente' && r !== 'RH' && r !== 'TI';
     });
   }, [teamMembers]);
 
-  // Identificar los IDs de los usuarios actualmente asignados a este proyecto
+  // Identificar los IDs de los usuarios actualmente asignados a este proyecto (solo participantes operativos)
   const currentAssignedIds = useMemo(() => {
     if (!project) return new Set<string>();
-    const ids = new Set<string>(project.assignedUserIds || []);
+    const eligibleIds = new Set(eligibleTeamMembers.map((m) => m.id));
+    const ids = new Set<string>();
 
-    // Incluir al líder del proyecto
-    if (project.leadUserId) {
+    (project.assignedUserIds || []).forEach((id) => {
+      if (eligibleIds.has(id)) ids.add(id);
+    });
+
+    // Incluir al líder si es operativo elegible
+    if (project.leadUserId && eligibleIds.has(project.leadUserId)) {
       ids.add(project.leadUserId);
     }
 
-    // Incluir a los asignados a tareas del proyecto
+    // Incluir a los asignados a tareas del proyecto si son elegibles
     const projectTasks = tasks.filter((t) => t.projectId === project.id);
     projectTasks.forEach((t) => {
-      if (t.assigned_to) ids.add(t.assigned_to);
+      if (t.assigned_to && eligibleIds.has(t.assigned_to)) ids.add(t.assigned_to);
       const taskAssignees = assignments.filter((a) => a.taskId === t.id);
-      taskAssignees.forEach((a) => ids.add(a.userId));
+      taskAssignees.forEach((a) => {
+        if (eligibleIds.has(a.userId)) ids.add(a.userId);
+      });
     });
 
     return ids;
-  }, [project, tasks, assignments]);
+  }, [project, tasks, assignments, eligibleTeamMembers]);
 
   const [selectedUserIds, setSelectedUserIds] = useState<Set<string>>(new Set());
 
@@ -151,7 +159,7 @@ export function ProjectTeamAssignmentModal({
               {project.name}
             </h3>
             <p className="text-xs text-slate-500 dark:text-slate-400">
-              {project.code} • Asigna o revoca participantes operativos para este proyecto (excluye RH y TI).
+              {project.code} • Asigna o revoca participantes operativos (supervisores y colaboradores). Socio y Gerente acceden por defecto.
             </p>
           </div>
 

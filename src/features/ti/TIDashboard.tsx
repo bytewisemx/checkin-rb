@@ -1,3 +1,5 @@
+
+
 import { useState, useMemo, useEffect } from 'react';
 import { useCheckinStore } from '../../store/useCheckinStore';
 import { useRayonerStore } from '../../store/useRayonerStore';
@@ -359,22 +361,20 @@ export function TIDashboard({ initialTab = 'users_permissions' }: TIDashboardPro
             type="button"
             data-tour="nav-users-tab"
             onClick={() => setActiveTab('users_permissions')}
-            className={`px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer ${
-              activeTab === 'users_permissions'
+            className={`px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer ${activeTab === 'users_permissions'
                 ? 'bg-white dark:bg-slate-900 text-blue-700 dark:text-sky-400 font-semibold shadow-xs border border-slate-200/80 dark:border-slate-700/80'
                 : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-            }`}
+              }`}
           >
             Permisos y Equipos
           </button>
           <button
             type="button"
             onClick={() => setActiveTab('audit_logs')}
-            className={`px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer ${
-              activeTab === 'audit_logs'
+            className={`px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer ${activeTab === 'audit_logs'
                 ? 'bg-white dark:bg-slate-900 text-blue-700 dark:text-sky-400 font-semibold shadow-xs border border-slate-200/80 dark:border-slate-700/80'
                 : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-            }`}
+              }`}
           >
             Bitácora de Movimientos
           </button>
@@ -382,11 +382,10 @@ export function TIDashboard({ initialTab = 'users_permissions' }: TIDashboardPro
             type="button"
             data-tour="nav-audit-hierarchy"
             onClick={() => setActiveTab('audit_accounts')}
-            className={`px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer ${
-              activeTab === 'audit_accounts'
+            className={`px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer ${activeTab === 'audit_accounts'
                 ? 'bg-white dark:bg-slate-900 text-blue-700 dark:text-sky-400 font-semibold shadow-xs border border-slate-200/80 dark:border-slate-700/80'
                 : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-            }`}
+              }`}
           >
             Auditar Jerarquía
           </button>
@@ -394,22 +393,20 @@ export function TIDashboard({ initialTab = 'users_permissions' }: TIDashboardPro
             type="button"
             data-tour="nav-rbac-matrix"
             onClick={() => setActiveTab('rbac_matrix')}
-            className={`px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer ${
-              activeTab === 'rbac_matrix'
+            className={`px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer ${activeTab === 'rbac_matrix'
                 ? 'bg-white dark:bg-slate-900 text-blue-700 dark:text-sky-400 font-semibold shadow-xs border border-slate-200/80 dark:border-slate-700/80'
                 : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-            }`}
+              }`}
           >
             Matriz RBAC
           </button>
           <button
             type="button"
             onClick={() => setActiveTab('supervisor_view')}
-            className={`px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer ${
-              activeTab === 'supervisor_view'
+            className={`px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer ${activeTab === 'supervisor_view'
                 ? 'bg-white dark:bg-slate-900 text-blue-700 dark:text-sky-400 font-semibold shadow-xs border border-slate-200/80 dark:border-slate-700/80'
                 : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-            }`}
+              }`}
           >
             Proyectos y Tareas
           </button>
@@ -417,22 +414,20 @@ export function TIDashboard({ initialTab = 'users_permissions' }: TIDashboardPro
             type="button"
             data-tour="nav-clients-tab"
             onClick={() => setActiveTab('clients_directory')}
-            className={`px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer whitespace-nowrap ${
-              activeTab === 'clients_directory'
+            className={`px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer whitespace-nowrap ${activeTab === 'clients_directory'
                 ? 'bg-white dark:bg-slate-900 text-blue-700 dark:text-sky-400 font-semibold shadow-xs border border-slate-200/80 dark:border-slate-700/80'
                 : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-            }`}
+              }`}
           >
             Clientes y Empresas
           </button>
           <button
             type="button"
             onClick={() => setActiveTab('system_diagnostics')}
-            className={`px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer whitespace-nowrap ${
-              activeTab === 'system_diagnostics'
+            className={`px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer whitespace-nowrap ${activeTab === 'system_diagnostics'
                 ? 'bg-white dark:bg-slate-900 text-blue-700 dark:text-sky-400 font-semibold shadow-xs border border-slate-200/80 dark:border-slate-700/80'
                 : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-            }`}
+              }`}
           >
             Diagnóstico de Sistema
           </button>
@@ -441,47 +436,47 @@ export function TIDashboard({ initialTab = 'users_permissions' }: TIDashboardPro
 
       {/* 2. Tarjetas de Métricas (KPIs) */}
       {activeTab !== 'system_diagnostics' && activeTab !== 'clients_directory' && (
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div className="bg-white dark:bg-[#0B111E] p-4 rounded-xl border border-slate-100 dark:border-slate-800 shadow-xs">
-          <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-            Supervisores
-          </span>
-          <div className="text-2xl font-bold text-slate-900 dark:text-white mt-1">
-            {hierarchyAudit.supervisors.length}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="bg-white dark:bg-[#0B111E] p-4 rounded-xl border border-slate-100 dark:border-slate-800 shadow-xs">
+            <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+              Supervisores
+            </span>
+            <div className="text-2xl font-bold text-slate-900 dark:text-white mt-1">
+              {hierarchyAudit.supervisors.length}
+            </div>
+            <span className="text-[11px] text-slate-500">Dados de alta por TI</span>
           </div>
-          <span className="text-[11px] text-slate-500">Dados de alta por TI</span>
-        </div>
 
-        <div className="bg-white dark:bg-[#0B111E] p-4 rounded-xl border border-slate-100 dark:border-slate-800 shadow-xs">
-          <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-            Colaboradores Operativos
-          </span>
-          <div className="text-2xl font-bold text-slate-900 dark:text-white mt-1">
-            {hierarchyAudit.employees.length}
+          <div className="bg-white dark:bg-[#0B111E] p-4 rounded-xl border border-slate-100 dark:border-slate-800 shadow-xs">
+            <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+              Colaboradores Operativos
+            </span>
+            <div className="text-2xl font-bold text-slate-900 dark:text-white mt-1">
+              {hierarchyAudit.employees.length}
+            </div>
+            <span className="text-[11px] text-slate-500">Vinculados por equipo</span>
           </div>
-          <span className="text-[11px] text-slate-500">Vinculados por equipo</span>
-        </div>
 
-        <div className="bg-white dark:bg-[#0B111E] p-4 rounded-xl border border-slate-100 dark:border-slate-800 shadow-xs">
-          <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-            Tareas Asignadas
-          </span>
-          <div className="text-2xl font-bold text-slate-900 dark:text-white mt-1">
-            {hierarchyAudit.completedTasks} / {hierarchyAudit.totalTasks}
+          <div className="bg-white dark:bg-[#0B111E] p-4 rounded-xl border border-slate-100 dark:border-slate-800 shadow-xs">
+            <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+              Tareas Asignadas
+            </span>
+            <div className="text-2xl font-bold text-slate-900 dark:text-white mt-1">
+              {hierarchyAudit.completedTasks} / {hierarchyAudit.totalTasks}
+            </div>
+            <span className="text-[11px] text-slate-500">Completadas / Totales</span>
           </div>
-          <span className="text-[11px] text-slate-500">Completadas / Totales</span>
-        </div>
 
-        <div className="bg-white dark:bg-[#0B111E] p-4 rounded-xl border border-slate-100 dark:border-slate-800 shadow-xs">
-          <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-            Proyectos y Clientes
-          </span>
-          <div className="text-2xl font-bold text-slate-900 dark:text-white mt-1">
-            {hierarchyAudit.totalClients} / {hierarchyAudit.totalProjects}
+          <div className="bg-white dark:bg-[#0B111E] p-4 rounded-xl border border-slate-100 dark:border-slate-800 shadow-xs">
+            <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+              Proyectos y Clientes
+            </span>
+            <div className="text-2xl font-bold text-slate-900 dark:text-white mt-1">
+              {hierarchyAudit.totalClients} / {hierarchyAudit.totalProjects}
+            </div>
+            <span className="text-[11px] text-slate-500">Gestión de carteras</span>
           </div>
-          <span className="text-[11px] text-slate-500">Gestión de carteras</span>
         </div>
-      </div>
       )}
 
       {/* PESTAÑA 0: MATRIZ EJECUTIVA Y TABLA DE PERMISOS */}

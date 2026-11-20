@@ -13,6 +13,7 @@ import { useRayonerStore } from '../../../store/useRayonerStore';
 import { useCheckinStore } from '../../../store/useCheckinStore';
 import { canCreateOrManageCompanies } from '../../../services/companyService';
 import { formatMinutesSexagesimal } from '../../../services/attendanceService';
+import { normalizeRole } from '../../../services/rbac';
 import type { Project, TeamMember, TaskNode } from '../../../types/rayoner';
 import { CreateCompanyModal } from './CreateCompanyModal';
 import { RayonerProjectModal } from './RayonerProjectModal';
@@ -120,13 +121,29 @@ export function ProjectsSupervisionTable({
       const isOverBudget = percent >= 100;
       const isWarning = percent >= 80 && percent < 100;
 
-      // Colaboradores asignados al proyecto
-      const assignedIds = new Set<string>(project.assignedUserIds || []);
-      if (project.leadUserId) assignedIds.add(project.leadUserId);
+      // Colaboradores operativos asignados al proyecto (Socio y Gerente tienen acceso y supervisión por default)
+      const eligibleOpIds = new Set(
+        teamMembers
+          .filter((m) => {
+            const r = normalizeRole(m.role);
+            return r !== 'Socio' && r !== 'Gerente' && r !== 'RH' && r !== 'TI';
+          })
+          .map((m) => m.id)
+      );
+
+      const assignedIds = new Set<string>();
+      (project.assignedUserIds || []).forEach((id) => {
+        if (eligibleOpIds.has(id)) assignedIds.add(id);
+      });
+      if (project.leadUserId && eligibleOpIds.has(project.leadUserId)) {
+        assignedIds.add(project.leadUserId);
+      }
       projectTasks.forEach((t) => {
-        if (t.assigned_to) assignedIds.add(t.assigned_to);
+        if (t.assigned_to && eligibleOpIds.has(t.assigned_to)) assignedIds.add(t.assigned_to);
         const taskAssignees = assignments.filter((a) => a.taskId === t.id);
-        taskAssignees.forEach((a) => assignedIds.add(a.userId));
+        taskAssignees.forEach((a) => {
+          if (eligibleOpIds.has(a.userId)) assignedIds.add(a.userId);
+        });
       });
 
       const assignedMembers: TeamMember[] = Array.from(assignedIds)
