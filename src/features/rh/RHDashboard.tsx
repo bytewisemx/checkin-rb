@@ -97,14 +97,14 @@ export function RHDashboard() {
           },
           checkOut: checkOutTs
             ? {
-                timestamp: checkOutTs,
-                facialMatch: Boolean(docRec.checkIn.facialMatch),
-                location: {
-                  label: docRec.checkIn.locationLabel || 'Sin ubicación registrada',
-                  latitude: typeof docRec.checkIn.lat === 'number' ? docRec.checkIn.lat : 0,
-                  longitude: typeof docRec.checkIn.lng === 'number' ? docRec.checkIn.lng : 0,
-                },
-              }
+              timestamp: checkOutTs,
+              facialMatch: Boolean(docRec.checkIn.facialMatch),
+              location: {
+                label: docRec.checkIn.locationLabel || 'Sin ubicación registrada',
+                latitude: typeof docRec.checkIn.lat === 'number' ? docRec.checkIn.lat : 0,
+                longitude: typeof docRec.checkIn.lng === 'number' ? docRec.checkIn.lng : 0,
+              },
+            }
             : null,
           totalHours: totalHrs,
         };
@@ -118,6 +118,7 @@ export function RHDashboard() {
     if (userRole === 'RH' && assignedTeams.length > 0) {
       return records.filter((rec) =>
         assignedTeams.some(
+
           (team) =>
             team === 'team-prueba-01' ||
             rec.teamName.toLowerCase().includes(team.toLowerCase()) ||
@@ -177,11 +178,10 @@ export function RHDashboard() {
           <button
             type="button"
             onClick={() => setRhTab('fortnight_sheet')}
-            className={`px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer ${
-              rhTab === 'fortnight_sheet'
+            className={`px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer ${rhTab === 'fortnight_sheet'
                 ? 'bg-white dark:bg-slate-900 text-blue-700 dark:text-sky-400 font-semibold shadow-xs border border-slate-200/80 dark:border-slate-700/80'
                 : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-            }`}
+              }`}
           >
             Sábana Quincenal por Equipo
           </button>
@@ -190,11 +190,10 @@ export function RHDashboard() {
             type="button"
             data-tour="rh-kardex-tab"
             onClick={() => setRhTab('individual_audit')}
-            className={`px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer ${
-              rhTab === 'individual_audit'
+            className={`px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer ${rhTab === 'individual_audit'
                 ? 'bg-white dark:bg-slate-900 text-blue-700 dark:text-sky-400 font-semibold shadow-xs border border-slate-200/80 dark:border-slate-700/80'
                 : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-            }`}
+              }`}
           >
             Historial y Auditoría por Colaborador
           </button>
@@ -203,11 +202,10 @@ export function RHDashboard() {
             <button
               type="button"
               onClick={() => setRhTab('my_checkin')}
-              className={`px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer ${
-                rhTab === 'my_checkin'
+              className={`px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer ${rhTab === 'my_checkin'
                   ? 'bg-white dark:bg-slate-900 text-blue-700 dark:text-sky-400 font-semibold shadow-xs border border-slate-200/80 dark:border-slate-700/80'
                   : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-              }`}
+                }`}
             >
               Mi Asistencia
             </button>
