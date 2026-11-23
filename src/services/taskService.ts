@@ -45,6 +45,20 @@ export interface TaskDocument {
   isActive?: boolean;
   isExtraordinary?: boolean;
   extraordinaryCategory?: string;
+  rubro?: string;
+  rubroNumber?: number;
+  cuentaContable?: string;
+  procedimiento?: string;
+  papelTrabajo?: string;
+  fase?: string;
+  perfilSugerido?: string;
+  activityNumber?: number;
+  budgetedHours?: number;
+  unbudgetedHours?: number;
+  reviewStatus?: string;
+  hoursByUser?: Record<string, number>;
+  totalActualHours?: number;
+  comments?: string;
   createdAt: string;
   updatedAt?: string;
 }
@@ -348,6 +362,20 @@ export async function saveTaskToFirestore(
     extraordinaryCategory: (task.extraordinaryCategory || '').trim(),
     createdAt: task.createdAt || new Date().toISOString(),
     updatedAt: new Date().toISOString(),
+    rubro: (task as any).rubro,
+    rubroNumber: (task as any).rubroNumber,
+    cuentaContable: (task as any).cuentaContable,
+    procedimiento: (task as any).procedimiento,
+    papelTrabajo: (task as any).papelTrabajo,
+    fase: (task as any).fase,
+    perfilSugerido: (task as any).perfilSugerido,
+    activityNumber: (task as any).activityNumber,
+    budgetedHours: (task as any).budgetedHours,
+    unbudgetedHours: (task as any).unbudgetedHours,
+    reviewStatus: (task as any).reviewStatus,
+    hoursByUser: (task as any).hoursByUser,
+    totalActualHours: (task as any).totalActualHours,
+    comments: (task as any).comments,
   };
 
   if (!isFirebaseConfigured() || !db) {
@@ -503,6 +531,20 @@ function mapRawDocToTaskDocument(docId: string, d: Record<string, any>): TaskDoc
     extraordinaryCategory: d.extraordinaryCategory ? String(d.extraordinaryCategory) : '',
     createdAt: String(d.createdAt || d.created_at || new Date().toISOString()),
     updatedAt: d.updatedAt ? String(d.updatedAt) : undefined,
+    rubro: d.rubro ? String(d.rubro) : undefined,
+    rubroNumber: typeof d.rubroNumber === 'number' ? d.rubroNumber : undefined,
+    cuentaContable: d.cuentaContable ? String(d.cuentaContable) : undefined,
+    procedimiento: d.procedimiento ? String(d.procedimiento) : undefined,
+    papelTrabajo: d.papelTrabajo ? String(d.papelTrabajo) : undefined,
+    fase: d.fase ? String(d.fase) : undefined,
+    perfilSugerido: d.perfilSugerido ? String(d.perfilSugerido) : undefined,
+    activityNumber: typeof d.activityNumber === 'number' ? d.activityNumber : undefined,
+    budgetedHours: typeof d.budgetedHours === 'number' ? d.budgetedHours : undefined,
+    unbudgetedHours: typeof d.unbudgetedHours === 'number' ? d.unbudgetedHours : undefined,
+    reviewStatus: d.reviewStatus ? String(d.reviewStatus) : undefined,
+    hoursByUser: typeof d.hoursByUser === 'object' && d.hoursByUser !== null ? d.hoursByUser : undefined,
+    totalActualHours: typeof d.totalActualHours === 'number' ? d.totalActualHours : undefined,
+    comments: d.comments ? String(d.comments) : undefined,
   };
 }
 
@@ -611,10 +653,15 @@ export async function commitShiftTaskAllocationsToFirestore(
           ? toIntegerMinutes(entry.cumulativeMinutes)
           : toIntegerMinutes(entry.minutes);
 
+      const totalHours = Number((targetMins / 60).toFixed(2));
       const patchPayload: Record<string, any> = {
         loggedMinutes: targetMins,
+        totalActualHours: totalHours,
         updatedAt: nowIso,
       };
+      if (actorId) {
+        patchPayload[`hoursByUser.${actorId}`] = totalHours;
+      }
 
       // Si es extraordinaria, incluir metadatos de creación
       if (entry.isExtraordinary) {
@@ -647,10 +694,15 @@ export async function commitShiftTaskAllocationsToFirestore(
               ? toIntegerMinutes(entry.cumulativeMinutes)
               : toIntegerMinutes(entry.minutes);
 
+          const totalHours = Number((targetMins / 60).toFixed(2));
           const singlePayload: Record<string, any> = {
             loggedMinutes: targetMins,
+            totalActualHours: totalHours,
             updatedAt: new Date().toISOString(),
           };
+          if (actorId) {
+            singlePayload[`hoursByUser.${actorId}`] = totalHours;
+          }
           if (entry.title) singlePayload.title = entry.title;
           if (actorId) {
             singlePayload.assignedTo = actorId;

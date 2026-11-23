@@ -28,6 +28,7 @@ import type {
   TaskStatusType,
   TaskNote,
 } from '../types/rayoner';
+import type { ServiceTemplateActivity } from '../types/serviceTemplate';
 import type { UserRole } from '../services/rbac';
 
 // Canal WebSocket / BroadcastChannel local para sincronización en tiempo real entre pestañas (Supervisor <-> Empleado)
@@ -68,6 +69,10 @@ interface RayonerState {
 
   // Acciones Proyectos
   addProject: (project: Omit<Project, 'id'>) => string;
+  addProjectWithActivities: (
+    project: Omit<Project, 'id'>,
+    activities: ServiceTemplateActivity[]
+  ) => string;
   updateProject: (id: string, data: Partial<Project>) => void;
   deleteProject: (id: string) => void;
   updateGeofence: (projectId: string, geofence: GeofenceConfig) => void;
@@ -367,6 +372,71 @@ export const useRayonerStore = create<RayonerState>()(
         void saveProjectToFirestore(normalizedProject);
         broadcastRayonerSync('PROJECT_ADDED');
         return id;
+      },
+
+      addProjectWithActivities: (projectData, activities) => {
+        const projectId = get().addProject(projectData);
+        const nowIso = new Date().toISOString();
+        const stateSnap = get();
+        const projObj = stateSnap.projects.find((p) => p.id === projectId);
+        const companyObj = stateSnap.clients.find((c) => c.id === projObj?.clientId);
+
+        const newTasks: TaskNode[] = activities.map((act, index) => {
+          const taskId = `tsk-${Date.now()}-${index + 1}-${Math.random().toString(36).substring(2, 6)}`;
+          const plannedHours = act.budgetedHours || 0;
+          const plannedMin = Math.max(0, Math.round(plannedHours * 60));
+
+          return {
+            id: taskId,
+            projectId,
+            name: act.procedimiento,
+            title: act.procedimiento,
+            rubro: act.rubro,
+            rubroNumber: act.rubroNumber,
+            cuentaContable: act.cuentaContable,
+            procedimiento: act.procedimiento,
+            papelTrabajo: act.papelTrabajo,
+            fase: act.fase,
+            perfilSugerido: act.perfilSugerido,
+            activityNumber: act.activityNumber,
+            budgetedHours: plannedHours,
+            plannedHours,
+            plannedMinutes: plannedMin,
+            loggedMinutes: 0,
+            totalActualHours: 0,
+            hoursByUser: {},
+            status: 'pending',
+            reviewStatus: 'pending',
+            priority: 'medium',
+            isBillable: true,
+            isActive: true,
+            companyId: projObj?.clientId || '',
+            companyName: companyObj?.commercialName || companyObj?.name || '',
+            projectName: projObj?.name || '',
+            created_by: projectData.leadUserId || 'demo_gerente',
+            gerenteId: projectData.gerenteId || projectData.leadUserId,
+            supervisorId: projectData.supervisorId,
+            teamId: projectData.teamId,
+            teamIds: projectData.teamIds,
+            leadUserId: act.leadUserId || undefined,
+            assignedUserIds: act.assignedUserIds || [],
+            assignedToIds: act.assignedUserIds || [],
+            assigned_to: act.leadUserId || (act.assignedUserIds && act.assignedUserIds[0]) || '',
+            created_at: nowIso,
+            completed_at: null,
+          };
+        });
+
+        set((state) => ({
+          tasks: [...state.tasks, ...newTasks],
+        }));
+
+        newTasks.forEach((t) => {
+          void saveTaskToFirestore(t as any);
+        });
+
+        broadcastRayonerSync('TASKS_BATCH_ADDED');
+        return projectId;
       },
 
       updateProject: (id, data) => {

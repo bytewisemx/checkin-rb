@@ -59,6 +59,9 @@ export interface Project {
   assignedToIds?: string[];
   assignedUserIds?: string[];
   assignedUserEmails?: string[];
+  templateId?: string;
+  templateName?: string;
+  isFromTemplate?: boolean;
 }
 
 export interface TaskNote {
@@ -111,6 +114,20 @@ export interface TaskNode {
   notes?: TaskNote[];
   isExtraordinary?: boolean;
   extraordinaryCategory?: string;
+  activityNumber?: number;
+  rubro?: string;
+  rubroNumber?: number;
+  cuentaContable?: string;
+  procedimiento?: string;
+  papelTrabajo?: string;
+  fase?: 'Previa' | 'Final' | 'Especialista';
+  perfilSugerido?: 'Staff' | 'Encargado' | 'Gerente' | 'Equipo' | 'Especialista';
+  budgetedHours?: number;
+  unbudgetedHours?: number;
+  reviewStatus?: 'pending' | 'staff_pt_done' | 'lead_reviewed' | 'completed';
+  hoursByUser?: Record<string, number>;
+  totalActualHours?: number;
+  comments?: string;
 }
 
 export interface TaskAssignment {

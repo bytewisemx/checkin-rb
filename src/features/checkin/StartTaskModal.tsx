@@ -98,6 +98,91 @@ export function StartTaskModal({
     );
   }, [projects, allowedClientIds, availableTasks]);
 
+  // Agrupación jerárquica por Empresa -> Servicio -> Rubro -> Actividades
+  const groupedTasksTree = useMemo(() => {
+    type GroupedTask = {
+      task: (typeof availableTasks)[0];
+      client: (typeof clients)[0] | undefined;
+      project: (typeof projects)[0] | undefined;
+    };
+
+    const tree = new Map<
+      string,
+      {
+        clientId: string;
+        clientName: string;
+        clientLogo?: string;
+        projects: Map<
+          string,
+          {
+            projectId: string;
+            projectName: string;
+            rubros: Map<
+              string,
+              {
+                rubroName: string;
+                tasks: GroupedTask[];
+              }
+            >;
+          }
+        >;
+      }
+    >();
+
+    availableTasks.forEach((task) => {
+      const project = projects.find((p) => p.id === task.projectId);
+      const clientId = project?.clientId || task.companyId || 'general';
+      const client = clients.find((c) => c.id === clientId);
+      const clientName = client?.commercialName || client?.name || task.companyName || 'Empresa';
+
+      const projectId = task.projectId || 'general_project';
+      const projectName = project?.name || task.projectName || 'Proyecto General';
+
+      const rubroName = task.rubro
+        ? typeof task.rubroNumber === 'number' && task.rubroNumber === 0
+          ? '0. Planeación General y Cierre'
+          : typeof task.rubroNumber === 'number'
+          ? `${task.rubroNumber}. ${task.rubro}`
+          : task.rubro
+        : 'Actividades del Proyecto';
+
+      if (!tree.has(clientId)) {
+        tree.set(clientId, {
+          clientId,
+          clientName,
+          clientLogo: client?.logoUrl,
+          projects: new Map(),
+        });
+      }
+      const cObj = tree.get(clientId)!;
+
+      if (!cObj.projects.has(projectId)) {
+        cObj.projects.set(projectId, {
+          projectId,
+          projectName,
+          rubros: new Map(),
+        });
+      }
+      const pObj = cObj.projects.get(projectId)!;
+
+      if (!pObj.rubros.has(rubroName)) {
+        pObj.rubros.set(rubroName, {
+          rubroName,
+          tasks: [],
+        });
+      }
+      pObj.rubros.get(rubroName)!.tasks.push({ task, client, project });
+    });
+
+    return Array.from(tree.values()).map((c) => ({
+      ...c,
+      projects: Array.from(c.projects.values()).map((p) => ({
+        ...p,
+        rubros: Array.from(p.rubros.values()),
+      })),
+    }));
+  }, [availableTasks, projects, clients]);
+
   // Detección de última tarea activa del día anterior o prioritaria asignada (solo si está asignada)
   const smartPreselectedTask = useMemo(() => {
     if (availableTasks.length === 0) return null;
@@ -355,7 +440,7 @@ export function StartTaskModal({
                 </button>
               </div>
 
-              <div className="space-y-2 max-h-[280px] overflow-y-auto pr-1">
+              <div className="space-y-3 max-h-[340px] overflow-y-auto pr-1">
                 {availableTasks.length === 0 ? (
                   <div className="p-6 text-center bg-[#1A2742] rounded-xl border border-[#233354] space-y-3">
                     <CheckSquare className="w-7 h-7 text-[#38BDF8] mx-auto mb-1" />
@@ -364,7 +449,7 @@ export function StartTaskModal({
                         Jornada General (Sin tarea específica asignada)
                       </p>
                       <p className="text-xs text-[#94A3B8] mt-1 max-w-sm mx-auto leading-relaxed">
-                        Aún no tienes proyectos o tareas asignadas. Tu tiempo se contabiliza como jornada general hasta que se te asigne una actividad o crees una en un proyecto.
+                        Aún no tienes actividades asignadas. Tu tiempo se contabiliza como jornada general hasta que se te asigne una actividad oficial de auditoría o proyecto.
                       </p>
                     </div>
                     <button
@@ -376,78 +461,115 @@ export function StartTaskModal({
                     </button>
                   </div>
                 ) : (
-                  availableTasks.map((task) => {
-                    const isSelected = selectedTaskId === task.id;
-                    const isDirectlyAssigned = myAssignedTaskIds.includes(task.id);
-                    const project = projects.find((p) => p.id === task.projectId);
-                    const client = clients.find(
-                      (c) => c.id === (project?.clientId || task.companyId)
-                    );
-                    const taskPlannedMin =
-                      task.plannedMinutes ?? Math.round((task.plannedHours || 0) * 60);
-
-                    return (
-                      <div
-                        key={task.id}
-                        onClick={() => setSelectedTaskId(task.id)}
-                        className={`p-3 rounded-xl border transition-colors cursor-pointer flex items-center justify-between ${
-                          isSelected
-                            ? 'bg-[#1E40AF]/25 border-[#1E40AF] ring-1 ring-[#1E40AF]'
-                            : 'bg-[#101726] border-[#233354] hover:border-[#38BDF8]/40'
-                        }`}
-                      >
-                        <div className="flex items-start space-x-3 min-w-0 pr-2">
-                          <div
-                            className={`mt-1 w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 ${
-                              isSelected ? 'border-[#38BDF8] bg-[#1E40AF]' : 'border-[#64748B]'
-                            }`}
-                          >
-                            {isSelected && <div className="w-1.5 h-1.5 bg-[#38BDF8] rounded-full" />}
-                          </div>
-
-                          <CompanyLogoBadge
-                            name={client?.name || task.companyName}
-                            commercialName={client?.commercialName}
-                            logoUrl={client?.logoUrl}
-                            size="sm"
-                            className="mt-0.5"
-                          />
-
-                          <div className="min-w-0">
-                            <div className="flex items-center space-x-1.5 flex-wrap gap-y-0.5">
-                              <span className="text-xs font-semibold text-[#F8FAFC] truncate">
-                                {task.name}
-                              </span>
-                              {isDirectlyAssigned && (
-                                <span className="text-[9px] font-heading font-bold bg-[#0F172A] text-[#38BDF8] border border-[#233354] px-1.5 py-0.5 rounded-sm">
-                                  Asignada
-                                </span>
-                              )}
-                            </div>
-
-                            <div className="flex items-center space-x-2 text-[10px] text-[#94A3B8] mt-0.5">
-                              <span className="flex items-center truncate text-sky-400">
-                                <Building2 className="w-3 h-3 mr-1" />
-                                {client?.commercialName || client?.name || task.companyName || 'Empresa'}
-                              </span>
-                              <span>•</span>
-                              <span className="flex items-center truncate">
-                                <Briefcase className="w-3 h-3 mr-1 text-[#94A3B8]" />
-                                {project?.name || task.projectName || 'Proyecto'}
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className="shrink-0 text-right">
-                          <span className="text-xs font-mono font-bold text-[#F8FAFC] flex items-center justify-end">
-                            <Clock className="w-3 h-3 mr-1 text-[#64748B]" />
-                            {formatMinutesSexagesimal(taskPlannedMin)}
-                          </span>
-                        </div>
+                  groupedTasksTree.map((comp) => (
+                    <div
+                      key={comp.clientId}
+                      className="rounded-xl border border-[#1E2B45] bg-[#0B1120] overflow-hidden space-y-2 p-2.5"
+                    >
+                      {/* Nivel 1: Empresa */}
+                      <div className="flex items-center gap-2 px-1">
+                        <CompanyLogoBadge
+                          name={comp.clientName}
+                          logoUrl={comp.clientLogo}
+                          size="sm"
+                        />
+                        <span className="text-xs font-bold text-white uppercase tracking-tight truncate">
+                          {comp.clientName}
+                        </span>
                       </div>
-                    );
-                  })
+
+                      {/* Nivel 2: Servicios / Proyectos */}
+                      {comp.projects.map((proj) => (
+                        <div key={proj.projectId} className="space-y-2 pl-2">
+                          <div className="flex items-center gap-1.5 text-[11px] font-bold text-sky-400">
+                            <Briefcase className="w-3 h-3 text-sky-400 shrink-0" />
+                            <span className="truncate">{proj.projectName}</span>
+                          </div>
+
+                          {/* Nivel 3: Rubros */}
+                          {proj.rubros.map((rubro) => (
+                            <div key={rubro.rubroName} className="space-y-1.5 pl-2 border-l border-[#1E2B45]">
+                              <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                                {rubro.rubroName} ({rubro.tasks.length})
+                              </div>
+
+                              {/* Nivel 4: Actividades (Fase) */}
+                              <div className="space-y-1">
+                                {rubro.tasks.map(({ task }) => {
+                                  const isSelected = selectedTaskId === task.id;
+                                  const isDirectlyAssigned = myAssignedTaskIds.includes(task.id);
+                                  const isLead = task.leadUserId === user?.id;
+                                  const taskPlannedMin =
+                                    task.plannedMinutes ?? Math.round((task.plannedHours || 0) * 60);
+
+                                  return (
+                                    <div
+                                      key={task.id}
+                                      onClick={() => setSelectedTaskId(task.id)}
+                                      className={`p-2.5 rounded-lg border transition-all cursor-pointer flex items-center justify-between gap-2 ${
+                                        isSelected
+                                          ? 'bg-[#1E40AF]/30 border-[#38BDF8] ring-1 ring-[#38BDF8]'
+                                          : 'bg-[#101726] border-[#233354] hover:border-[#38BDF8]/40'
+                                      }`}
+                                    >
+                                      <div className="flex items-start gap-2.5 min-w-0 flex-1">
+                                        <div
+                                          className={`mt-0.5 w-3.5 h-3.5 rounded-full border-2 flex items-center justify-center shrink-0 ${
+                                            isSelected ? 'border-[#38BDF8] bg-[#1E40AF]' : 'border-slate-500'
+                                          }`}
+                                        >
+                                          {isSelected && <div className="w-1.5 h-1.5 bg-[#38BDF8] rounded-full" />}
+                                        </div>
+
+                                        <div className="min-w-0">
+                                          <div className="flex items-center gap-1.5 flex-wrap">
+                                            <span className="text-xs font-semibold text-[#F8FAFC] leading-snug">
+                                              {task.procedimiento || task.name || task.title}
+                                            </span>
+
+                                            {task.fase && (
+                                              <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-[#1E293B] text-sky-300 border border-slate-700">
+                                                Fase {task.fase}
+                                              </span>
+                                            )}
+
+                                            {isLead && (
+                                              <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-blue-900/60 text-sky-200 border border-blue-700">
+                                                Encargado
+                                              </span>
+                                            )}
+
+                                            {!isLead && isDirectlyAssigned && (
+                                              <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-[#0F172A] text-[#38BDF8] border border-[#233354]">
+                                                Asignada
+                                              </span>
+                                            )}
+                                          </div>
+
+                                          {task.papelTrabajo && (
+                                            <div className="text-[10px] text-slate-400 mt-0.5 italic truncate max-w-sm">
+                                              PT: {task.papelTrabajo}
+                                            </div>
+                                          )}
+                                        </div>
+                                      </div>
+
+                                      <div className="shrink-0 text-right">
+                                        <span className="text-xs font-mono font-bold text-slate-200 flex items-center justify-end">
+                                          <Clock className="w-3 h-3 mr-1 text-slate-400" />
+                                          {formatMinutesSexagesimal(taskPlannedMin)}
+                                        </span>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ))}
+                    </div>
+                  ))
                 )}
               </div>
 

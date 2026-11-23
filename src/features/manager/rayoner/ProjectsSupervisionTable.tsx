@@ -4,6 +4,7 @@ import {
   Plus,
   ListTodo,
   FileText,
+  FileSpreadsheet,
   UserPlus,
   ChevronDown,
   ChevronRight,
@@ -20,6 +21,8 @@ import { RayonerProjectModal } from './RayonerProjectModal';
 import { ProjectTeamAssignmentModal } from './ProjectTeamAssignmentModal';
 import { ProjectTasksDrawerModal } from './ProjectTasksDrawerModal';
 import { ProjectExecutiveReportModal } from './ProjectExecutiveReportModal';
+import { AuditServiceAccordionView } from './AuditServiceAccordionView';
+import { exportAuditPlanToExcel } from '../../../services/auditPlanExportService';
 import { LiveTimerCell } from '../../../components/common/LiveTimerCell';
 import { CompanyLogoBadge } from '../../../components/common/CompanyLogoBadge';
 import { useLiveTeamTimers } from '../../../hooks/useLiveTeamTimers';
@@ -614,6 +617,18 @@ export function ProjectsSupervisionTable({
                               <ListTodo className="w-4 h-4" />
                             </button>
 
+                            {/* Botón Exportar Plan de Trabajo a Excel para servicios con plantilla */}
+                            {Boolean(project.isFromTemplate || project.templateId || projectTasks.some((t: TaskNode) => typeof t.rubroNumber === 'number')) && (
+                              <button
+                                type="button"
+                                onClick={() => exportAuditPlanToExcel(project, client, projectTasks, teamMembers)}
+                                className="p-2 text-slate-400 hover:text-blue-700 hover:bg-blue-50 dark:hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
+                                title="Exportar Plan de Trabajo a Excel (.xlsx)"
+                              >
+                                <FileSpreadsheet className="w-4 h-4" />
+                              </button>
+                            )}
+
                             {/* Botón Ver Reporte */}
                             <button
                               type="button"
@@ -631,6 +646,12 @@ export function ProjectsSupervisionTable({
                       {isExpanded && (
                         <tr className="bg-slate-50/70 dark:bg-slate-800/30 border-b border-slate-200/80 dark:border-slate-800">
                           <td colSpan={6} className="p-4 sm:p-5">
+                            {Boolean(project.isFromTemplate || project.templateId || projectTasks.some((t: TaskNode) => typeof t.rubroNumber === 'number')) ? (
+                              <AuditServiceAccordionView
+                                project={project}
+                                onOpenTaskModal={onOpenTaskModal}
+                              />
+                            ) : (
                             <div className="space-y-3">
                               <div className="flex items-center justify-between pb-2 border-b border-slate-200/60 dark:border-slate-700/60">
                                 <div className="flex items-center gap-2">
@@ -824,6 +845,7 @@ export function ProjectsSupervisionTable({
                                 </div>
                               )}
                             </div>
+                            )}
                           </td>
                         </tr>
                       )}
