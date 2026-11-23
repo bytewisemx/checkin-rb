@@ -17,7 +17,6 @@ import { logoutFirebase } from '../../services/firebase';
 import { normalizeRole, getEffectiveModules } from '../../services/rbac';
 import { UserProfileModal } from './UserProfileModal';
 import { UserAvatar } from './UserAvatar';
-import { RankMedal } from './RankMedal';
 import { NotificationBell } from './NotificationBell';
 import { GlobalSearchBar } from './GlobalSearchBar';
 import { HelpDrawer } from '../help/HelpDrawer';
@@ -196,21 +195,7 @@ export function GlobalHeader() {
           {/* Notificaciones: Campana sobria (Bell) */}
           {normalizedRole !== 'RH' && effectiveModules.tasks && <NotificationBell />}
 
-          {/* Insignia Pública de Rango Mensual */}
-          <button
-            type="button"
-            onClick={() => setProfileOpen(true)}
-            className="hidden sm:inline-flex cursor-pointer transition-transform hover:scale-105"
-            title={`Tu Rango Mensual: ${gamification.rank.title} (${gamification.points} pts). Haz clic para abrir Medalla y Mes.`}
-          >
-            <RankMedal
-              tier={gamification.rank.tier}
-              variant="badge"
-              points={gamification.points}
-            />
-          </button>
-
-          {/* Configuración / Perfil: Engranaje discreto (Settings) y Usuario (User) */}
+          {/* Configuración / Perfil: Engranaje discreto (Settings) y Usuario (User) con marco de rango */}
           <button
             id="nav-settings"
             onClick={() => setProfileOpen(true)}
@@ -226,6 +211,7 @@ export function GlobalHeader() {
               name={user?.name}
               lastName={user?.lastName}
               size="sm"
+              rank={gamification.rank.tier}
             />
           </button>
 

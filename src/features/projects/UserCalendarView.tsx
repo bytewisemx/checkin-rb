@@ -1,13 +1,14 @@
+
 import { useState, useMemo } from 'react';
-import { 
-  format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, 
-  eachDayOfInterval, isSameMonth, isSameDay, addMonths, subMonths 
+import {
+  format, startOfMonth, endOfMonth, startOfWeek, endOfWeek,
+  eachDayOfInterval, isSameMonth, isSameDay, addMonths, subMonths
 } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { 
-  ChevronLeft, ChevronRight, Clock, MapPin, 
-  CheckSquare, Briefcase, ShieldCheck, 
-  Calendar as CalendarIcon 
+import {
+  ChevronLeft, ChevronRight, Clock, MapPin,
+  CheckSquare, Briefcase, ShieldCheck,
+  Calendar as CalendarIcon
 } from 'lucide-react';
 import { useCheckinStore } from '../../store/useCheckinStore';
 import { useRayonerStore } from '../../store/useRayonerStore';
@@ -71,10 +72,10 @@ export function UserCalendarView() {
 
   return (
     <div className="flex-1 flex flex-col lg:flex-row gap-6 p-6 overflow-hidden">
-      
+
       {/* Columna Izquierda: Calendario Mensual */}
       <div className="flex-1 flex flex-col bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
-        
+
         {/* Cabecera del Calendario */}
         <div className="p-4 sm:p-5 border-b border-slate-200 flex items-center justify-between flex-wrap gap-3 bg-slate-50/50">
           <div className="flex items-center space-x-3">
@@ -144,20 +145,18 @@ export function UserCalendarView() {
               <div
                 key={dateStr}
                 onClick={() => setSelectedDate(day)}
-                className={`p-1.5 sm:p-2 min-h-[85px] sm:min-h-[105px] flex flex-col justify-between transition-all cursor-pointer select-none group relative ${
-                  !isCurrentMonth ? 'bg-slate-50/40 text-slate-400' : 'bg-white hover:bg-blue-50/30'
-                } ${isSelected ? 'ring-2 ring-inset ring-[#0D5C75] bg-blue-50/40 z-10' : ''}`}
+                className={`p-1.5 sm:p-2 min-h-[85px] sm:min-h-[105px] flex flex-col justify-between transition-all cursor-pointer select-none group relative ${!isCurrentMonth ? 'bg-slate-50/40 text-slate-400' : 'bg-white hover:bg-blue-50/30'
+                  } ${isSelected ? 'ring-2 ring-inset ring-[#0D5C75] bg-blue-50/40 z-10' : ''}`}
               >
                 {/* Número del día */}
                 <div className="flex items-center justify-between">
                   <span
-                    className={`text-xs font-bold w-6 h-6 rounded-full flex items-center justify-center ${
-                      isToday
+                    className={`text-xs font-bold w-6 h-6 rounded-full flex items-center justify-center ${isToday
                         ? 'bg-[#0D5C75] text-white shadow-xs'
                         : isSelected
                           ? 'text-[#0D5C75] font-black'
                           : 'text-slate-700'
-                    }`}
+                      }`}
                   >
                     {format(day, 'd')}
                   </span>
@@ -213,10 +212,10 @@ export function UserCalendarView() {
 
       {/* Columna Derecha: Detalle del Día Seleccionado */}
       <div className="w-full lg:w-96 flex flex-col space-y-4">
-        
+
         {/* Tarjeta de Resumen del Día */}
         <div className="bg-white rounded-2xl border border-slate-200 shadow-xs p-5 space-y-4">
-          
+
           <div className="border-b border-slate-100 pb-3">
             <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
               Detalle del Día
@@ -252,8 +251,8 @@ export function UserCalendarView() {
                     {formatTime(selectedRecord.checkOutTimeMs)}
                   </div>
                   <span className="text-[10px] font-semibold text-slate-500">
-                    {selectedRecord.totalDurationMinutes 
-                      ? `${Math.floor(selectedRecord.totalDurationMinutes / 60)}h ${selectedRecord.totalDurationMinutes % 60}m` 
+                    {selectedRecord.totalDurationMinutes
+                      ? `${Math.floor(selectedRecord.totalDurationMinutes / 60)}h ${selectedRecord.totalDurationMinutes % 60}m`
                       : 'En curso'}
                   </span>
                 </div>
@@ -294,7 +293,7 @@ export function UserCalendarView() {
 
         {/* Tareas Trabajadas en la Fecha */}
         <div className="bg-white rounded-2xl border border-slate-200 shadow-xs p-5 space-y-3 flex-1 flex flex-col">
-          
+
           <div className="flex items-center justify-between border-b border-slate-100 pb-2">
             <span className="text-xs font-bold text-slate-700 flex items-center">
               <CheckSquare className="w-4 h-4 mr-1.5 text-[#0D5C75]" />
@@ -314,7 +313,7 @@ export function UserCalendarView() {
               const userHours = userTaskActualHours[userKey] || 0;
 
               return (
-                <div 
+                <div
                   key={task.id}
                   className="p-3 rounded-xl bg-slate-50/80 hover:bg-slate-50 border border-slate-200/80 transition-colors text-xs space-y-1"
                 >
