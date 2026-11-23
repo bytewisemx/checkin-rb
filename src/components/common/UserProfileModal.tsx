@@ -1,4 +1,4 @@
-import React, { useState, useRef, useMemo } from 'react';
+import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { useCheckinStore } from '../../store/useCheckinStore';
 import { useRayonerStore } from '../../store/useRayonerStore';
 import { useGamificationStore } from '../../store/useGamificationStore';
@@ -6,7 +6,8 @@ import { logoutFirebase } from '../../services/firebase';
 import {
   calculateGamification,
   MONTHLY_GAMIFICATION_RULES,
-  RANK_TIERS
+  RANK_TIERS,
+  syncUserMonthlyRankToFirestore
 } from '../../services/gamification';
 import { RankMedal } from './RankMedal';
 import { AvatarCreatorModal } from '../avatar';
@@ -66,6 +67,19 @@ export function UserProfileModal({ isOpen, onClose, initialTab = 'rank' }: UserP
       expectedEntryTime: user?.expectedEntryTime || '09:00',
     });
   }, [history, activeCheckin, manualEditsByDate, taskSwitchesByDate, user]);
+
+  // Sincronización automática del rango mensual en Firestore (users/{uid})
+  useEffect(() => {
+    if (user?.id && gamification.rank?.tier) {
+      syncUserMonthlyRankToFirestore(
+        user.id,
+        user.email,
+        gamification.rank.tier,
+        gamification.points,
+        gamification.seasonKey
+      );
+    }
+  }, [user?.id, user?.email, gamification.rank?.tier, gamification.points, gamification.seasonKey]);
 
   if (!isOpen) return null;
 
@@ -186,6 +200,13 @@ export function UserProfileModal({ isOpen, onClose, initialTab = 'rank' }: UserP
                 <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">
                   {gamification.seasonName}
                 </span>
+
+                <span className="text-slate-300 dark:text-slate-600">•</span>
+                <RankMedal
+                  tier={gamification.rank.tier}
+                  variant="badge"
+                  points={gamification.points}
+                />
               </div>
               <h2 className="text-base sm:text-lg font-heading font-bold text-slate-900 dark:text-[#F8FAFC] truncate mt-0.5">
                 {user?.name} {user?.lastName}
@@ -220,13 +241,13 @@ export function UserProfileModal({ isOpen, onClose, initialTab = 'rank' }: UserP
           <div className="flex items-center space-x-2 sm:space-x-6 mt-4 border-b border-slate-200 dark:border-[#233354] overflow-x-auto no-scrollbar">
             <button
               onClick={() => setActiveTab('rank')}
-              className={`pb-2.5 pt-1 text-xs sm:text-sm font-heading transition-colors flex items-center space-x-1.5 cursor-pointer whitespace-nowrap border-b-2 ${activeTab === 'rank'
+              className={`pb-2.5 pt-1 px-3 text-xs sm:text-sm font-heading transition-colors flex items-center space-x-1.5 cursor-pointer whitespace-nowrap shrink-0 border-b-2 ${activeTab === 'rank'
                 ? 'border-blue-600 dark:border-sky-400 text-blue-700 dark:text-sky-400 font-bold'
                 : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 font-medium'
                 }`}
             >
               <Award className="w-4 h-4 shrink-0" />
-              <span>Medalla & Mes</span>
+              <span>Medalla y Mes</span>
             </button>
 
             <button
@@ -293,13 +314,19 @@ export function UserProfileModal({ isOpen, onClose, initialTab = 'rank' }: UserP
                 {/* Bloque Principal de Nivel y Puntuación */}
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6">
                   <div className="flex items-center space-x-5">
-                    {/* Medalla Animada */}
-                    <div className="relative shrink-0">
+                    {/* Medalla Animada Escudo Ejecutivo */}
+                    <div className="relative shrink-0 flex items-center justify-center p-1">
                       <div
-                        className="absolute inset-0 rounded-full blur-md opacity-40 dark:opacity-70 animate-pulse"
+                        className="absolute inset-0 rounded-full blur-xl opacity-30 dark:opacity-50"
                         style={{ backgroundColor: gamification.rank.color }}
                       />
-                      <RankMedal tier={gamification.rank.tier} size="lg" className="relative z-10" />
+                      <RankMedal
+                        tier={gamification.rank.tier}
+                        variant="emblem"
+                        size="lg"
+                        points={gamification.points}
+                        className="relative z-10"
+                      />
                     </div>
 
                     <div>
@@ -333,7 +360,7 @@ export function UserProfileModal({ isOpen, onClose, initialTab = 'rank' }: UserP
                       <span className="text-[10px] font-heading font-bold uppercase tracking-wider text-slate-500 dark:text-[#94A3B8] block mb-1">
                         Mes Anterior
                       </span>
-                      <RankMedal tier={previousSeason.tier} size="xs" className="mx-auto mb-1" />
+                      <RankMedal tier={previousSeason.tier} variant="emblem" size="xs" className="mx-auto mb-1" />
                       <span className="text-xs font-heading font-bold text-slate-900 dark:text-white block uppercase">
                         {previousSeason.tier} ({previousSeason.points} pts)
                       </span>
@@ -380,7 +407,7 @@ export function UserProfileModal({ isOpen, onClose, initialTab = 'rank' }: UserP
                             : 'bg-slate-50/60 dark:bg-[#1A2742]/20 border border-slate-200/50 dark:border-transparent opacity-75 hover:opacity-100'
                             }`}
                         >
-                          <RankMedal tier={tierKey} size="xs" className="mx-auto mb-1" />
+                          <RankMedal tier={tierKey} variant="emblem" size="xs" className="mx-auto mb-1" />
                           <span className={`text-[11px] font-heading font-bold uppercase block tracking-wider ${isActive ? 'text-blue-700 dark:text-sky-300' : 'text-slate-800 dark:text-[#F8FAFC]'}`}>
                             {tierConfig.title}
                           </span>

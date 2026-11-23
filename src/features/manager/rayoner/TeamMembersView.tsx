@@ -18,6 +18,7 @@ import { useInvitationStore } from '../../../store/useInvitationStore';
 import { useAuditStore } from '../../../store/useAuditStore';
 import { UserAvatar } from '../../../components/common/UserAvatar';
 import { LiveTimerCell } from '../../../components/common/LiveTimerCell';
+import { RankMedal } from '../../../components/common/RankMedal';
 import { useLiveTeamTimers } from '../../../hooks/useLiveTeamTimers';
 import {
   subscribeAttendanceFromFirestore,
@@ -764,9 +765,16 @@ function FragmentRow({
           <div className="flex items-center gap-3">
             <UserAvatar name={member.name} photoURL={member.photoURL} size="md" />
             <div className="min-w-0">
-              <span className="font-semibold text-slate-800 dark:text-slate-100 block truncate">
-                {member.name}
-              </span>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="font-semibold text-slate-800 dark:text-slate-100 block truncate">
+                  {member.name}
+                </span>
+                <RankMedal
+                  tier={member.currentRank || 'bronce'}
+                  variant="badge"
+                  points={member.monthlyPoints}
+                />
+              </div>
               <span className="text-xs text-slate-400 block truncate">
                 {member.email} • {member.roleTitle || 'Colaborador'}
               </span>

@@ -72,6 +72,10 @@ export interface User {
   expectedEntryTime: string;
   photoURL?: string | null;
   profileImage?: string; // Avatar SVG o ilustración de perfil (NO imagen de biometría)
+  // Rango y gamificación mensual
+  currentRank?: 'bronce' | 'plata' | 'oro' | 'diamante';
+  monthlyPoints?: number;
+  rankSeason?: string;
   // Biometría vectorial estrictamente SIN imágenes (solo floats, fecha ISO y versión de modelo)
   faceDescriptor?: number[];
   biometrics?: BiometricVectorRecord | null;

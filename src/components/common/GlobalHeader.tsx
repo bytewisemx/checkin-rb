@@ -12,11 +12,12 @@ import { useNavigate } from 'react-router-dom';
 import { useCheckinStore } from '../../store/useCheckinStore';
 import { useGamificationStore } from '../../store/useGamificationStore';
 import { useHelpTourStore } from '../../store/useHelpTourStore';
-import { calculateGamification } from '../../services/gamification';
+import { calculateGamification, syncUserMonthlyRankToFirestore } from '../../services/gamification';
 import { logoutFirebase } from '../../services/firebase';
 import { normalizeRole, getEffectiveModules } from '../../services/rbac';
 import { UserProfileModal } from './UserProfileModal';
 import { UserAvatar } from './UserAvatar';
+import { RankMedal } from './RankMedal';
 import { NotificationBell } from './NotificationBell';
 import { GlobalSearchBar } from './GlobalSearchBar';
 import { HelpDrawer } from '../help/HelpDrawer';
@@ -86,7 +87,16 @@ export function GlobalHeader() {
 
   useEffect(() => {
     checkAndResetSeason(gamification.points, gamification.rank.tier);
-  }, [gamification.points, gamification.rank.tier, checkAndResetSeason]);
+    if (user?.id && gamification.rank?.tier) {
+      syncUserMonthlyRankToFirestore(
+        user.id,
+        user.email,
+        gamification.rank.tier,
+        gamification.points,
+        gamification.seasonKey
+      );
+    }
+  }, [gamification.points, gamification.rank.tier, checkAndResetSeason, user?.id, user?.email, gamification.seasonKey]);
 
   const handleReload = () => {
     setIsReloading(true);
@@ -185,6 +195,20 @@ export function GlobalHeader() {
 
           {/* Notificaciones: Campana sobria (Bell) */}
           {normalizedRole !== 'RH' && effectiveModules.tasks && <NotificationBell />}
+
+          {/* Insignia Pública de Rango Mensual */}
+          <button
+            type="button"
+            onClick={() => setProfileOpen(true)}
+            className="hidden sm:inline-flex cursor-pointer transition-transform hover:scale-105"
+            title={`Tu Rango Mensual: ${gamification.rank.title} (${gamification.points} pts). Haz clic para abrir Medalla y Mes.`}
+          >
+            <RankMedal
+              tier={gamification.rank.tier}
+              variant="badge"
+              points={gamification.points}
+            />
+          </button>
 
           {/* Configuración / Perfil: Engranaje discreto (Settings) y Usuario (User) */}
           <button

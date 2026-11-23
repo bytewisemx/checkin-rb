@@ -154,6 +154,8 @@ const initialTeamMembers: TeamMember[] = [
     isLate: false,
     minutesLate: 0,
     allowedClientIds: [],
+    currentRank: 'diamante',
+    monthlyPoints: 1850,
   },
   {
     id: 'demo_socio',
@@ -170,6 +172,8 @@ const initialTeamMembers: TeamMember[] = [
     minutesLate: 0,
     allowedClientIds: [],
     created_by_ti_id: 'demo_ti',
+    currentRank: 'diamante',
+    monthlyPoints: 1720,
   },
   {
     id: 'demo_gerente',
@@ -185,6 +189,8 @@ const initialTeamMembers: TeamMember[] = [
     minutesLate: 0,
     allowedClientIds: [],
     created_by_ti_id: 'demo_ti',
+    currentRank: 'oro',
+    monthlyPoints: 1280,
   },
   {
     id: 'demo_rh',
@@ -200,6 +206,8 @@ const initialTeamMembers: TeamMember[] = [
     minutesLate: 0,
     allowedClientIds: [],
     created_by_ti_id: 'demo_ti',
+    currentRank: 'oro',
+    monthlyPoints: 1150,
   },
   {
     id: 'demo_supervisor',
@@ -216,6 +224,8 @@ const initialTeamMembers: TeamMember[] = [
     allowedClientIds: [],
     created_by_ti_id: 'demo_ti',
     assigned_team_members: ['demo_colaborador'],
+    currentRank: 'plata',
+    monthlyPoints: 840,
   },
   {
     id: 'demo_colaborador',
@@ -232,6 +242,8 @@ const initialTeamMembers: TeamMember[] = [
     allowedClientIds: [],
     supervisor_id: 'demo_supervisor',
     supervisorId: 'demo_supervisor',
+    currentRank: 'bronce',
+    monthlyPoints: 40,
   },
 ];
 

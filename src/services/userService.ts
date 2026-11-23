@@ -1,6 +1,7 @@
 import { doc, getDoc, setDoc, collection, query, where, getDocs } from 'firebase/firestore';
 import { db, isFirebaseConfigured } from './firebase';
 import { useCheckinStore } from '../store/useCheckinStore';
+import { useRayonerStore } from '../store/useRayonerStore';
 import { useInvitationStore, buildInviteUrl } from '../store/useInvitationStore';
 import type { Invitation } from '../types/invitation';
 import { normalizeRole, getDefaultModulesForRole, getDefaultPermissionsForRole, type UserRole } from './rbac';
@@ -66,6 +67,9 @@ export interface UserProfileDocument {
   managerId?: string | null;
   socioId?: string | null;
   partnerId?: string | null;
+  currentRank?: 'bronce' | 'plata' | 'oro' | 'diamante';
+  monthlyPoints?: number;
+  rankSeason?: string;
   isProfileComplete: boolean;
   createdAt?: string;
   updatedAt?: string;
@@ -1028,6 +1032,9 @@ export async function saveOrUpdateUserProfile(
     managerId: profileData.gerenteId ?? profileData.managerId ?? existing?.managerId ?? null,
     socioId: profileData.socioId ?? profileData.partnerId ?? existing?.socioId ?? null,
     partnerId: profileData.socioId ?? profileData.partnerId ?? existing?.partnerId ?? null,
+    currentRank: profileData.currentRank || existing?.currentRank,
+    monthlyPoints: profileData.monthlyPoints !== undefined ? profileData.monthlyPoints : existing?.monthlyPoints,
+    rankSeason: profileData.rankSeason || existing?.rankSeason,
     isProfileComplete:
       profileData.isProfileComplete !== undefined
         ? profileData.isProfileComplete
@@ -1185,6 +1192,9 @@ export async function syncUsersDirectoryFromFirestore(): Promise<UserProfileDocu
         managerId: item.data.managerId ?? item.data.gerenteId ?? null,
         socioId: item.data.socioId ?? item.data.partnerId ?? null,
         partnerId: item.data.partnerId ?? item.data.socioId ?? null,
+        currentRank: item.data.currentRank || 'bronce',
+        monthlyPoints: typeof item.data.monthlyPoints === 'number' ? item.data.monthlyPoints : 0,
+        rankSeason: item.data.rankSeason,
         isProfileComplete: item.data.isProfileComplete !== false,
       });
     }
@@ -1214,6 +1224,9 @@ export async function syncUsersDirectoryFromFirestore(): Promise<UserProfileDocu
         photoURL: u.photoURL || null,
         permissions: getDefaultPermissionsForRole(u.role),
         modules: (u.modules as any) || getDefaultModulesForRole(u.role),
+        currentRank: u.currentRank || 'bronce',
+        monthlyPoints: typeof u.monthlyPoints === 'number' ? u.monthlyPoints : 0,
+        rankSeason: u.rankSeason,
         accessRevoked: u.isActive === false || u.status === 'inactive',
       };
     });
@@ -1236,9 +1249,38 @@ export async function syncUsersDirectoryFromFirestore(): Promise<UserProfileDocu
         modules: (u.modules as any) || getDefaultModulesForRole(u.role),
         photoURL: u.photoURL || null,
         profileImage: u.profileImage,
+        currentRank: u.currentRank || 'bronce',
+        monthlyPoints: typeof u.monthlyPoints === 'number' ? u.monthlyPoints : 0,
+        rankSeason: u.rankSeason,
         history: [],
       })),
     });
+
+    try {
+      const rayonerState = useRayonerStore.getState();
+      if (rayonerState.teamMembers && rayonerState.teamMembers.length > 0) {
+        const updatedMembers = rayonerState.teamMembers.map((m) => {
+          const match = usersList.find(
+            (u) =>
+              u.uid === m.id ||
+              (u.email && m.email && u.email.toLowerCase() === m.email.toLowerCase())
+          );
+          if (match) {
+            return {
+              ...m,
+              currentRank: match.currentRank || m.currentRank || 'bronce',
+              monthlyPoints:
+                match.monthlyPoints !== undefined ? match.monthlyPoints : m.monthlyPoints,
+              rankSeason: match.rankSeason || m.rankSeason,
+            };
+          }
+          return m;
+        });
+        useRayonerStore.setState({ teamMembers: updatedMembers });
+      }
+    } catch {
+      // Ignore rayoner store sync errors in non-browser context
+    }
 
     return usersList;
   } catch (err) {

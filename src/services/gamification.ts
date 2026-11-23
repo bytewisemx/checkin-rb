@@ -1,4 +1,9 @@
 import type { CheckinRecord } from '../store/useCheckinStore';
+import { doc, setDoc } from 'firebase/firestore';
+import { db, isFirebaseConfigured } from './firebase';
+import { resolveFixedDemoId } from './userService';
+import { useCheckinStore } from '../store/useCheckinStore';
+import { useRayonerStore } from '../store/useRayonerStore';
 
 export type RankTier = 'bronce' | 'plata' | 'oro' | 'diamante';
 
@@ -368,4 +373,119 @@ export function calculateGamification(params: {
     todayAudit,
     monthlyAuditHistory,
   };
+}
+
+// Cache en memoria para throttling de sincronización y evitar escrituras idénticas repetidas a Firestore
+const lastSyncedRankByUser = new Map<
+  string,
+  { rank: RankTier; points: number; season: string; timestamp: number }
+>();
+
+/**
+ * Sincroniza el rango mensual y puntuación actual del usuario en Firestore (colección `users/{uid}`)
+ * y en el store local en memoria para que supervisores, gerentes y socios visualicen la insignia pública.
+ */
+export async function syncUserMonthlyRankToFirestore(
+  userId: string,
+  userEmail: string | undefined,
+  currentRank: RankTier,
+  monthlyPoints: number,
+  rankSeason?: string
+): Promise<void> {
+  if (!userId) return;
+
+  const currentSeason = rankSeason || new Date().toISOString().slice(0, 7); // ej. '2026-11'
+  const cacheKey = `${userId}_${currentSeason}`;
+  const prevSync = lastSyncedRankByUser.get(cacheKey);
+
+  // Throttling: Si ya sincronizamos exactamente el mismo rango y puntos hace menos de 45 segundos, omitir
+  if (
+    prevSync &&
+    prevSync.rank === currentRank &&
+    prevSync.points === monthlyPoints &&
+    Date.now() - prevSync.timestamp < 45000
+  ) {
+    return;
+  }
+
+  // Registrar en cache local
+  lastSyncedRankByUser.set(cacheKey, {
+    rank: currentRank,
+    points: monthlyPoints,
+    season: currentSeason,
+    timestamp: Date.now(),
+  });
+
+  try {
+    // 1. Actualizar de inmediato en useCheckinStore si coincide con el usuario activo
+    const checkinState = useCheckinStore.getState();
+    const isCurrentUser =
+      checkinState.user?.id === userId ||
+      (userEmail &&
+        checkinState.user?.email &&
+        checkinState.user.email.toLowerCase() === userEmail.toLowerCase());
+
+    if (isCurrentUser && checkinState.user) {
+      if (
+        checkinState.user.currentRank !== currentRank ||
+        checkinState.user.monthlyPoints !== monthlyPoints ||
+        checkinState.user.rankSeason !== currentSeason
+      ) {
+        checkinState.updateProfile({
+          currentRank,
+          monthlyPoints,
+          rankSeason: currentSeason,
+        });
+      }
+    }
+
+    // 2. Actualizar en useRayonerStore dentro de teamMembers
+    try {
+      const rayonerState = useRayonerStore.getState();
+      if (rayonerState.teamMembers && rayonerState.teamMembers.length > 0) {
+        const emailLower = (userEmail || '').toLowerCase();
+        let memberUpdated = false;
+
+        const updatedMembers = rayonerState.teamMembers.map((m) => {
+          if (m.id === userId || (emailLower && m.email?.toLowerCase() === emailLower)) {
+            if (m.currentRank !== currentRank || m.monthlyPoints !== monthlyPoints) {
+              memberUpdated = true;
+              return {
+                ...m,
+                currentRank,
+                monthlyPoints,
+                rankSeason: currentSeason,
+              };
+            }
+          }
+          return m;
+        });
+
+        if (memberUpdated) {
+          useRayonerStore.setState({ teamMembers: updatedMembers });
+        }
+      }
+    } catch {
+      // Ignorar errores en contextos sin store de rayoner
+    }
+
+    // 3. Persistir en Firestore en la colección `users/{uid}`
+    if (!isFirebaseConfigured() || !db) return;
+
+    const targetDocId = resolveFixedDemoId(userEmail) || userId;
+    const docRef = doc(db, 'users', targetDocId);
+
+    await setDoc(
+      docRef,
+      {
+        currentRank,
+        monthlyPoints,
+        rankSeason: currentSeason,
+        updatedAt: new Date().toISOString(),
+      },
+      { merge: true }
+    );
+  } catch (err) {
+    console.warn('[gamification] Error al sincronizar rango mensual en Firestore:', err);
+  }
 }

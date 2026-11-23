@@ -182,6 +182,10 @@ export interface TeamMember {
   isLate: boolean;
   minutesLate: number;
   allowedClientIds: string[];
+  // Rango y gamificación mensual
+  currentRank?: 'bronce' | 'plata' | 'oro' | 'diamante';
+  monthlyPoints?: number;
+  rankSeason?: string;
   // Referencias jerárquicas
   supervisor_id?: string | null;
   supervisorId?: string | null;
