@@ -10,7 +10,6 @@ import {
   syncUserMonthlyRankToFirestore
 } from '../../services/gamification';
 import { RankMedal } from './RankMedal';
-import { AvatarCreatorModal } from '../avatar';
 
 
 import { FacialEnrollmentModal } from '../../features/checkin/FacialEnrollmentModal';
@@ -20,7 +19,7 @@ import {
   Briefcase, Award, TrendingUp, CheckCircle2,
   Settings, Clock, AlertTriangle, Zap, PlayCircle,
   HelpCircle, ChevronDown, ChevronUp, Timer, Target, Copy,
-  Sparkles, ScanFace, ShieldCheck, Sun, Moon
+  ScanFace, ShieldCheck, Sun, Moon
 } from 'lucide-react';
 
 export interface UserProfileModalProps {
@@ -42,7 +41,6 @@ export function UserProfileModal({ isOpen, onClose, initialTab = 'rank' }: UserP
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [activeTab, setActiveTab] = useState<TabType>(initialTab);
   const [showHistoryDetail, setShowHistoryDetail] = useState(false);
-  const [isAvatarCreatorOpen, setIsAvatarCreatorOpen] = useState(false);
   const [isRecalibrateModalOpen, setIsRecalibrateModalOpen] = useState(false);
 
   const normalizedRole = normalizeRole(user?.role);
@@ -237,22 +235,14 @@ export function UserProfileModal({ isOpen, onClose, initialTab = 'rank' }: UserP
                 {user?.email} • {user?.team || 'Sin equipo asignado'}
               </p>
 
-              {/* Botones de Acción de Avatar */}
+              {/* Acción de Foto de Perfil */}
               <div className="flex items-center space-x-2 mt-2.5">
                 <button
                   type="button"
-                  onClick={() => setIsAvatarCreatorOpen(true)}
+                  onClick={() => fileInputRef.current?.click()}
                   className="inline-flex items-center space-x-1.5 px-3 py-1 rounded-md bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-heading font-semibold transition-colors cursor-pointer shadow-xs"
                 >
-                  <Sparkles className="w-3.5 h-3.5 text-sky-200" />
-                  <span>Diseñar Avatar</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  className="inline-flex items-center space-x-1 px-3 py-1 rounded-md bg-slate-100 hover:bg-slate-200 dark:bg-[#1A2742] dark:hover:bg-[#233354] text-slate-700 dark:text-[#94A3B8] dark:hover:text-[#F8FAFC] text-[11px] font-medium transition-colors cursor-pointer"
-                >
-                  <Camera className="w-3 h-3" />
+                  <Camera className="w-3.5 h-3.5" />
                   <span>Subir Foto</span>
                 </button>
               </div>
@@ -1046,16 +1036,6 @@ export function UserProfileModal({ isOpen, onClose, initialTab = 'rank' }: UserP
         </div>
 
       </div>
-
-      {/* Modal del Estudio de Creación de Avatar */}
-      <AvatarCreatorModal
-        isOpen={isAvatarCreatorOpen}
-        onClose={() => setIsAvatarCreatorOpen(false)}
-        onSaveAvatar={(avatarUrl) => {
-          updateProfile({ profileImage: avatarUrl });
-          addToast('¡Avatar personalizado guardado y aplicado a tu perfil!', 'success');
-        }}
-      />
 
       {/* Modal de Recalibración del Vector Facial desde Ajustes (PUT /api/users/me/biometrics) */}
       <FacialEnrollmentModal
