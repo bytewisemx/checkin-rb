@@ -8,6 +8,7 @@ import { useCheckinStore } from '../../store/useCheckinStore';
 import { doesTaskBelongToUser } from '../../services/taskService';
 import { formatMinutesSexagesimal } from '../../services/attendanceService';
 import { auth } from '../../services/firebase';
+import { normalizeRole } from '../../services/rbac';
 import { CompanyLogoBadge } from '../../components/common/CompanyLogoBadge';
 
 interface StartTaskModalProps {
@@ -52,6 +53,11 @@ export function StartTaskModal({
     [user?.id, user?.email, currentMember?.id, currentMember?.email]
   );
 
+  // Rol normalizado: Socio, Gerente y TI visualizan y pueden registrar horas por default
+  // en cualquier proyecto y actividad de la organización sin requerir asignación previa
+  const effectiveRole = normalizeRole(user?.role || currentMember?.role);
+  const isExecutiveRole = effectiveRole === 'Socio' || effectiveRole === 'Gerente' || effectiveRole === 'TI';
+
   // Tareas específicamente asignadas al colaborador actual (unificado por ID y correo)
   const myAssignedTaskIds = useMemo(() => {
     if (!user && !currentMember) return [];
@@ -70,15 +76,23 @@ export function StartTaskModal({
     return Array.from(new Set([...fromAssignments, ...matched]));
   }, [assignments, tasks, user, currentMember, userIdentity]);
 
-  // Tareas disponibles para este colaborador (estrictamente filtradas por asignación)
+  // Tareas disponibles para este usuario:
+  // - Socio, Gerente y TI: todas las actividades activas del sistema por default.
+  // - Supervisor y Colaborador: sus tareas asignadas o supervisadas.
   const availableTasks = useMemo(() => {
+    if (isExecutiveRole) {
+      return tasks.filter((t) => t.isActive !== false && t.status !== 'completed');
+    }
     return tasks.filter(
       (t) => myAssignedTaskIds.includes(t.id) && t.isActive !== false && t.status !== 'completed'
     );
-  }, [tasks, myAssignedTaskIds]);
+  }, [tasks, myAssignedTaskIds, isExecutiveRole]);
 
-  // Clientes a los que tiene permiso (incluye empresas derivadas de sus tareas asignadas)
+  // Clientes a los que tiene permiso (Socio/Gerente acceden a todo el catálogo)
   const allowedClientIds = useMemo(() => {
+    if (isExecutiveRole) {
+      return clients.map((c) => c.id);
+    }
     const ids = new Set<string>(currentMember?.allowedClientIds || []);
     availableTasks.forEach((t) => {
       if (t.companyId) ids.add(t.companyId);
@@ -86,17 +100,20 @@ export function StartTaskModal({
       if (proj?.clientId) ids.add(proj.clientId);
     });
     return Array.from(ids);
-  }, [currentMember, availableTasks, projects]);
+  }, [currentMember, availableTasks, projects, isExecutiveRole, clients]);
 
-  // Proyectos disponibles (de los clientes autorizados o tareas asignadas)
+  // Proyectos disponibles (Socio/Gerente acceden a todos los proyectos activos)
   const allowedProjects = useMemo(() => {
+    if (isExecutiveRole) {
+      return projects.filter((p) => p.isActive !== false);
+    }
     const directProjectIds = new Set(availableTasks.map((t) => t.projectId).filter(Boolean));
     return projects.filter(
       (p) =>
         p.isActive !== false &&
         (allowedClientIds.includes(p.clientId) || directProjectIds.has(p.id))
     );
-  }, [projects, allowedClientIds, availableTasks]);
+  }, [projects, allowedClientIds, availableTasks, isExecutiveRole]);
 
   // Agrupación jerárquica por Empresa -> Servicio -> Rubro -> Actividades
   const groupedTasksTree = useMemo(() => {

@@ -6,6 +6,7 @@ import { useOperationalCatalogSync } from '../../hooks/useLiveTeamTimers';
 import { doesTaskBelongToUser } from '../../services/taskService';
 import { formatMinutesSexagesimal } from '../../services/attendanceService';
 import { auth } from '../../services/firebase';
+import { normalizeRole } from '../../services/rbac';
 import { CompanyLogoBadge } from '../../components/common/CompanyLogoBadge';
 import type { TaskNode } from '../../types/rayoner';
 import { TaskDetailDrawer } from './TaskDetailDrawer';
@@ -149,6 +150,10 @@ export function KanbanBoard() {
     return (myActiveWorker.accumulatedSeconds || 0) + elapsedSinceStart;
   };
 
+  // Rol efectivo: Socio, Gerente y TI tienen visualización y supervisión por default en todos los proyectos
+  const effectiveRole = normalizeRole(user?.role || currentMember?.role);
+  const isExecutiveRole = effectiveRole === 'Socio' || effectiveRole === 'Gerente' || effectiveRole === 'TI';
+
   // Tareas asignadas al usuario actual
   const userAssignedTasks = useMemo(() => {
     if (!user && !currentMember) return [];
@@ -162,8 +167,14 @@ export function KanbanBoard() {
     return tasks.filter((t) => doesTaskBelongToUser(t, userIdentity, assignedTaskIds));
   }, [tasks, assignments, currentUserId, currentMember, user, userIdentity]);
 
-  // Empresas asignadas al colaborador
+  // Empresas disponibles en el filtro:
+  // - Socio, Gerente y TI: todas las empresas del catálogo por default.
+  // - Supervisor y Colaborador: empresas asociadas a sus tareas y permisos.
   const assignedClients = useMemo(() => {
+    if (isExecutiveRole) {
+      return clients.filter((c) => c.id !== 'cli-extraordinario');
+    }
+
     const clientIds = new Set<string>();
 
     if (currentMember?.allowedClientIds && currentMember.allowedClientIds.length > 0) {
@@ -181,10 +192,22 @@ export function KanbanBoard() {
     });
 
     return clients.filter((c) => clientIds.has(c.id) && c.id !== 'cli-extraordinario');
-  }, [clients, currentMember, userAssignedTasks, projects]);
+  }, [clients, currentMember, userAssignedTasks, projects, isExecutiveRole]);
 
-  // Proyectos asignados al usuario (filtrados opcionalmente por cliente)
+  // Proyectos disponibles en el filtro:
+  // - Socio, Gerente y TI: todos los proyectos activos (filtrados opcionalmente por cliente).
+  // - Supervisor y Colaborador: proyectos asignados a sus tareas.
   const assignedProjects = useMemo(() => {
+    if (isExecutiveRole) {
+      return projects.filter((p) => {
+        if (p.id === 'prj-extraordinario') return false;
+        if (selectedClientId !== 'all' && selectedClientId !== 'extraordinary') {
+          return p.clientId === selectedClientId;
+        }
+        return true;
+      });
+    }
+
     const projIds = new Set(userAssignedTasks.map((t) => t.projectId).filter(Boolean));
     return projects.filter((p) => {
       if (!projIds.has(p.id)) return false;
@@ -193,17 +216,21 @@ export function KanbanBoard() {
       }
       return true;
     });
-  }, [userAssignedTasks, projects, selectedClientId]);
+  }, [userAssignedTasks, projects, selectedClientId, isExecutiveRole]);
 
-  // Rubros disponibles en las tareas asignadas al usuario
+  // Rubros disponibles en las tareas del contexto
   const availableRubros = useMemo(() => {
     const rubros = new Set<string>();
-    userAssignedTasks.forEach((t) => {
+    const sourceTasks =
+      isExecutiveRole && (selectedProjectId !== 'all' || selectedClientId !== 'all' || userAssignedTasks.length === 0)
+        ? tasks
+        : userAssignedTasks;
+    sourceTasks.forEach((t) => {
       if (t.rubro) rubros.add(t.rubro);
       else if (typeof t.rubroNumber === 'number') rubros.add(`Rubro ${t.rubroNumber}`);
     });
     return Array.from(rubros);
-  }, [userAssignedTasks]);
+  }, [userAssignedTasks, isExecutiveRole, selectedProjectId, selectedClientId, tasks]);
 
   const getTaskAllocatedHours = (taskId: string): number => {
     const asg = assignments.find(
@@ -258,7 +285,15 @@ export function KanbanBoard() {
   };
 
   const filteredTasks = useMemo(() => {
-    let result = [...userAssignedTasks];
+    let result: TaskNode[];
+    if (
+      isExecutiveRole &&
+      (selectedProjectId !== 'all' || selectedClientId !== 'all' || userAssignedTasks.length === 0)
+    ) {
+      result = tasks.filter((t) => t.isActive !== false);
+    } else {
+      result = [...userAssignedTasks];
+    }
 
     if (selectedClientId === 'extraordinary') {
       result = result.filter((t) => t.isExtraordinary || t.projectId === 'prj-extraordinario');

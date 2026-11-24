@@ -129,7 +129,50 @@ export function ProjectsSupervisionTable({
         teamMembers
           .filter((m) => {
             const r = normalizeRole(m.role);
-            return r !== 'Socio' && r !== 'Gerente' && r !== 'RH' && r !== 'TI';
+            const rawRole = (m.role || '').toLowerCase();
+            const title = (m.roleTitle || '').toLowerCase();
+            const email = (m.email || '').toLowerCase();
+            const name = (m.name || '').toLowerCase();
+
+            const isSocio =
+              r === 'Socio' ||
+              rawRole.includes('socio') ||
+              rawRole.includes('partner') ||
+              title.includes('socio') ||
+              title.includes('partner') ||
+              email.includes('socio.') ||
+              name.includes('socio');
+
+            const isGerente =
+              r === 'Gerente' ||
+              rawRole.includes('gerent') ||
+              rawRole.includes('manager') ||
+              title.includes('gerent') ||
+              title.includes('manager') ||
+              email.includes('gerente.') ||
+              name.includes('gerente');
+
+            const isRH =
+              r === 'RH' ||
+              rawRole.includes('rh') ||
+              rawRole.includes('recursos') ||
+              title.includes('rh') ||
+              title.includes('recursos') ||
+              email.includes('rh.');
+
+            const isTI =
+              r === 'TI' ||
+              rawRole.includes('ti') ||
+              rawRole.includes('tecnolog') ||
+              rawRole.includes('sistemas') ||
+              rawRole.includes('admin') ||
+              title.includes('ti') ||
+              title.includes('tecnolog') ||
+              title.includes('sistemas') ||
+              title.includes('admin') ||
+              email.includes('ti.');
+
+            return !isSocio && !isGerente && !isRH && !isTI;
           })
           .map((m) => m.id)
       );

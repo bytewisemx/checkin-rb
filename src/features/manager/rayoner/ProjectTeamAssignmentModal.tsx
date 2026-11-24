@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { X, Search, Check, UserPlus } from 'lucide-react';
+import { X, Search, Check, UserPlus, ShieldCheck } from 'lucide-react';
 import { useRayonerStore } from '../../../store/useRayonerStore';
 import { useCheckinStore } from '../../../store/useCheckinStore';
 import { normalizeRole } from '../../../services/rbac';
@@ -23,15 +23,52 @@ export function ProjectTeamAssignmentModal({
   const [searchQuery, setSearchQuery] = useState('');
 
   // Regla directiva: Exclusión total de Socio, Gerente, RH y TI en el equipo operativo.
-  // Socio y Gerente tienen visualización y acceso ejecutivo por default (no se asignan manualmente).
+  // Socio y Gerente tienen visualización, supervisión y acceso ejecutivo por default (no se asignan manualmente).
   const eligibleTeamMembers = useMemo(() => {
     return teamMembers.filter((m) => {
       const r = normalizeRole(m.role);
+      const rawRole = (m.role || '').toLowerCase();
       const title = (m.roleTitle || '').toLowerCase();
-      const isSocio = r === 'Socio' || title.includes('socio') || title.includes('partner');
-      const isGerente = r === 'Gerente' || title.includes('gerent') || title.includes('manager');
-      const isRH = r === 'RH' || title.includes('rh') || title.includes('recursos');
-      const isTI = r === 'TI' || title.includes('ti') || title.includes('tecnolog') || title.includes('sistemas') || title.includes('admin');
+      const email = (m.email || '').toLowerCase();
+      const name = (m.name || '').toLowerCase();
+
+      const isSocio =
+        r === 'Socio' ||
+        rawRole.includes('socio') ||
+        rawRole.includes('partner') ||
+        title.includes('socio') ||
+        title.includes('partner') ||
+        email.includes('socio.') ||
+        name.includes('socio');
+
+      const isGerente =
+        r === 'Gerente' ||
+        rawRole.includes('gerent') ||
+        rawRole.includes('manager') ||
+        title.includes('gerent') ||
+        title.includes('manager') ||
+        email.includes('gerente.') ||
+        name.includes('gerente');
+
+      const isRH =
+        r === 'RH' ||
+        rawRole.includes('rh') ||
+        rawRole.includes('recursos') ||
+        title.includes('rh') ||
+        title.includes('recursos') ||
+        email.includes('rh.');
+
+      const isTI =
+        r === 'TI' ||
+        rawRole.includes('ti') ||
+        rawRole.includes('tecnolog') ||
+        rawRole.includes('sistemas') ||
+        rawRole.includes('admin') ||
+        title.includes('ti') ||
+        title.includes('tecnolog') ||
+        title.includes('sistemas') ||
+        title.includes('admin') ||
+        email.includes('ti.');
 
       return !isSocio && !isGerente && !isRH && !isTI;
     });
@@ -165,7 +202,7 @@ export function ProjectTeamAssignmentModal({
               {project.name}
             </h3>
             <p className="text-xs text-slate-500 dark:text-slate-400">
-              {project.code} • Asigna o revoca participantes operativos (supervisores y colaboradores). Socio y Gerente acceden por defecto.
+              {project.code} • Asigna o revoca participantes operativos (supervisores y colaboradores).
             </p>
           </div>
 
@@ -176,6 +213,14 @@ export function ProjectTeamAssignmentModal({
           >
             <X className="w-5 h-5" />
           </button>
+        </div>
+
+        {/* Banner Institucional: Acceso Directivo por Defecto */}
+        <div className="flex items-start gap-2.5 px-3.5 py-2.5 bg-blue-50/80 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-900/60 rounded-xl text-xs text-blue-900 dark:text-blue-200">
+          <ShieldCheck className="w-4 h-4 text-blue-700 dark:text-blue-400 shrink-0 mt-0.5" />
+          <span className="leading-snug">
+            <strong>Acceso Directivo por Defecto:</strong> Los perfiles de <strong>Socio</strong> y <strong>Gerente</strong> visualizan, supervisan y pueden registrar horas en todos los proyectos automáticamente sin requerir asignación manual en este modal.
+          </span>
         </div>
 
         {/* Buscador de Colaboradores */}
@@ -270,7 +315,7 @@ export function ProjectTeamAssignmentModal({
         {/* Resumen y Acciones */}
         <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
           <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
-            {selectedUserIds.size} de {eligibleTeamMembers.length} seleccionados
+            {selectedUserIds.size} de {eligibleTeamMembers.length} participantes operativos seleccionados
           </span>
 
           <div className="flex items-center gap-2">

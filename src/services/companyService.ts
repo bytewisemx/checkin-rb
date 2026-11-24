@@ -575,8 +575,9 @@ export function subscribeTasksFromFirestore(
 
   const normRole = normalizeRole(role ?? undefined);
 
-  // TI y Socio: lectura global sin filtro de equipo
-  if (normRole === 'TI' || normRole === 'Socio' || !userIdentity) {
+  // TI, Socio y Gerente: lectura global sin filtro de equipo
+  // Socio y Gerente visualizan por defecto todas las actividades operativas de la organización
+  if (normRole === 'TI' || normRole === 'Socio' || normRole === 'Gerente' || !userIdentity) {
     const listenerId = 'realtime-tasks-global';
     registerActiveListener(listenerId, 'tasks');
 
@@ -627,24 +628,7 @@ export function subscribeTasksFromFirestore(
 
   const queryDefs: Array<{ key: string; q: ReturnType<typeof query> }> = [];
 
-  if (normRole === 'Gerente') {
-    const gerenteKeys = Array.from(
-      new Set([...candidateKeys, 'demo_gerente'].filter(Boolean))
-    );
-    queryDefs.push({
-      key: `gerenteId`,
-      q: query(collection(db!, 'tasks'), where('gerenteId', 'in', gerenteKeys.slice(0, 10))),
-    });
-    if (teamIds.length > 0) {
-      queryDefs.push({
-        key: `gerenteTeams`,
-        q: query(
-          collection(db!, 'tasks'),
-          where('teamIds', 'array-contains-any', teamIds.slice(0, 10))
-        ),
-      });
-    }
-  } else if (normRole === 'Supervisor') {
+  if (normRole === 'Supervisor') {
     const supervisorKeys = Array.from(
       new Set([...candidateKeys, 'demo_supervisor'].filter(Boolean))
     );

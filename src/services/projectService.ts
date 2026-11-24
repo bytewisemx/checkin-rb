@@ -217,8 +217,9 @@ export function subscribeProjectsFromFirestore(
     return () => {};
   }
 
-  // TI y Socio: lectura global de todos los equipos
-  if (normRole === 'TI' || normRole === 'Socio' || !userIdentity) {
+  // TI, Socio y Gerente: lectura global de todos los proyectos por defecto
+  // Socio y Gerente no requieren asignación manual en ningún equipo para visualizar y supervisar
+  if (normRole === 'TI' || normRole === 'Socio' || normRole === 'Gerente' || !userIdentity) {
     const listenerId = 'realtime-projects-global';
     registerActiveListener(listenerId, 'projects');
 
@@ -268,24 +269,7 @@ export function subscribeProjectsFromFirestore(
 
   const queryDefs: Array<{ key: string; q: ReturnType<typeof query> }> = [];
 
-  if (normRole === 'Gerente') {
-    const gerenteKeys = Array.from(
-      new Set([...candidateKeys, 'demo_gerente'].filter(Boolean))
-    );
-    queryDefs.push({
-      key: `gerenteId`,
-      q: query(collection(db!, 'projects'), where('gerenteId', 'in', gerenteKeys.slice(0, 10))),
-    });
-    if (teamIds.length > 0) {
-      queryDefs.push({
-        key: `gerenteTeams`,
-        q: query(
-          collection(db!, 'projects'),
-          where('teamIds', 'array-contains-any', teamIds.slice(0, 10))
-        ),
-      });
-    }
-  } else if (normRole === 'Supervisor') {
+  if (normRole === 'Supervisor') {
     const supervisorKeys = Array.from(
       new Set([...candidateKeys, 'demo_supervisor'].filter(Boolean))
     );
