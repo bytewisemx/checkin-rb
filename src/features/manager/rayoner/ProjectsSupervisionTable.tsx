@@ -51,13 +51,8 @@ export function ProjectsSupervisionTable({
 
   const user = useCheckinStore((state) => state.user);
   const canCreateCompany = canCreateOrManageCompanies(user?.role);
-
-  // Estados de filtros y búsqueda
-  const [searchQuery, setSearchQuery] = useState('');
-  const [budgetFilter, setBudgetFilter] = useState<'all' | 'overbudget' | 'warning' | 'normal'>('all');
-  const [selectedCompanyId, setSelectedCompanyId] = useState<string>('');
-  const [companyFilterText, setCompanyFilterText] = useState<string>('');
-  const [expandedProjectIds, setExpandedProjectIds] = useState<Set<string>>(new Set());
+  const normRole = normalizeRole(user?.role);
+  const isSupervisor = normRole === 'Supervisor';
 
   // Modales
   const [isCompanyModalOpen, setIsCompanyModalOpen] = useState(false);
@@ -70,30 +65,89 @@ export function ProjectsSupervisionTable({
   const [detailsDrawerProject, setDetailsDrawerProject] = useState<Project | null>(null);
   const [reportModalProject, setReportModalProject] = useState<Project | null>(null);
 
-  // Auto-selección por defecto: seleccionar automáticamente la primera empresa registrada al cargar la vista
+  // 1. Proyectos autorizados para el rol (estricto para Supervisor: solo en los que participa)
+  const visibleProjectsForRole = useMemo(() => {
+    if (!isSupervisor || !user?.id) return projects;
+
+    const currentUid = user.id;
+    const currentEmail = (user.email || '').toLowerCase().trim();
+
+    return projects.filter((project) => {
+      // Condición 1: UID incluido explícitamente en project.assignedUserIds, leadUserId o supervisorId
+      if (project.leadUserId === currentUid) return true;
+      if (project.supervisorId === currentUid) return true;
+      if (Array.isArray(project.assignedUserIds) && project.assignedUserIds.includes(currentUid)) return true;
+      if (Array.isArray(project.assignedToIds) && project.assignedToIds.includes(currentUid)) return true;
+      if (
+        Array.isArray(project.assignedUserEmails) &&
+        project.assignedUserEmails.some((e) => (e || '').toLowerCase().trim() === currentEmail)
+      ) {
+        return true;
+      }
+
+      // Condición 2: El Supervisor tiene al menos una actividad asignada dentro de ese proyecto
+      const hasAssignedTask = tasks.some((t) => {
+        if (t.projectId !== project.id) return false;
+        if (t.leadUserId === currentUid) return true;
+        if (t.assignedToId === currentUid || t.assigned_to === currentUid) return true;
+        if (Array.isArray(t.assignedToIds) && t.assignedToIds.includes(currentUid)) return true;
+        if (Array.isArray(t.assignedUserIds) && t.assignedUserIds.includes(currentUid)) return true;
+        if (t.assignedToEmail && t.assignedToEmail.toLowerCase().trim() === currentEmail) return true;
+        return false;
+      });
+      if (hasAssignedTask) return true;
+
+      // Condición 3: Permiso explícito de visualización otorgado por Gerente o TI
+      if (Array.isArray(user.allowedClientIds) && user.allowedClientIds.includes(project.clientId)) {
+        return true;
+      }
+
+      return false;
+    });
+  }, [projects, tasks, isSupervisor, user]);
+
+  // 2. Empresas visibles: para Supervisor, únicamente las empresas que tengan al menos un proyecto/servicio visible para él
+  const availableClients = useMemo(() => {
+    if (!isSupervisor) return clients;
+    const visibleCompanyIds = new Set(visibleProjectsForRole.map((p) => p.clientId));
+    return clients.filter((c) => visibleCompanyIds.has(c.id));
+  }, [clients, visibleProjectsForRole, isSupervisor]);
+
+  // Estados de filtros y búsqueda
+  const [searchQuery, setSearchQuery] = useState('');
+  const [budgetFilter, setBudgetFilter] = useState<'all' | 'overbudget' | 'warning' | 'normal'>('all');
+  const [selectedCompanyId, setSelectedCompanyId] = useState<string>('');
+  const [companyFilterText, setCompanyFilterText] = useState<string>('');
+  const [expandedProjectIds, setExpandedProjectIds] = useState<Set<string>>(new Set());
+
+  // Auto-selección por defecto: seleccionar automáticamente la primera empresa disponible al cargar la vista
   useEffect(() => {
-    if (!selectedCompanyId && clients.length > 0) {
-      setSelectedCompanyId(clients[0].id);
+    if (availableClients.length > 0) {
+      if (!selectedCompanyId || (selectedCompanyId !== 'all' && !availableClients.some((c) => c.id === selectedCompanyId))) {
+        setSelectedCompanyId(availableClients[0].id);
+      }
+    } else if (isSupervisor) {
+      setSelectedCompanyId('');
     }
-  }, [clients, selectedCompanyId]);
+  }, [availableClients, selectedCompanyId, isSupervisor]);
 
   // Cliente actualmente seleccionado
   const selectedClient = useMemo(() => {
     if (!selectedCompanyId || selectedCompanyId === 'all') return null;
-    return clients.find((c) => c.id === selectedCompanyId) || null;
-  }, [clients, selectedCompanyId]);
+    return availableClients.find((c) => c.id === selectedCompanyId) || null;
+  }, [availableClients, selectedCompanyId]);
 
   // Lista de empresas filtradas para el selector si hay más de 8
   const visibleClients = useMemo(() => {
-    if (!companyFilterText.trim()) return clients;
+    if (!companyFilterText.trim()) return availableClients;
     const q = companyFilterText.toLowerCase();
-    return clients.filter(
+    return availableClients.filter(
       (c) =>
         c.name.toLowerCase().includes(q) ||
         (c.commercialName && c.commercialName.toLowerCase().includes(q)) ||
         (c.code && c.code.toLowerCase().includes(q))
     );
-  }, [clients, companyFilterText]);
+  }, [availableClients, companyFilterText]);
 
   // Conmutador del acordeón de actividades por proyecto
   const toggleProjectExpand = (projectId: string) => {
@@ -108,9 +162,9 @@ export function ProjectsSupervisionTable({
     });
   };
 
-  // Mapeo y cálculo por proyecto
+  // Mapeo y cálculo por proyecto (restringido a proyectos autorizados según el rol)
   const enrichedProjects = useMemo(() => {
-    return projects.map((project) => {
+    return visibleProjectsForRole.map((project) => {
       const client = clients.find((c) => c.id === project.clientId);
       const projectTasks = tasks.filter((t) => t.projectId === project.id);
 
@@ -216,7 +270,7 @@ export function ProjectsSupervisionTable({
         activeWorker,
       };
     });
-  }, [projects, clients, tasks, assignments, teamMembers, taskActualHours, activeWorkers]);
+  }, [visibleProjectsForRole, clients, tasks, assignments, teamMembers, taskActualHours, activeWorkers]);
 
   // Filtrado estricto de la tabla por empresa seleccionada, búsqueda y presupuesto
   const filteredProjects = useMemo(() => {
@@ -297,7 +351,7 @@ export function ProjectsSupervisionTable({
             onClick={() => {
               setSelectedProjectIdForEdit(null);
               setPreselectedClientIdForProject(
-                selectedCompanyId && selectedCompanyId !== 'all' ? selectedCompanyId : (clients[0]?.id || null)
+                selectedCompanyId && selectedCompanyId !== 'all' ? selectedCompanyId : (availableClients[0]?.id || null)
               );
               setIsProjectModalOpen(true);
             }}
@@ -310,13 +364,13 @@ export function ProjectsSupervisionTable({
       </div>
 
       {/* 1. Selector Compacto y Escalable de Empresas (Solo Nombre Destacado) */}
-      {clients.length > 0 && (
+      {availableClients.length > 0 && (
         <div className="w-full space-y-2">
           <div className="flex items-center justify-between gap-3">
             <h3 className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-              Empresas / Clientes Registrados ({clients.length})
+              {isSupervisor ? 'Empresas con Servicios Asignados' : 'Empresas / Clientes Registrados'} ({availableClients.length})
             </h3>
-            {clients.length > 8 && (
+            {availableClients.length > 8 && (
               <div className="relative w-48">
                 <input
                   type="text"
@@ -344,14 +398,14 @@ export function ProjectsSupervisionTable({
                 className={`text-[11px] font-bold tabular-nums ${selectedCompanyId === 'all' ? 'text-blue-100' : 'text-slate-400'
                   }`}
               >
-                ({projects.length})
+                ({visibleProjectsForRole.length})
               </span>
             </button>
 
             {/* Píldoras por Empresa */}
             {visibleClients.map((company) => {
               const isSelected = selectedCompanyId === company.id;
-              const companyProjectsCount = projects.filter((p) => p.clientId === company.id).length;
+              const companyProjectsCount = visibleProjectsForRole.filter((p) => p.clientId === company.id).length;
               const displayName = company.commercialName || company.name;
               const initials = displayName
                 .split(' ')
@@ -400,6 +454,16 @@ export function ProjectsSupervisionTable({
         </div>
       )}
 
+      {/* Aviso informativo cuando el Supervisor aún no tiene proyectos asignados */}
+      {availableClients.length === 0 && isSupervisor && (
+        <div className="p-4 bg-blue-50/60 dark:bg-blue-950/30 border border-blue-200/80 dark:border-blue-900/50 rounded-xl text-xs text-blue-900 dark:text-blue-200 flex items-center gap-2.5">
+          <FileText className="w-4 h-4 text-blue-700 dark:text-sky-400 shrink-0" />
+          <span>
+            No tienes proyectos ni servicios asignados directamente en este momento. Cuando un Gerente o Socio te asigne como Encargado o Colaborador en un servicio, aparecerá aquí automáticamente.
+          </span>
+        </div>
+      )}
+
       {/* 2. Cabecera Contextual por Empresa Seleccionada */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 bg-slate-50 dark:bg-slate-800/40 rounded-xl border border-slate-200/80 dark:border-slate-800">
         <div className="flex items-center gap-2.5 min-w-0">
@@ -408,7 +472,7 @@ export function ProjectsSupervisionTable({
           </span>
           <span className="text-sm font-bold text-slate-900 dark:text-white truncate">
             {selectedCompanyId === 'all'
-              ? `Todas las Empresas (${clients.length})`
+              ? `Todas las Empresas (${availableClients.length})`
               : (selectedClient?.commercialName || selectedClient?.name || 'Empresa')}
           </span>
         </div>
@@ -417,7 +481,7 @@ export function ProjectsSupervisionTable({
           onClick={() => {
             setSelectedProjectIdForEdit(null);
             setPreselectedClientIdForProject(
-              selectedCompanyId && selectedCompanyId !== 'all' ? selectedCompanyId : (clients[0]?.id || null)
+              selectedCompanyId && selectedCompanyId !== 'all' ? selectedCompanyId : (availableClients[0]?.id || null)
             );
             setIsProjectModalOpen(true);
           }}
@@ -899,30 +963,38 @@ export function ProjectsSupervisionTable({
                           <ListTodo className="w-5 h-5" />
                         </div>
                         <p className="text-xs font-semibold text-slate-700 dark:text-slate-300">
-                          Esta empresa aún no tiene proyectos o servicios registrados
+                          {isSupervisor
+                            ? 'No tienes proyectos ni servicios asignados en esta empresa'
+                            : 'Esta empresa aún no tiene proyectos o servicios registrados'}
                         </p>
                         <p className="text-[11px] text-slate-400">
-                          Crea el primer proyecto para comenzar a registrar actividades, horas y supervisión de equipo.
+                          {isSupervisor
+                            ? 'Los servicios donde figures como Encargado o Colaborador asignado se reflejarán automáticamente aquí.'
+                            : 'Crea el primer servicio para comenzar a registrar actividades, horas y supervisión de equipo.'}
                         </p>
-                        <div className="pt-2">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setSelectedProjectIdForEdit(null);
-                              setPreselectedClientIdForProject(selectedCompanyId);
-                              setIsProjectModalOpen(true);
-                            }}
-                            className="h-9 px-4 text-xs font-semibold text-white bg-blue-700 hover:bg-blue-800 rounded-lg shadow-sm transition-colors cursor-pointer inline-flex items-center gap-1.5"
-                          >
-                            <Plus className="w-3.5 h-3.5 shrink-0" />
-                            <span>Crear Primer Proyecto</span>
-                          </button>
-                        </div>
+                        {!isSupervisor && (
+                          <div className="pt-2">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedProjectIdForEdit(null);
+                                setPreselectedClientIdForProject(selectedCompanyId);
+                                setIsProjectModalOpen(true);
+                              }}
+                              className="h-9 px-4 text-xs font-semibold text-white bg-blue-700 hover:bg-blue-800 rounded-lg shadow-sm transition-colors cursor-pointer inline-flex items-center gap-1.5"
+                            >
+                              <Plus className="w-4 h-4 shrink-0" />
+                              <span>Crear Primer Servicio</span>
+                            </button>
+                          </div>
+                        )}
                       </div>
                     ) : (
                       <div className="space-y-3 text-slate-400 text-xs">
                         <div>
-                          {projects.length === 0
+                          {isSupervisor
+                            ? 'No tienes proyectos ni servicios asignados actualmente.'
+                            : projects.length === 0
                             ? clients.length === 0
                               ? 'No hay empresas ni proyectos registrados.'
                               : 'No hay proyectos registrados.'

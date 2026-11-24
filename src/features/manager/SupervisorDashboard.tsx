@@ -36,6 +36,7 @@ export function SupervisorDashboard({ initialTab }: SupervisorDashboardProps = {
   const effectiveModules = getEffectiveUserModules(user?.id) || getEffectiveModules(user);
 
   const normRole = normalizeRole(user?.role);
+  const isSupervisorRole = normRole === 'Supervisor';
   const canSeeTree = effectiveModules.tasks || effectiveModules.clients || userPerms.canManageClientsAndProjects;
   const canSeeClientsDirectory = canAccessClientsDirectory(user?.role);
   const canSeeMyTasks = normRole !== 'RH' && (userPerms.canAccessMyTasks ?? true);
@@ -49,15 +50,27 @@ export function SupervisorDashboard({ initialTab }: SupervisorDashboardProps = {
     (n) => !n.read && n.type === 'task_completed'
   );
 
+  // Pestaña inicial: para Supervisor siempre abre por defecto en 'Mi Asistencia'
   const defaultTab: SupervisorTab = initialTab
     ? initialTab
-    : canSeeTree
-      ? 'tree'
-      : 'attendance';
+    : isSupervisorRole
+      ? 'my_checkin'
+      : canSeeTree
+        ? 'tree'
+        : 'attendance';
 
   const [activeTab, setActiveTab] = useState<SupervisorTab>(defaultTab);
 
   const resolvedTab: SupervisorTab = (() => {
+    // Si es Supervisor, restringir estrictamente a sus 3 pestañas autorizadas y evitar que cargue attendance
+    if (isSupervisorRole) {
+      if (activeTab === 'my_checkin') return 'my_checkin';
+      if (activeTab === 'my_tasks' && canSeeMyTasks) return 'my_tasks';
+      if (activeTab === 'tree' && canSeeTree) return 'tree';
+      // Por defecto para Supervisor, siempre abrir en Mi Asistencia
+      return 'my_checkin';
+    }
+
     if (activeTab === 'clients' && !canSeeClientsDirectory) {
       return canSeeTree ? 'tree' : 'attendance';
     }
@@ -94,21 +107,66 @@ export function SupervisorDashboard({ initialTab }: SupervisorDashboardProps = {
 
   const [selectedProjectIdForReport, setSelectedProjectIdForReport] = useState<string | null>(null);
 
-  const projectsInAlert = projects.filter((p) => {
-    const pTasks = tasks.filter((t) => t.projectId === p.id);
-    const actual = pTasks.reduce((acc, t) => acc + (taskActualHours[t.id] || 0), 0);
-    const planned = p.totalBudgetHours || 1;
-    return actual / planned >= 0.8;
-  });
+  // Proyectos autorizados para métricas (si es Supervisor, se filtran estrictamente a los asignados)
+  const visibleProjectsForMetrics = useMemo(() => {
+    if (!isSupervisorRole || !user?.id) return projects;
+    const currentUid = user.id;
+    const currentEmail = (user.email || '').toLowerCase().trim();
+
+    return projects.filter((project) => {
+      if (project.leadUserId === currentUid) return true;
+      if (project.supervisorId === currentUid) return true;
+      if (Array.isArray(project.assignedUserIds) && project.assignedUserIds.includes(currentUid)) return true;
+      if (Array.isArray(project.assignedToIds) && project.assignedToIds.includes(currentUid)) return true;
+      if (
+        Array.isArray(project.assignedUserEmails) &&
+        project.assignedUserEmails.some((e) => (e || '').toLowerCase().trim() === currentEmail)
+      ) {
+        return true;
+      }
+
+      const hasAssignedTask = tasks.some((t) => {
+        if (t.projectId !== project.id) return false;
+        if (t.leadUserId === currentUid) return true;
+        if (t.assignedToId === currentUid || t.assigned_to === currentUid) return true;
+        if (Array.isArray(t.assignedToIds) && t.assignedToIds.includes(currentUid)) return true;
+        if (Array.isArray(t.assignedUserIds) && t.assignedUserIds.includes(currentUid)) return true;
+        if (t.assignedToEmail && t.assignedToEmail.toLowerCase().trim() === currentEmail) return true;
+        return false;
+      });
+      if (hasAssignedTask) return true;
+
+      if (Array.isArray(user.allowedClientIds) && user.allowedClientIds.includes(project.clientId)) {
+        return true;
+      }
+
+      return false;
+    });
+  }, [projects, tasks, isSupervisorRole, user]);
+
+  const visibleTasksForMetrics = useMemo(() => {
+    if (!isSupervisorRole) return tasks;
+    const projectIds = new Set(visibleProjectsForMetrics.map((p) => p.id));
+    return tasks.filter((t) => projectIds.has(t.projectId));
+  }, [tasks, visibleProjectsForMetrics, isSupervisorRole]);
+
+  const projectsInAlert = useMemo(() => {
+    return visibleProjectsForMetrics.filter((p) => {
+      const pTasks = tasks.filter((t) => t.projectId === p.id);
+      const actual = pTasks.reduce((acc, t) => acc + (taskActualHours[t.id] || 0), 0);
+      const planned = p.totalBudgetHours || 1;
+      return actual / planned >= 0.8;
+    });
+  }, [visibleProjectsForMetrics, tasks, taskActualHours]);
 
   // Eficiencia Global (% de horas auditadas vs presupuestadas)
   const totalActualAllTasks = useMemo(() => {
-    return tasks.reduce((acc, t) => acc + (taskActualHours[t.id] || 0), 0);
-  }, [tasks, taskActualHours]);
+    return visibleTasksForMetrics.reduce((acc, t) => acc + (taskActualHours[t.id] || 0), 0);
+  }, [visibleTasksForMetrics, taskActualHours]);
 
   const totalBudgetedAllProjects = useMemo(() => {
-    return projects.reduce((acc, p) => acc + (p.totalBudgetHours || 0), 0);
-  }, [projects]);
+    return visibleProjectsForMetrics.reduce((acc, p) => acc + (p.totalBudgetHours || 0), 0);
+  }, [visibleProjectsForMetrics]);
 
   const globalEfficiency =
     totalBudgetedAllProjects > 0
@@ -131,112 +189,173 @@ export function SupervisorDashboard({ initialTab }: SupervisorDashboardProps = {
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
           <div className="space-y-1">
             <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100 tracking-tight">
-              Supervisión de Proyectos
+              {isSupervisorRole ? 'Panel de Supervisión Operativa' : 'Supervisión de Proyectos'}
             </h1>
             <p className="text-sm text-slate-500 dark:text-slate-400">
-              Seguimiento de horas, avance presupuestal y asignación de colaboradores.
+              {isSupervisorRole
+                ? 'Control personal de asistencia, gestión de tareas asignadas y seguimiento de proyectos.'
+                : 'Seguimiento de horas, avance presupuestal y asignación de colaboradores.'}
             </p>
           </div>
 
           {/* Pestañas Superiores Estilizadas como Pills Modernas con scroll horizontal fluido y sin barras toscas */}
           <nav className="inline-flex items-center gap-1.5 p-1 bg-slate-100 dark:bg-slate-800/80 rounded-xl border border-slate-200/60 dark:border-slate-700/60 self-start lg:self-auto overflow-x-auto no-scrollbar max-w-full">
-            {canSeeTree && (
-              <button
-                type="button"
-                data-tour="nav-projects-tab"
-                onClick={() => setActiveTab('tree')}
-                className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${resolvedTab === 'tree'
-                  ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs'
-                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+            {isSupervisorRole ? (
+              <>
+                {/* 1. Mi Asistencia (Primera pestaña - Vista inicial por defecto para Supervisor) */}
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('my_checkin')}
+                  className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
+                    resolvedTab === 'my_checkin'
+                      ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
                   }`}
-              >
-                Proyectos y Tiempos
-              </button>
-            )}
+                >
+                  {forcedFacialByTI ? 'Mi Check-in Facial' : 'Mi Asistencia'}
+                </button>
 
-            {/* Pestaña Mis Tareas: Colaborador, Supervisor y Gerente asignados */}
-            {canSeeMyTasks && (
-              <button
-                type="button"
-                data-tour="nav-my-tasks-tab"
-                onClick={() => setActiveTab('my_tasks')}
-                className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${resolvedTab === 'my_tasks'
-                  ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs'
-                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                {/* 2. Mis Tareas (Segunda pestaña para Supervisor) */}
+                {canSeeMyTasks && (
+                  <button
+                    type="button"
+                    data-tour="nav-my-tasks-tab"
+                    onClick={() => setActiveTab('my_tasks')}
+                    className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
+                      resolvedTab === 'my_tasks'
+                        ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs'
+                        : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                    }`}
+                  >
+                    Mis Tareas
+                  </button>
+                )}
+
+                {/* 3. Proyectos y Tiempos (Tercera pestaña para Supervisor - solo proyectos autorizados) */}
+                {canSeeTree && (
+                  <button
+                    type="button"
+                    data-tour="nav-projects-tab"
+                    onClick={() => setActiveTab('tree')}
+                    className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
+                      resolvedTab === 'tree'
+                        ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs'
+                        : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                    }`}
+                  >
+                    Proyectos y Tiempos
+                  </button>
+                )}
+              </>
+            ) : (
+              <>
+                {/* Pestañas para Gerente y Socio (intactas) */}
+                {canSeeTree && (
+                  <button
+                    type="button"
+                    data-tour="nav-projects-tab"
+                    onClick={() => setActiveTab('tree')}
+                    className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
+                      resolvedTab === 'tree'
+                        ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs'
+                        : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                    }`}
+                  >
+                    Proyectos y Tiempos
+                  </button>
+                )}
+
+                {/* Pestaña Mis Tareas: Colaborador, Supervisor y Gerente asignados */}
+                {canSeeMyTasks && (
+                  <button
+                    type="button"
+                    data-tour="nav-my-tasks-tab"
+                    onClick={() => setActiveTab('my_tasks')}
+                    className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
+                      resolvedTab === 'my_tasks'
+                        ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs'
+                        : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                    }`}
+                  >
+                    Mis Tareas
+                  </button>
+                )}
+
+                {/* Pestaña Directorio de Clientes y Empresas: Exclusivo Socio, Gerente y TI */}
+                {canSeeClientsDirectory && (
+                  <button
+                    type="button"
+                    data-tour="nav-clients-tab"
+                    onClick={() => setActiveTab('clients')}
+                    className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
+                      resolvedTab === 'clients'
+                        ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs'
+                        : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                    }`}
+                  >
+                    Clientes y Empresas
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  data-tour="nav-team-tab"
+                  onClick={() => setActiveTab('attendance')}
+                  className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
+                    resolvedTab === 'attendance'
+                      ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
                   }`}
-              >
-                Mis Tareas
-              </button>
-            )}
+                >
+                  Asistencia y Equipos
+                </button>
 
-            {/* Pestaña Directorio de Clientes y Empresas: Exclusivo Socio, Gerente y TI */}
-            {canSeeClientsDirectory && (
-              <button
-                type="button"
-                data-tour="nav-clients-tab"
-                onClick={() => setActiveTab('clients')}
-                className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${resolvedTab === 'clients'
-                  ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs'
-                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-                  }`}
-              >
-                Clientes y Empresas
-              </button>
-            )}
+                {/* Pestaña Informes: SOLO roles autorizados (Gerente, Socio, TI) */}
+                {canSeeReports && (
+                  <button
+                    type="button"
+                    data-tour="nav-reports-tab"
+                    onClick={() => setActiveTab('report')}
+                    className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
+                      resolvedTab === 'report'
+                        ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs'
+                        : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                    }`}
+                  >
+                    Informes
+                  </button>
+                )}
 
-            <button
-              type="button"
-              data-tour="nav-team-tab"
-              onClick={() => setActiveTab('attendance')}
-              className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${resolvedTab === 'attendance'
-                ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-                }`}
-            >
-              Asistencia y Equipos
-            </button>
+                {/* Pestaña Bitácora de Auditoría: SOLO Socio y TI */}
+                {canSeeAudit && (
+                  <button
+                    type="button"
+                    data-tour="nav-audit-logs"
+                    onClick={() => setActiveTab('audit_logs')}
+                    className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
+                      resolvedTab === 'audit_logs'
+                        ? 'bg-white dark:bg-slate-900 text-blue-700 dark:text-sky-400 font-bold shadow-xs'
+                        : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                    }`}
+                  >
+                    Bitácora de Movimientos
+                  </button>
+                )}
 
-            {/* Pestaña Informes: SOLO roles autorizados (Gerente, Socio, TI) */}
-            {canSeeReports && (
-              <button
-                type="button"
-                data-tour="nav-reports-tab"
-                onClick={() => setActiveTab('report')}
-                className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${resolvedTab === 'report'
-                  ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs'
-                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-                  }`}
-              >
-                Informes
-              </button>
-            )}
-
-            {/* Pestaña Bitácora de Auditoría: SOLO Socio y TI */}
-            {canSeeAudit && (
-              <button
-                type="button"
-                data-tour="nav-audit-logs"
-                onClick={() => setActiveTab('audit_logs')}
-                className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${resolvedTab === 'audit_logs'
-                  ? 'bg-white dark:bg-slate-900 text-blue-700 dark:text-sky-400 font-bold shadow-xs'
-                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-                  }`}
-              >
-                Bitácora de Movimientos
-              </button>
-            )}
-
-            {showPersonalCheckInTab && (
-              <button
-                type="button"
-                onClick={() => setActiveTab('my_checkin')}
-                className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${resolvedTab === 'my_checkin'
-                  ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs'
-                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-                  }`}
-              >
-                {forcedFacialByTI ? 'Mi Check-in Facial' : 'Mi Asistencia'}
-              </button>
+                {showPersonalCheckInTab && (
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('my_checkin')}
+                    className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
+                      resolvedTab === 'my_checkin'
+                        ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs'
+                        : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                    }`}
+                  >
+                    {forcedFacialByTI ? 'Mi Check-in Facial' : 'Mi Asistencia'}
+                  </button>
+                )}
+              </>
             )}
           </nav>
         </div>
@@ -375,7 +494,7 @@ export function SupervisorDashboard({ initialTab }: SupervisorDashboardProps = {
         <RayonerTimeReport initialProjectId={selectedProjectIdForReport} />
       )}
 
-      {resolvedTab === 'attendance' && (
+      {resolvedTab === 'attendance' && !isSupervisorRole && (
         <TeamMembersView
           onNavigateToTree={() => {
             if (canSeeTree) setActiveTab('tree');

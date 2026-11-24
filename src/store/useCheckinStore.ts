@@ -102,6 +102,7 @@ export interface User {
   createdByItUid?: string;
   mustChangePassword?: boolean;
   assigned_team_members?: string[];
+  allowedClientIds?: string[];
 }
 
 export interface ManagedUserPermissionEntry {

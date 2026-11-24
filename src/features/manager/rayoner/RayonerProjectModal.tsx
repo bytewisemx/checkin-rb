@@ -542,30 +542,27 @@ export function RayonerProjectModal({
                         <div
                           key={srv.id}
                           onClick={() => handleSelectCatalogService(srv.id)}
-                          className={`flex items-center gap-2.5 py-2.5 px-3.5 transition-all cursor-pointer ${
-                            isSelected
-                              ? 'bg-blue-50/80 dark:bg-blue-950/40 border-l-4 border-l-blue-700'
-                              : 'hover:bg-slate-50/70 dark:hover:bg-slate-800/40'
-                          }`}
+                          className={`flex items-center gap-2.5 py-2.5 px-3.5 transition-all cursor-pointer ${isSelected
+                            ? 'bg-blue-50/80 dark:bg-blue-950/40 border-l-4 border-l-blue-700'
+                            : 'hover:bg-slate-50/70 dark:hover:bg-slate-800/40'
+                            }`}
                         >
                           {/* Radio indicador */}
                           <div
-                            className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 transition-colors ${
-                              isSelected
-                                ? 'border-blue-700 bg-blue-700 text-white'
-                                : 'border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800'
-                            }`}
+                            className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 transition-colors ${isSelected
+                              ? 'border-blue-700 bg-blue-700 text-white'
+                              : 'border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800'
+                              }`}
                           >
                             {isSelected && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
                           </div>
 
                           {/* Nombre del Servicio */}
                           <span
-                            className={`text-xs truncate ${
-                              isSelected
-                                ? 'text-blue-950 dark:text-blue-100 font-semibold'
-                                : 'text-slate-800 dark:text-slate-200 font-medium'
-                            }`}
+                            className={`text-xs truncate ${isSelected
+                              ? 'text-blue-950 dark:text-blue-100 font-semibold'
+                              : 'text-slate-800 dark:text-slate-200 font-medium'
+                              }`}
                           >
                             {srv.name}
                           </span>
@@ -582,9 +579,8 @@ export function RayonerProjectModal({
                             <span>{activitiesCount} act.</span>
                             <span>•</span>
                             <span
-                              className={`font-bold ${
-                                isSelected ? 'text-blue-700 dark:text-sky-400' : 'text-slate-700 dark:text-slate-300'
-                              }`}
+                              className={`font-bold ${isSelected ? 'text-blue-700 dark:text-sky-400' : 'text-slate-700 dark:text-slate-300'
+                                }`}
                             >
                               {displayHours}h
                             </span>
@@ -604,30 +600,27 @@ export function RayonerProjectModal({
                             setTotalBudgetHours(60);
                             setName('');
                           }}
-                          className={`flex items-center gap-2.5 py-2.5 px-3.5 transition-all cursor-pointer ${
-                            isBlankSelected
-                              ? 'bg-blue-50/80 dark:bg-blue-950/40 border-l-4 border-l-blue-700'
-                              : 'hover:bg-slate-50/70 dark:hover:bg-slate-800/40'
-                          }`}
+                          className={`flex items-center gap-2.5 py-2.5 px-3.5 transition-all cursor-pointer ${isBlankSelected
+                            ? 'bg-blue-50/80 dark:bg-blue-950/40 border-l-4 border-l-blue-700'
+                            : 'hover:bg-slate-50/70 dark:hover:bg-slate-800/40'
+                            }`}
                         >
                           {/* Radio indicador */}
                           <div
-                            className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 transition-colors ${
-                              isBlankSelected
-                                ? 'border-blue-700 bg-blue-700 text-white'
-                                : 'border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800'
-                            }`}
+                            className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 transition-colors ${isBlankSelected
+                              ? 'border-blue-700 bg-blue-700 text-white'
+                              : 'border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800'
+                              }`}
                           >
                             {isBlankSelected && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
                           </div>
 
                           {/* Nombre del Servicio */}
                           <span
-                            className={`text-xs truncate ${
-                              isBlankSelected
-                                ? 'text-blue-950 dark:text-blue-100 font-semibold'
-                                : 'text-slate-800 dark:text-slate-200 font-medium'
-                            }`}
+                            className={`text-xs truncate ${isBlankSelected
+                              ? 'text-blue-950 dark:text-blue-100 font-semibold'
+                              : 'text-slate-800 dark:text-slate-200 font-medium'
+                              }`}
                           >
                             Servicio en Blanco (Personalizado)
                           </span>
