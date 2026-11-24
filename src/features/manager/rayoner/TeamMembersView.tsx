@@ -10,7 +10,8 @@ import {
   Mail,
   RefreshCw,
   Ban,
-  Copy
+  Copy,
+  UserPlus
 } from 'lucide-react';
 import { useRayonerStore } from '../../../store/useRayonerStore';
 import { useCheckinStore } from '../../../store/useCheckinStore';
@@ -27,6 +28,8 @@ import {
 import { dispatchInviteWebhook, buildActivationUrl } from '../../../services/n8nWebhookService';
 import { normalizeRole } from '../../../services/rbac';
 import { InviteMemberModal } from './InviteMemberModal';
+import { RequestAccountModal } from './RequestAccountModal';
+import { subscribeUserAccountRequests, type AccountRequest } from '../../../services/accountRequestService';
 import type { Invitation } from '../../../types/invitation';
 
 interface TeamMembersViewProps {
@@ -54,6 +57,17 @@ export function TeamMembersView({ onNavigateToTree }: TeamMembersViewProps) {
   // Estados de sub-pestañas y modales
   const [subTab, setSubTab] = useState<'members' | 'invitations'>('members');
   const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
+  const [isRequestModalOpen, setIsRequestModalOpen] = useState(false);
+  const [accountRequests, setAccountRequests] = useState<AccountRequest[]>([]);
+
+  // Suscripción a solicitudes de alta creadas por el usuario actual
+  useEffect(() => {
+    if (!user?.id) return;
+    const unsub = subscribeUserAccountRequests(user.id, (reqs) => {
+      setAccountRequests(reqs);
+    });
+    return () => unsub();
+  }, [user?.id]);
 
   // Estados de invitaciones
   const [invitationStatusFilter, setInvitationStatusFilter] = useState<
@@ -276,16 +290,28 @@ export function TeamMembersView({ onNavigateToTree }: TeamMembersViewProps) {
             </span>
           </button>
 
-          {/* Botón Primario: Invitar Miembro al Equipo */}
-          <button
-            type="button"
-            data-tour="btn-invite-member"
-            onClick={() => setIsInviteModalOpen(true)}
-            className="h-9 px-4 bg-blue-700 hover:bg-blue-800 active:bg-blue-900 text-white text-xs font-semibold rounded-lg shadow-sm hover:shadow transition-all cursor-pointer inline-flex items-center gap-2 shrink-0 border border-blue-600/60"
-          >
-            <Plus className="w-3.5 h-3.5 shrink-0 stroke-[2.5]" />
-            <span>Invitar Miembro al Equipo</span>
-          </button>
+          {/* Botón Primario: Solicitar Alta de Usuario (Gerente / Socio) o Invitar Miembro */}
+          {normRole === 'Socio' || normRole === 'Gerente' ? (
+            <button
+              type="button"
+              data-tour="btn-request-account"
+              onClick={() => setIsRequestModalOpen(true)}
+              className="h-9 px-4 bg-blue-700 hover:bg-blue-800 active:bg-blue-900 text-white text-xs font-semibold rounded-lg shadow-sm hover:shadow transition-all cursor-pointer inline-flex items-center gap-2 shrink-0 border border-blue-600/60"
+            >
+              <UserPlus className="w-3.5 h-3.5 shrink-0 stroke-[2.5]" />
+              <span>+ Solicitar Alta de Usuario</span>
+            </button>
+          ) : (
+            <button
+              type="button"
+              data-tour="btn-invite-member"
+              onClick={() => setIsInviteModalOpen(true)}
+              className="h-9 px-4 bg-blue-700 hover:bg-blue-800 active:bg-blue-900 text-white text-xs font-semibold rounded-lg shadow-sm hover:shadow transition-all cursor-pointer inline-flex items-center gap-2 shrink-0 border border-blue-600/60"
+            >
+              <Plus className="w-3.5 h-3.5 shrink-0 stroke-[2.5]" />
+              <span>Invitar Miembro al Equipo</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -532,7 +558,90 @@ export function TeamMembersView({ onNavigateToTree }: TeamMembersViewProps) {
           </div>
         </div>
       ) : (
-        <div className="w-full bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-xs">
+        <div className="space-y-6">
+          {/* Listado de Solicitudes de Alta enviadas a TI */}
+          {accountRequests.length > 0 && (
+            <div className="w-full bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-xs overflow-hidden">
+              <div className="px-5 py-3.5 border-b border-slate-100 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/40 flex items-center justify-between">
+                <div>
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-slate-800 dark:text-slate-200">
+                    Solicitudes de Alta Enviadas a TI ({accountRequests.length})
+                  </h3>
+                  <p className="text-[11px] text-slate-400">
+                    Aprovisionamiento con contraseña temporal y notificación oficial vía n8n
+                  </p>
+                </div>
+                {(normRole === 'Socio' || normRole === 'Gerente') && (
+                  <button
+                    type="button"
+                    onClick={() => setIsRequestModalOpen(true)}
+                    className="px-3 py-1 bg-blue-700 hover:bg-blue-800 text-white text-[11px] font-semibold rounded-lg transition-colors cursor-pointer inline-flex items-center gap-1.5"
+                  >
+                    <UserPlus className="w-3.5 h-3.5" />
+                    <span>+ Nueva Solicitud</span>
+                  </button>
+                )}
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="border-b border-slate-100 dark:border-slate-800 bg-slate-50/40 dark:bg-slate-800/20 text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                      <th className="p-3.5">Colaborador Solicitado</th>
+                      <th className="p-3.5">Correo Electrónico</th>
+                      <th className="p-3.5">Rol Solicitado</th>
+                      <th className="p-3.5">Equipo Destino</th>
+                      <th className="p-3.5">Fecha</th>
+                      <th className="p-3.5 text-right">Estatus TI</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-xs">
+                    {accountRequests.map((req) => {
+                      const isPending = req.status === 'pending_it';
+                      const isCompleted = req.status === 'completed';
+                      return (
+                        <tr key={req.id} className="hover:bg-slate-50/60 dark:hover:bg-slate-800/40 transition-colors">
+                          <td className="p-3.5 font-semibold text-slate-900 dark:text-white">
+                            {req.fullName}
+                          </td>
+                          <td className="p-3.5 text-slate-600 dark:text-slate-300 font-mono text-[11px]">
+                            {req.email}
+                          </td>
+                          <td className="p-3.5 text-slate-700 dark:text-slate-300 capitalize font-medium">
+                            {req.requestedRole}
+                          </td>
+                          <td className="p-3.5 text-slate-600 dark:text-slate-400">
+                            {req.teamName}
+                          </td>
+                          <td className="p-3.5 text-slate-400 text-[11px]">
+                            {req.createdAt?.toDate ? req.createdAt.toDate().toLocaleDateString('es-MX') : 'Reciente'}
+                          </td>
+                          <td className="p-3.5 text-right">
+                            {isPending && (
+                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-blue-50 text-blue-800 border border-blue-200 dark:bg-blue-950/60 dark:text-blue-300 dark:border-blue-800">
+                                Pendiente de Alta por TI
+                              </span>
+                            )}
+                            {isCompleted && (
+                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800">
+                                Alta Completada por TI
+                              </span>
+                            )}
+                            {req.status === 'rejected' && (
+                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-rose-50 text-rose-800 border border-rose-200 dark:bg-rose-950/60 dark:text-rose-300 dark:border-rose-800">
+                                Rechazada por TI
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          <div className="w-full bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-xs">
           <div className="w-full overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
@@ -704,12 +813,19 @@ export function TeamMembersView({ onNavigateToTree }: TeamMembersViewProps) {
             </table>
           </div>
         </div>
-      )}
+      </div>
+    )}
 
       {/* 6. Modal Integrado de Invitación */}
       <InviteMemberModal
         isOpen={isInviteModalOpen}
         onClose={() => setIsInviteModalOpen(false)}
+      />
+
+      {/* 7. Modal de Solicitud de Alta a TI */}
+      <RequestAccountModal
+        isOpen={isRequestModalOpen}
+        onClose={() => setIsRequestModalOpen(false)}
       />
     </div>
   );

@@ -11,6 +11,7 @@ import { handleUserSession } from './services/userService';
 import { AuthPage } from './features/auth/AuthPage';
 import { RegisterPage } from './features/auth/RegisterPage';
 import { CompleteProfilePage } from './features/auth/CompleteProfilePage';
+import { ForcePasswordChangeScreen } from './features/auth/ForcePasswordChangeScreen';
 import { CheckinPanel } from './features/checkin/CheckinPanel';
 import { SupervisorDashboard, type SupervisorTab } from './features/manager/SupervisorDashboard';
 import { TIDashboard, type TIDashboardProps } from './features/ti/TIDashboard';
@@ -159,6 +160,11 @@ function MainLayout({
         <CheckinLoader text="Cargando perfil corporativo..." />
       </div>
     );
+  }
+
+  // Cambio Obligatorio de Contraseña en el Primer Inicio de Sesión
+  if (user.mustChangePassword) {
+    return <ForcePasswordChangeScreen />;
   }
 
   const normalizedRole = normalizeRole(user?.role);

@@ -375,7 +375,7 @@ export function subscribeProjectsFromFirestore(
 ): () => void {
   const normRole = normalizeRole(role ?? undefined);
   if (normRole === 'RH' || !isFirebaseConfigured() || !db) {
-    return () => {};
+    return () => { };
   }
 
   // TI, Socio y Gerente: lectura global de todos los proyectos por defecto
@@ -491,7 +491,7 @@ export function subscribeProjectsFromFirestore(
 
   if (queryDefs.length === 0) {
     onData([]);
-    return () => {};
+    return () => { };
   }
 
   const bucketByQuery = new Map<string, Map<string, Project>>();

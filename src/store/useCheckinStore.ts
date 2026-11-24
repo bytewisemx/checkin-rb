@@ -99,6 +99,8 @@ export interface User {
   invitationToken?: string;
   created_by_ti_id?: string | null;
   createdByTiId?: string;
+  createdByItUid?: string;
+  mustChangePassword?: boolean;
   assigned_team_members?: string[];
 }
 
@@ -270,6 +272,8 @@ interface CheckinState {
       created_by_ti_id?: string | null;
       token?: string;
       isProfileComplete?: boolean;
+      mustChangePassword?: boolean;
+      createdByItUid?: string;
     }
   ) => void;
 
@@ -1845,6 +1849,8 @@ export const useCheckinStore = create<CheckinState>()(
             invitationToken: invitationData?.token,
             created_by_ti_id: updatedEmp.created_by_ti_id,
             createdByTiId: updatedEmp.created_by_ti_id || undefined,
+            mustChangePassword: Boolean((invitationData as any)?.mustChangePassword),
+            createdByItUid: (invitationData as any)?.createdByItUid || updatedEmp.created_by_ti_id || undefined,
             assigned_team_members: assignedRole === 'Supervisor' ? [] : undefined,
             permissions: resolvedPermissions,
             modules: effectiveMods,

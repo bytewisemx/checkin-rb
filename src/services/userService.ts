@@ -70,6 +70,8 @@ export interface UserProfileDocument {
   currentRank?: 'bronce' | 'plata' | 'oro' | 'diamante';
   monthlyPoints?: number;
   rankSeason?: string;
+  mustChangePassword?: boolean;
+  createdByItUid?: string;
   isProfileComplete: boolean;
   authUid?: string;
   createdAt?: string;
@@ -863,6 +865,8 @@ export async function processLoginAccess(
       teamName: existingDoc.teamName || existingDoc.team || (resolvedRole === 'Socio' ? 'Equipo Prueba' : 'Sin equipo asignado'),
       teamId: existingDoc.teamId || (resolvedRole === 'Socio' ? 'team-prueba-01' : undefined),
       assignedTeams: existingDoc.assignedTeams || (resolvedRole === 'Socio' ? ['team-prueba-01'] : undefined),
+      mustChangePassword: Boolean(existingDoc.mustChangePassword),
+      createdByItUid: existingDoc.createdByItUid,
       isProfileComplete: true,
     };
 
@@ -887,6 +891,8 @@ export async function processLoginAccess(
         isActive: true,
         supervisorId: finalUserDoc.supervisorId || '',
         supervisorName: finalUserDoc.supervisorName || '',
+        mustChangePassword: Boolean(finalUserDoc.mustChangePassword),
+        createdByItUid: finalUserDoc.createdByItUid,
         isProfileComplete: true,
       }
     );

@@ -56,6 +56,93 @@ export function buildActivationUrl(inviteToken: string, email?: string): string 
 }
 
 /**
+ * Construye la URL de inicio de sesión (/login) para el correo de credenciales
+ */
+export function buildLoginUrl(): string {
+  if (typeof window === 'undefined') {
+    return '/login';
+  }
+  const origin = window.location.origin;
+  const baseUrl = import.meta.env.BASE_URL || '/';
+  const cleanBase = baseUrl.endsWith('/') ? baseUrl : baseUrl + '/';
+  return `${origin}${cleanBase}login`;
+}
+
+export interface N8nAccountReadyPayload {
+  event: 'account_ready_credentials';
+  toEmail: string;
+  fullName: string;
+  role: string;
+  teamName: string;
+  temporaryPassword: string;
+  loginUrl: string;
+  subject: string;
+}
+
+/**
+ * Envía el payload de credenciales listas al webhook de n8n mediante HTTP POST
+ */
+export async function dispatchAccountReadyWebhook(
+  payload: N8nAccountReadyPayload
+): Promise<N8nWebhookResponse> {
+  const webhookUrl = getN8nInviteWebhookUrl();
+
+  if (!webhookUrl) {
+    console.info(
+      '[N8N WEBHOOK] URL no configurada. Notificación simulada.'
+    );
+    return {
+      success: false,
+      error: 'NO_WEBHOOK_URL',
+      simulated: true,
+    };
+  }
+
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 7000);
+
+    const response = await fetch(webhookUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json, text/plain, */*',
+      },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeoutId);
+
+    if (response.ok) {
+      return {
+        success: true,
+        statusCode: response.status,
+      };
+    } else {
+      const errorText = await response.text().catch(() => '');
+      return {
+        success: false,
+        statusCode: response.status,
+        error: `Error HTTP ${response.status}: ${errorText || response.statusText}`,
+      };
+    }
+  } catch (err: unknown) {
+    const error = err as { name?: string; message?: string };
+    if (error.name === 'AbortError') {
+      return {
+        success: false,
+        error: 'Tiempo de espera agotado al conectar con el servidor n8n (Timeout).',
+      };
+    }
+    return {
+      success: false,
+      error: error.message || 'Error de red al intentar contactar el Webhook de n8n.',
+    };
+  }
+}
+
+/**
  * Envía el payload de la invitación al webhook de n8n mediante HTTP POST
  */
 export async function dispatchInviteWebhook(

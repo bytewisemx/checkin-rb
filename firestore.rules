@@ -392,5 +392,18 @@ service cloud.firestore {
       allow create, update: if isAuthenticated() && !isRH() && isSupervisor();
       allow delete: if isAuthenticated() && !isRH() && isSocio();
     }
+
+    // =========================================================
+    // 13. account_requests/{requestId} (Solicitudes de Alta y Aprovisionamiento TI)
+    // =========================================================
+    match /account_requests/{requestId} {
+      allow read: if isAuthenticated() && (
+        isGerente() ||
+        (resource != null && resource.data.get('requestedBy', {}).get('uid', '') == request.auth.uid) ||
+        (resource != null && resource.data.get('requestedBy', {}).get('uid', '') == getEffectiveUid())
+      );
+      allow create: if isAuthenticated() && isGerente();
+      allow update, delete: if isAuthenticated() && isTI();
+    }
   }
 }

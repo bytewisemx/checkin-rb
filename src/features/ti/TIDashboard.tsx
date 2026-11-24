@@ -12,6 +12,7 @@ import { RBAC_MATRIX, getAllowedRolesToInvite, normalizeRole } from '../../servi
 import { SupervisorDashboard } from '../manager/SupervisorDashboard';
 import { ClientsDirectoryView } from '../manager/rayoner/ClientsDirectoryView';
 import { UserPermissionsTable } from './UserPermissionsTable';
+import { ITAccountRequestsView } from './ITAccountRequestsView';
 import { SystemDiagnostics } from './SystemDiagnostics';
 import { ExecutiveAuditLogView } from '../audit/ExecutiveAuditLogView';
 import { AuditHierarchyView } from '../hierarchy/AuditHierarchyView';
@@ -19,10 +20,11 @@ import { InviteMemberModal } from '../manager/rayoner/InviteMemberModal';
 import { normalizeCorporateDatabase } from '../../services/dataNormalizationService';
 import { resetCleanEnvironment } from '../../services/adminResetService';
 import { syncUsersDirectoryFromFirestore } from '../../services/userService';
+import { subscribePendingAccountRequests, type AccountRequest } from '../../services/accountRequestService';
 import { Send, Loader2, X, RefreshCw, Trash2, AlertTriangle } from 'lucide-react';
 
 export interface TIDashboardProps {
-  initialTab?: 'invitations' | 'users_permissions' | 'audit_accounts' | 'rbac_matrix' | 'supervisor_view' | 'clients_directory' | 'audit_logs' | 'system_diagnostics';
+  initialTab?: 'account_requests' | 'invitations' | 'users_permissions' | 'audit_accounts' | 'rbac_matrix' | 'supervisor_view' | 'clients_directory' | 'audit_logs' | 'system_diagnostics';
 }
 
 export function TIDashboard({ initialTab = 'users_permissions' }: TIDashboardProps) {
@@ -48,8 +50,22 @@ export function TIDashboard({ initialTab = 'users_permissions' }: TIDashboardPro
   // Carga global de todos los equipos activos (TI no pertenece a un equipo operativo)
   const activeTeams = useMemo(() => teams.filter((t) => t.status !== 'inactive'), [teams]);
 
-  const [activeTab, setActiveTab] = useState<'invitations' | 'users_permissions' | 'audit_accounts' | 'rbac_matrix' | 'supervisor_view' | 'clients_directory' | 'audit_logs' | 'system_diagnostics'>(initialTab);
+  const [activeTab, setActiveTab] = useState<'account_requests' | 'invitations' | 'users_permissions' | 'audit_accounts' | 'rbac_matrix' | 'supervisor_view' | 'clients_directory' | 'audit_logs' | 'system_diagnostics'>(initialTab);
   const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
+  const [accountRequests, setAccountRequests] = useState<AccountRequest[]>([]);
+
+  // Suscripción en tiempo real a solicitudes de cuenta para el contador pill
+  useEffect(() => {
+    const unsub = subscribePendingAccountRequests((list) => {
+      setAccountRequests(list);
+    });
+    return () => unsub();
+  }, []);
+
+  const pendingRequestsCount = useMemo(
+    () => accountRequests.filter((r) => r.status === 'pending_it').length,
+    [accountRequests]
+  );
 
   // Formulario para invitar a nuevos usuarios (filtrado dinámicamente según rol)
   const allowedRoles = useMemo(() => {
@@ -359,6 +375,24 @@ export function TIDashboard({ initialTab = 'users_permissions' }: TIDashboardPro
         <div className="flex items-center gap-1 bg-slate-100/80 dark:bg-slate-800/80 p-1 rounded-xl border border-slate-200/60 dark:border-slate-700/60 overflow-x-auto">
           <button
             type="button"
+            data-tour="nav-account-requests-tab"
+            onClick={() => setActiveTab('account_requests')}
+            className={`px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${activeTab === 'account_requests'
+                ? 'bg-white dark:bg-slate-900 text-blue-700 dark:text-sky-400 font-semibold shadow-xs border border-slate-200/80 dark:border-slate-700/80'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+              }`}
+          >
+            <span>Solicitudes de Alta</span>
+            <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold tabular-nums ${
+              pendingRequestsCount > 0
+                ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/60 dark:text-blue-200'
+                : 'bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-300'
+            }`}>
+              {pendingRequestsCount}
+            </span>
+          </button>
+          <button
+            type="button"
             data-tour="nav-users-tab"
             onClick={() => setActiveTab('users_permissions')}
             className={`px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer ${activeTab === 'users_permissions'
@@ -478,6 +512,9 @@ export function TIDashboard({ initialTab = 'users_permissions' }: TIDashboardPro
           </div>
         </div>
       )}
+
+      {/* PESTAÑA SOLICITUDES DE ALTA Y APROVISIONAMIENTO CON N8N */}
+      {activeTab === 'account_requests' && <ITAccountRequestsView />}
 
       {/* PESTAÑA 0: MATRIZ EJECUTIVA Y TABLA DE PERMISOS */}
       {activeTab === 'users_permissions' && (

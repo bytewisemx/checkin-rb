@@ -514,11 +514,10 @@ export function RayonerProjectModal({
                       setTotalBudgetHours(60);
                       setName('');
                     }}
-                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all cursor-pointer shrink-0 ${
-                      creationMode === 'blank'
-                        ? 'bg-blue-700 border-blue-700 text-white shadow-xs'
-                        : 'border-blue-300 text-blue-800 hover:bg-blue-50 dark:border-blue-700 dark:text-blue-300 dark:hover:bg-blue-950/40 bg-white dark:bg-slate-800'
-                    }`}
+                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all cursor-pointer shrink-0 ${creationMode === 'blank'
+                      ? 'bg-blue-700 border-blue-700 text-white shadow-xs'
+                      : 'border-blue-300 text-blue-800 hover:bg-blue-50 dark:border-blue-700 dark:text-blue-300 dark:hover:bg-blue-950/40 bg-white dark:bg-slate-800'
+                      }`}
                   >
                     <FileText className="w-3.5 h-3.5" />
                     <span>+ Nuevo Servicio en Blanco</span>
@@ -534,20 +533,18 @@ export function RayonerProjectModal({
                         <div
                           key={srv.id}
                           onClick={() => handleSelectCatalogService(srv.id)}
-                          className={`p-3 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
-                            isSelected
-                              ? 'bg-blue-50/80 border-blue-600 dark:bg-blue-950/40 dark:border-blue-500 shadow-xs ring-1 ring-blue-600/30'
-                              : 'bg-white dark:bg-slate-800/80 border-slate-200 dark:border-slate-700 hover:border-blue-300 dark:hover:border-slate-600'
-                          }`}
+                          className={`p-3 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between ${isSelected
+                            ? 'bg-blue-50/80 border-blue-600 dark:bg-blue-950/40 dark:border-blue-500 shadow-xs ring-1 ring-blue-600/30'
+                            : 'bg-white dark:bg-slate-800/80 border-slate-200 dark:border-slate-700 hover:border-blue-300 dark:hover:border-slate-600'
+                            }`}
                         >
                           <div>
                             <div className="flex items-start justify-between gap-1.5">
                               <span
-                                className={`text-xs font-bold leading-tight ${
-                                  isSelected
-                                    ? 'text-blue-950 dark:text-blue-200'
-                                    : 'text-slate-800 dark:text-slate-200'
-                                }`}
+                                className={`text-xs font-bold leading-tight ${isSelected
+                                  ? 'text-blue-950 dark:text-blue-200'
+                                  : 'text-slate-800 dark:text-slate-200'
+                                  }`}
                               >
                                 {srv.name}
                               </span>
@@ -798,14 +795,12 @@ export function RayonerProjectModal({
               <button
                 type="button"
                 onClick={() => setIsActive(!isActive)}
-                className={`w-11 h-6 flex items-center rounded-full p-1 transition-colors duration-200 cursor-pointer ${
-                  isActive ? 'bg-blue-700' : 'bg-slate-300 dark:bg-slate-700'
-                }`}
+                className={`w-11 h-6 flex items-center rounded-full p-1 transition-colors duration-200 cursor-pointer ${isActive ? 'bg-blue-700' : 'bg-slate-300 dark:bg-slate-700'
+                  }`}
               >
                 <div
-                  className={`bg-white w-4 h-4 rounded-full shadow-md transform transition-transform duration-200 ${
-                    isActive ? 'translate-x-5' : 'translate-x-0'
-                  }`}
+                  className={`bg-white w-4 h-4 rounded-full shadow-md transform transition-transform duration-200 ${isActive ? 'translate-x-5' : 'translate-x-0'
+                    }`}
                 />
               </button>
             </div>
