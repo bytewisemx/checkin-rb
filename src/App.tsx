@@ -149,9 +149,21 @@ function MainLayout({
   initialEmployeeTab,
   initialSupervisorTab,
 }: MainLayoutProps = {}) {
-  const { user } = useCheckinStore();
+  const { user, isProfileLoading } = useCheckinStore();
+
+  // REGLA CRÍTICA DE GOBERNANZA:
+  // Prohibido evaluar equipo asignado o mostrar pantalla de bloqueo mientras isProfileLoading sea true o user sea null
+  if (isProfileLoading || !user) {
+    return (
+      <div className="min-h-screen bg-[#F8FAFC] dark:bg-[#090E17] flex items-center justify-center p-4">
+        <CheckinLoader text="Cargando perfil corporativo..." />
+      </div>
+    );
+  }
+
   const normalizedRole = normalizeRole(user?.role);
-  const isTi = normalizedRole === 'TI';
+  // Exención Jerárquica: Los roles TI y Socio jamás son bloqueados por asignación de equipo
+  const isExempt = normalizedRole === 'TI' || normalizedRole === 'Socio';
 
   const hasNoTeam =
     normalizedRole === 'RH'
@@ -164,7 +176,7 @@ function MainLayout({
         user.team === 'Sin equipo disponible';
 
   const isInactiveByPolicy =
-    !isTi &&
+    !isExempt &&
     (user?.status === 'inactive' ||
       user?.isActive === false ||
       (user as any)?.accessRevoked === true ||
@@ -193,9 +205,17 @@ function MainLayout({
 function PublicOnlyRoute({ children }: { children: React.ReactNode }) {
   const isAuthenticated = useCheckinStore((state) => state.isAuthenticated);
   const user = useCheckinStore((state) => state.user);
-  const isProfileComplete = Boolean(user?.isProfileComplete || (user?.name && user?.role));
+  const isProfileLoading = useCheckinStore((state) => state.isProfileLoading);
 
-  // Si la URL contiene un token de activación (?token=), permitimos el acceso público para procesar la invitación
+  if (isProfileLoading) {
+    return (
+      <div className="min-h-screen bg-[#F8FAFC] dark:bg-[#090E17] flex items-center justify-center p-4">
+        <CheckinLoader text="Iniciando sesión..." />
+      </div>
+    );
+  }
+
+  const isProfileComplete = Boolean(user?.isProfileComplete || (user?.name && user?.role));
   const hasToken = typeof window !== 'undefined' && window.location.search.includes('token=');
 
   if (isAuthenticated && isProfileComplete && !hasToken) {
@@ -208,6 +228,16 @@ function PublicOnlyRoute({ children }: { children: React.ReactNode }) {
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const isAuthenticated = useCheckinStore((state) => state.isAuthenticated);
   const user = useCheckinStore((state) => state.user);
+  const isProfileLoading = useCheckinStore((state) => state.isProfileLoading);
+
+  if (isProfileLoading) {
+    return (
+      <div className="min-h-screen bg-[#F8FAFC] dark:bg-[#090E17] flex items-center justify-center p-4">
+        <CheckinLoader text="Verificando credenciales corporativas..." />
+      </div>
+    );
+  }
+
   const isProfileComplete = Boolean(user?.isProfileComplete || (user?.name && user?.role));
 
   if (!isAuthenticated) return <Navigate to="/login" replace />;
@@ -219,6 +249,16 @@ function PrivateRoute({ children }: { children: React.ReactNode }) {
 function ProfileRoute({ children }: { children: React.ReactNode }) {
   const isAuthenticated = useCheckinStore((state) => state.isAuthenticated);
   const user = useCheckinStore((state) => state.user);
+  const isProfileLoading = useCheckinStore((state) => state.isProfileLoading);
+
+  if (isProfileLoading) {
+    return (
+      <div className="min-h-screen bg-[#F8FAFC] dark:bg-[#090E17] flex items-center justify-center p-4">
+        <CheckinLoader text="Cargando perfil..." />
+      </div>
+    );
+  }
+
   const isProfileComplete = Boolean(user?.isProfileComplete || (user?.name && user?.role));
 
   if (!isAuthenticated) return <Navigate to="/login" replace />;
@@ -228,7 +268,16 @@ function ProfileRoute({ children }: { children: React.ReactNode }) {
 }
 
 function TIAdminRoute({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated, user } = useCheckinStore();
+  const { isAuthenticated, user, isProfileLoading } = useCheckinStore();
+
+  if (isProfileLoading) {
+    return (
+      <div className="min-h-screen bg-[#F8FAFC] dark:bg-[#090E17] flex items-center justify-center p-4">
+        <CheckinLoader text="Verificando permisos TI..." />
+      </div>
+    );
+  }
+
   const isProfileComplete = Boolean(user?.isProfileComplete || (user?.name && user?.role));
 
   if (!isAuthenticated) return <Navigate to="/login" replace />;
@@ -239,14 +288,23 @@ function TIAdminRoute({ children }: { children: React.ReactNode }) {
 }
 
 function ClientsDirectoryRoute({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated, user } = useCheckinStore();
+  const { isAuthenticated, user, isProfileLoading } = useCheckinStore();
+
+  if (isProfileLoading) {
+    return (
+      <div className="min-h-screen bg-[#F8FAFC] dark:bg-[#090E17] flex items-center justify-center p-4">
+        <CheckinLoader text="Accediendo a clientes..." />
+      </div>
+    );
+  }
+
   const isProfileComplete = Boolean(user?.isProfileComplete || (user?.name && user?.role));
 
   if (!isAuthenticated) return <Navigate to="/login" replace />;
   if (!isProfileComplete) return <Navigate to="/register" replace />;
 
   const role = normalizeRole(user?.role);
-  const isTi = role === 'TI';
+  const isExempt = role === 'TI' || role === 'Socio';
   const hasNoTeam =
     !user?.team ||
     user.team.trim() === '' ||
@@ -255,7 +313,7 @@ function ClientsDirectoryRoute({ children }: { children: React.ReactNode }) {
     user.team === 'Sin equipo disponible';
 
   const isInactiveByPolicy =
-    !isTi &&
+    !isExempt &&
     (user?.status === 'inactive' ||
       user?.isActive === false ||
       (user as any)?.accessRevoked === true ||
@@ -282,14 +340,23 @@ function ModuleProtectedRoute({
   blockRH?: boolean;
   children: React.ReactNode;
 }) {
-  const { isAuthenticated, user, getEffectiveUserModules } = useCheckinStore();
+  const { isAuthenticated, user, getEffectiveUserModules, isProfileLoading } = useCheckinStore();
+
+  if (isProfileLoading) {
+    return (
+      <div className="min-h-screen bg-[#F8FAFC] dark:bg-[#090E17] flex items-center justify-center p-4">
+        <CheckinLoader text="Verificando módulo..." />
+      </div>
+    );
+  }
+
   const isProfileComplete = Boolean(user?.isProfileComplete || (user?.name && user?.role));
 
   if (!isAuthenticated) return <Navigate to="/login" replace />;
   if (!isProfileComplete) return <Navigate to="/register" replace />;
 
   const role = normalizeRole(user?.role);
-  const isTi = role === 'TI';
+  const isExempt = role === 'TI' || role === 'Socio';
   const hasNoTeam =
     role === 'RH'
       ? (!user?.assignedTeams || user.assignedTeams.length === 0) &&
@@ -301,7 +368,7 @@ function ModuleProtectedRoute({
         user.team === 'Sin equipo disponible';
 
   const isInactiveByPolicy =
-    !isTi &&
+    !isExempt &&
     (user?.status === 'inactive' ||
       user?.isActive === false ||
       (user as any)?.accessRevoked === true ||
@@ -326,26 +393,35 @@ function ModuleProtectedRoute({
 export default function App() {
   const { globalLoading } = useCheckinStore();
 
-  // Sincronización transparente de sesión con Firebase Auth en segundo plano
+  // Sincronización transparente de sesión con Firebase Auth con bandera estricta isProfileLoading
   useEffect(() => {
-    if (!isFirebaseConfigured()) return;
+    if (!isFirebaseConfigured()) {
+      useCheckinStore.getState().setIsProfileLoading(false);
+      return;
+    }
+
+    useCheckinStore.getState().setIsProfileLoading(true);
 
     const unsubscribe = subscribeToAuthState(async (fbUser) => {
-      if (fbUser) {
-        try {
+      try {
+        if (fbUser) {
+          await handleUserSession({
+            uid: fbUser.uid,
+            email: fbUser.email,
+            displayName: fbUser.displayName,
+            photoURL: fbUser.photoURL,
+          });
+        } else {
+          // No hay sesión en Firebase: si no es usuario demo verificado en local, desautenticar
           const state = useCheckinStore.getState();
-          // Si el usuario ya está autenticado con perfil completo para este UID, no hay nada que bloquear
-          if (!state.isAuthenticated || state.user?.id !== fbUser.uid || !state.user?.isProfileComplete) {
-            await handleUserSession({
-              uid: fbUser.uid,
-              email: fbUser.email,
-              displayName: fbUser.displayName,
-              photoURL: fbUser.photoURL,
-            });
+          if (state.isAuthenticated && !state.user?.verified) {
+            state.logout();
           }
-        } catch (err) {
-          console.error('[App] Error al verificar sesión en Firebase:', err);
         }
+      } catch (err) {
+        console.error('[App] Error al verificar sesión en Firebase:', err);
+      } finally {
+        useCheckinStore.getState().setIsProfileLoading(false);
       }
     });
 

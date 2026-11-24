@@ -236,6 +236,8 @@ interface CheckinState {
   userPermissionsDirectory: Record<string, ManagedUserPermissionEntry>;
   toasts: GlobalToast[];
   tasks: Task[];
+  isProfileLoading: boolean;
+  setIsProfileLoading: (loading: boolean) => void;
   globalLoading: {
     active: boolean;
     message: string;
@@ -581,6 +583,8 @@ export const useCheckinStore = create<CheckinState>()(
       userPermissionsDirectory: initialPermissionsDirectory,
       toasts: [],
       tasks: [],
+      isProfileLoading: true,
+      setIsProfileLoading: (loading: boolean) => set({ isProfileLoading: loading }),
       theme: 'dark',
       globalLoading: {
         active: false,
@@ -1631,17 +1635,32 @@ export const useCheckinStore = create<CheckinState>()(
             ? Boolean(invitationData.isProfileComplete)
             : Boolean(existingEmp?.isProfileComplete || (existingEmp?.name && existingEmp?.role));
 
-        // 3. Determinar rol asignado (priorizando perfil existente, luego invitación, luego heurística)
+        // Cuentas preconfiguradas maestras de prueba
+        const PRECONFIGURED_ROLES: Record<string, { role: UserRole; team: string; teamId: string }> = {
+          'socio.prueba@russellbedford.mx': { role: 'Socio', team: 'Equipo Prueba', teamId: 'team-prueba-01' },
+          'gerente.prueba@russellbedford.mx': { role: 'Gerente', team: 'Equipo Prueba', teamId: 'team-prueba-01' },
+          'supervisor.prueba@russellbedford.mx': { role: 'Supervisor', team: 'Equipo Prueba', teamId: 'team-prueba-01' },
+          'rh.prueba@russellbedford.mx': { role: 'RH', team: 'Equipo Prueba', teamId: 'team-prueba-01' },
+          'ti.root@russellbedford.mx': { role: 'TI', team: 'TI Root', teamId: 'team-ti' },
+          'colaborador.prueba@russellbedford.mx': { role: 'Colaborador', team: 'Equipo Prueba', teamId: 'team-prueba-01' },
+        };
+        const preconfigured = PRECONFIGURED_ROLES[userEmail];
+
+        // 3. Determinar rol asignado (priorizando cuenta preconfigurada, luego invitación, luego perfil existente)
         let assignedRole: UserRole =
+          (preconfigured ? preconfigured.role : undefined) ||
+          (invitationData?.role ? normalizeRole(invitationData.role) : undefined) ||
           (existingEmp?.role ? normalizeRole(existingEmp.role) : undefined) ||
           (existingDir?.role ? normalizeRole(existingDir.role) : undefined) ||
           'Colaborador';
 
-        if (invitationData?.role) {
-          assignedRole = normalizeRole(invitationData.role);
-        } else if (!existingEmp?.role && !existingDir?.role) {
+        if (!preconfigured && !invitationData?.role && !existingEmp?.role && !existingDir?.role) {
           if (userEmail.includes('ti.') || userEmail.includes('root')) {
             assignedRole = 'TI';
+          } else if (userEmail.includes('socio')) {
+            assignedRole = 'Socio';
+          } else if (userEmail.includes('gerente')) {
+            assignedRole = 'Gerente';
           } else if (userEmail.includes('rh.') || userEmail.startsWith('rh@')) {
             assignedRole = 'RH';
           } else if (userEmail.includes('supervisor')) {
@@ -1667,12 +1686,13 @@ export const useCheckinStore = create<CheckinState>()(
           resolvedPhotoURL || existingEmp?.profileImage || undefined;
 
         const resolvedTeam =
+          (preconfigured ? preconfigured.team : undefined) ||
           invitationData?.team ||
           existingEmp?.team ||
           existingDir?.team ||
           (assignedRole === 'TI' ? 'TI Root' : 'Sin equipo asignado');
 
-        const canonicalUid =
+        const fixedDemoId =
           userEmail === 'ti.root@russellbedford.mx'
             ? 'demo_ti'
             : userEmail === 'socio.prueba@russellbedford.mx'
@@ -1685,7 +1705,9 @@ export const useCheckinStore = create<CheckinState>()(
             ? 'demo_supervisor'
             : userEmail === 'colaborador.prueba@russellbedford.mx'
             ? 'demo_colaborador'
-            : fbUser.uid;
+            : null;
+
+        const canonicalUid = fbUser.uid || fixedDemoId || 'demo_user';
 
         const resolvedSupervisorId =
           assignedRole === 'Colaborador'
@@ -1773,6 +1795,25 @@ export const useCheckinStore = create<CheckinState>()(
               supervisor_id: resolvedSupervisorId,
               created_by_ti_id: resolvedCreatedByTiId,
             },
+            ...(fixedDemoId && fixedDemoId !== canonicalUid
+              ? {
+                  [fixedDemoId]: {
+                    ...existingDir,
+                    id: fixedDemoId,
+                    name: rawName,
+                    email: userEmail,
+                    role: assignedRole,
+                    team: updatedEmp.team,
+                    assignedTeams: resolvedAssignedTeams,
+                    permissions: resolvedPermissions,
+                    modules: effectiveMods,
+                    biometrics: updatedEmp.biometrics || null,
+                    photoURL: resolvedPhotoURL,
+                    supervisor_id: resolvedSupervisorId,
+                    created_by_ti_id: resolvedCreatedByTiId,
+                  },
+                }
+              : {}),
           },
           user: {
             id: updatedEmp.id,
