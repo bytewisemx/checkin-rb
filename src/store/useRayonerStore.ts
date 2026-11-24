@@ -8,6 +8,7 @@ import {
   saveProjectToFirestore,
   deleteProjectFromFirestore,
 } from '../services/companyService';
+import { saveProjectWithActivitiesBatch } from '../services/projectService';
 import {
   saveTaskToFirestore,
   updateTaskProgressInFirestore,
@@ -426,6 +427,7 @@ export const useRayonerStore = create<RayonerState>()(
             teamId: projectData.teamId,
             teamIds: projectData.teamIds,
             leadUserId: act.leadUserId || undefined,
+            leadUserName: (act as any).leadUserName || undefined,
             assignedUserIds: act.assignedUserIds || [],
             assignedToIds: act.assignedUserIds || [],
             assigned_to: act.leadUserId || (act.assignedUserIds && act.assignedUserIds[0]) || '',
@@ -438,9 +440,11 @@ export const useRayonerStore = create<RayonerState>()(
           tasks: [...state.tasks, ...newTasks],
         }));
 
-        newTasks.forEach((t) => {
-          void saveTaskToFirestore(t as any);
-        });
+        // Persistencia atómica de proyecto + 150+ actividades mediante writeBatch en Firestore
+        const finalProj = get().projects.find((p) => p.id === projectId);
+        if (finalProj) {
+          void saveProjectWithActivitiesBatch(finalProj, newTasks);
+        }
 
         broadcastRayonerSync('TASKS_BATCH_ADDED');
         return projectId;

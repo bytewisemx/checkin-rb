@@ -406,8 +406,28 @@ export function TaskDetailDrawer({
           </div>
         </div>
 
-        {/* Metadatos de la Tarea */}
+        {/* Metadatos de la Tarea y Responsable de Actividad */}
         <div className="grid grid-cols-2 gap-3.5 my-3 text-xs border-y border-slate-200 dark:border-slate-800/80 py-3.5">
+          <div>
+            <span className="text-xs text-slate-400 block mb-1">
+              Responsable de Actividad
+            </span>
+            <span className="font-bold text-blue-900 dark:text-sky-300 flex items-center gap-1.5 truncate">
+              <span className="truncate">
+                {task.leadUserName || task.assignedToName || 'Colaborador asignado'}
+              </span>
+            </span>
+          </div>
+
+          <div>
+            <span className="text-xs text-slate-400 block mb-1">
+              Fase y Perfil
+            </span>
+            <span className="font-medium text-slate-800 dark:text-slate-200">
+              {(task as any).fase || 'Operativa'} • {(task as any).perfilSugerido || 'Staff'}
+            </span>
+          </div>
+
           <div>
             <span className="text-xs text-slate-400 block mb-1">
               Ubicación Asignada

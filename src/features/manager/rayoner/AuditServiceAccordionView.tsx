@@ -576,7 +576,7 @@ export function AuditServiceAccordionView({
                         <th className="py-2.5 px-3 min-w-[280px]">Procedimiento y Papel de Trabajo</th>
                         <th className="py-2.5 px-2.5 w-24">Fase / Perfil</th>
                         <th className="py-2.5 px-2.5 w-24 text-right">Hrs. Presup.</th>
-                        <th className="py-2.5 px-3 min-w-[180px]">Encargado / Equipo</th>
+                        <th className="py-2.5 px-3 min-w-[180px]">Responsable / Equipo</th>
                         <th className="py-2.5 px-2.5 w-24 text-right">Hrs. Reales</th>
                         <th className="py-2.5 px-3 w-40 text-center">Estatus Revisión</th>
                       </tr>
@@ -671,7 +671,7 @@ export function AuditServiceAccordionView({
                                     </div>
                                   ) : (
                                     <span className="text-[11px] text-slate-400 italic">
-                                      Sin encargado
+                                      Sin responsable
                                     </span>
                                   )}
 
@@ -910,7 +910,7 @@ function TaskAssignmentModal({
         </div>
 
         <p className="text-xs text-slate-500 dark:text-slate-400">
-          Selecciona los colaboradores que ejecutarán esta actividad y designa quién fungirá como Encargado principal de su papel de trabajo.
+          Selecciona los colaboradores que ejecutarán esta actividad y designa quién fungirá como Responsable principal de su papel de trabajo.
         </p>
 
         {/* Lista de colaboradores */}
@@ -963,7 +963,7 @@ function TaskAssignmentModal({
                         : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 hover:bg-blue-100'
                     }`}
                   >
-                    {isLead ? 'Encargado Principal' : 'Hacer Encargado'}
+                    {isLead ? 'Responsable' : 'Hacer Responsable'}
                   </button>
                 )}
               </div>

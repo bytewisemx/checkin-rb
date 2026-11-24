@@ -12,7 +12,7 @@ export const AUDIT_MASTER_TEMPLATE_ID = 'template_auditoria_estados_financieros'
  * Plantilla oficial completa: "Auditoría de Estados Financieros"
  * 19 Bloques / Rubros con 156 procedimientos y exactamente 226.2 horas base.
  */
-const DEFAULT_AUDIT_RUBROS: ServiceTemplateRubro[] = [
+export const DEFAULT_AUDIT_RUBROS: ServiceTemplateRubro[] = [
   // Bloque 0 — Planeación General y Cierre (14 actividades de Resumen& General)
   {
     number: 0,

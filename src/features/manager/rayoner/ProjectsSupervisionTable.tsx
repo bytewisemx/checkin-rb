@@ -780,7 +780,7 @@ export function ProjectsSupervisionTable({
                                         key={task.id}
                                         className="p-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg flex flex-col md:flex-row md:items-center justify-between gap-3 shadow-2xs hover:border-blue-300 dark:hover:border-blue-800 transition-colors"
                                       >
-                                        {/* Título de actividad y Badge de Encargado */}
+                                        {/* Título de actividad y Badge de Responsable */}
                                         <div className="flex flex-col sm:flex-row sm:items-center gap-2 min-w-0">
                                           <span className="text-xs font-bold text-slate-800 dark:text-slate-100 truncate">
                                             {task.name || task.title}
@@ -791,7 +791,7 @@ export function ProjectsSupervisionTable({
                                             </span>
                                           )}
                                           <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-md bg-blue-50 text-blue-800 border border-blue-200 dark:bg-blue-950/60 dark:text-sky-300 dark:border-blue-900 shrink-0">
-                                            Encargado: {leadDisplayName}
+                                            Responsable: {leadDisplayName}
                                           </span>
                                         </div>
 
@@ -866,10 +866,10 @@ export function ProjectsSupervisionTable({
                                             )}
                                           </div>
 
-                                          {/* Selector dinámico de encargado si hay múltiples participantes */}
+                                          {/* Selector dinámico de Responsable de Actividad */}
                                           {taskMembers.length > 1 && (
                                             <div className="flex items-center gap-1.5">
-                                              <span className="text-[10px] text-slate-400">Reasignar:</span>
+                                              <span className="text-[10px] text-slate-400">Responsable:</span>
                                               <select
                                                 value={effectiveLeadId}
                                                 onChange={(e) => handleReassignLead(e.target.value)}

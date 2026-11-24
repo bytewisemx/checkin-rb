@@ -552,7 +552,7 @@ export function StartTaskModal({
 
                                             {isLead && (
                                               <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-blue-900/60 text-sky-200 border border-blue-700">
-                                                Encargado
+                                                Responsable
                                               </span>
                                             )}
 

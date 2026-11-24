@@ -377,5 +377,20 @@ service cloud.firestore {
       allow create: if isAuthenticated();
       allow update, delete: if isTI();
     }
+
+    // =========================================================
+    // 12. service_catalog/{catalogId} y service_templates/{templateId}
+    // =========================================================
+    match /service_catalog/{catalogId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isAuthenticated() && !isRH() && isSupervisor();
+      allow delete: if isAuthenticated() && !isRH() && isSocio();
+    }
+
+    match /service_templates/{templateId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isAuthenticated() && !isRH() && isSupervisor();
+      allow delete: if isAuthenticated() && !isRH() && isSocio();
+    }
   }
 }

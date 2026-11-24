@@ -650,7 +650,7 @@ export function RayonerTaskModal({
                           </div>
                           {leadUserId === member.id && (
                             <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-200 border border-blue-300 dark:border-blue-700 shrink-0">
-                              Encargado
+                              Responsable
                             </span>
                           )}
                         </label>
@@ -660,10 +660,10 @@ export function RayonerTaskModal({
                 </div>
               </div>
 
-              {/* Encargado Principal de la Actividad (Reasignable dinámicamente) */}
+              {/* Responsable de la Actividad (Reasignable dinámicamente) */}
               <div>
                 <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1.5">
-                  Encargado Principal de la Actividad *
+                  Responsable de la Actividad *
                 </label>
                 <select
                   required
@@ -684,7 +684,7 @@ export function RayonerTaskModal({
                   )}
                 </select>
                 <p className="text-[11px] text-slate-500 mt-1">
-                  El encargado principal lidera el avance operativo y puede reasignarse dinámicamente en cualquier momento.
+                  El responsable de la actividad lidera el avance operativo y puede reasignarse dinámicamente en cualquier momento.
                 </p>
               </div>
 

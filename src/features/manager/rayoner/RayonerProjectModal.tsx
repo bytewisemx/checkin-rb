@@ -1,5 +1,19 @@
-import { useState, useEffect } from 'react';
-import { X, Check, Trash2, Sparkles, Layers, FileText, ChevronDown, ChevronUp } from 'lucide-react';
+import { useState, useEffect, useMemo } from 'react';
+import {
+  X,
+  Check,
+  Trash2,
+  Sparkles,
+  FileText,
+  ChevronDown,
+  ChevronUp,
+  UserCheck,
+  Users,
+  Plus,
+  ShieldCheck,
+  ArrowRight,
+  ArrowLeft,
+} from 'lucide-react';
 import { useRayonerStore } from '../../../store/useRayonerStore';
 import { useCheckinStore } from '../../../store/useCheckinStore';
 import { canCreateOrManageCompanies } from '../../../services/companyService';
@@ -8,11 +22,15 @@ import type { Project } from '../../../types/rayoner';
 import { TimeInputSexagesimal } from '../../../components/common/TimeInputSexagesimal';
 import { CreateCompanyModal } from './CreateCompanyModal';
 import {
-  getServiceTemplates,
-  AUDIT_MASTER_TEMPLATE_ID,
+  getServiceCatalog,
+  SERVICE_AUDITORIA_ESTADOS_FINANCIEROS_2026,
   calculateTemplateTotalHours,
-} from '../../../services/serviceTemplateService';
-import type { ServiceTemplate, ServiceTemplateRubro, ServiceTemplateActivity } from '../../../types/serviceTemplate';
+} from '../../../services/serviceCatalogService';
+import type {
+  ServiceTemplate,
+  ServiceTemplateRubro,
+  ServiceTemplateActivity,
+} from '../../../types/serviceTemplate';
 
 interface RayonerProjectModalProps {
   isOpen: boolean;
@@ -27,15 +45,15 @@ export function RayonerProjectModal({
   projectId,
   initialClientId,
 }: RayonerProjectModalProps) {
-  const { 
-    projects, 
-    clients, 
-    tasks, 
-    teamMembers, 
-    addProject, 
+  const {
+    projects,
+    clients,
+    tasks,
+    teamMembers,
+    addProject,
     addProjectWithActivities,
-    updateProject, 
-    deleteProject 
+    updateProject,
+    deleteProject,
   } = useRayonerStore();
 
   const user = useCheckinStore((state) => state.user);
@@ -44,17 +62,22 @@ export function RayonerProjectModal({
 
   const [isQuickCompanyOpen, setIsQuickCompanyOpen] = useState(false);
 
-  const existingProject = projectId ? projects.find(p => p.id === projectId) : null;
+  const existingProject = projectId ? projects.find((p) => p.id === projectId) : null;
   const isEditing = !!existingProject;
 
-  // Estados del selector de plantilla maestro
-  const [creationMode, setCreationMode] = useState<'template' | 'blank'>('template');
-  const [templates, setTemplates] = useState<ServiceTemplate[]>([]);
-  const [selectedTemplateId, setSelectedTemplateId] = useState<string>(AUDIT_MASTER_TEMPLATE_ID);
-  const [templateRubros, setTemplateRubros] = useState<ServiceTemplateRubro[]>([]);
+  // Control de Pasos: 1 = Definición del Servicio, 2 = Equipo y Asignación Inicial
+  const [currentStep, setCurrentStep] = useState<1 | 2>(1);
+
+  // Modalidad: Catálogo de Servicios vs Nuevo Servicio en Blanco
+  const [creationMode, setCreationMode] = useState<'catalog' | 'blank'>('catalog');
+  const [catalogServices, setCatalogServices] = useState<ServiceTemplate[]>([]);
+  const [selectedCatalogId, setSelectedCatalogId] = useState<string>(
+    SERVICE_AUDITORIA_ESTADOS_FINANCIEROS_2026
+  );
+  const [catalogRubros, setCatalogRubros] = useState<ServiceTemplateRubro[]>([]);
   const [showRubrosEstimation, setShowRubrosEstimation] = useState(false);
 
-  // Estados del formulario (operativos únicamente, sin tarifas ni costos)
+  // Paso 1: Campos del Servicio
   const [clientId, setClientId] = useState('');
   const [name, setName] = useState('');
   const [code, setCode] = useState('');
@@ -63,19 +86,25 @@ export function RayonerProjectModal({
   const [notes, setNotes] = useState('');
   const [isActive, setIsActive] = useState(true);
 
-  // Cargar plantillas de servicio al abrir
+  // Paso 2: Asignación de Equipo Obligatorio
+  const [leadUserId, setLeadUserId] = useState<string>(''); // Encargado del Servicio (Obligatorio)
+  const [secondMemberId, setSecondMemberId] = useState<string>(''); // Segundo Colaborador (Obligatorio)
+  const [additionalMemberIds, setAdditionalMemberIds] = useState<string[]>([]); // Colaboradores Adicionales
+
+  // Cargar Catálogo Oficial de Servicios desde Firestore al abrir
   useEffect(() => {
     if (!isOpen) return;
-    void getServiceTemplates().then((tpls) => {
-      setTemplates(tpls);
-      const initialTpl =
-        tpls.find((t) => t.id === AUDIT_MASTER_TEMPLATE_ID) || tpls[0];
-      if (initialTpl && !isEditing) {
-        setSelectedTemplateId(initialTpl.id);
-        setTemplateRubros(JSON.parse(JSON.stringify(initialTpl.rubros)));
-        setTotalBudgetHours(initialTpl.totalBudgetHours || 226.2);
+    void getServiceCatalog().then((services) => {
+      setCatalogServices(services);
+      const initialSrv =
+        services.find((s) => s.id === SERVICE_AUDITORIA_ESTADOS_FINANCIEROS_2026) ||
+        services[0];
+      if (initialSrv && !isEditing) {
+        setSelectedCatalogId(initialSrv.id);
+        setCatalogRubros(JSON.parse(JSON.stringify(initialSrv.rubros)));
+        setTotalBudgetHours(initialSrv.totalBudgetHours || 226.2);
         if (!name) {
-          setName(`${initialTpl.name} ${new Date().getFullYear()}`);
+          setName(`${initialSrv.name} ${new Date().getFullYear()}`);
         }
       }
     });
@@ -84,6 +113,7 @@ export function RayonerProjectModal({
   // Sincronizar formulario al abrir o cambiar de proyecto
   useEffect(() => {
     if (!isOpen) return;
+    setCurrentStep(1);
     if (existingProject) {
       setClientId(existingProject.clientId);
       setName(existingProject.name);
@@ -93,40 +123,72 @@ export function RayonerProjectModal({
       setNotes(existingProject.notes || '');
       setIsActive(existingProject.isActive ?? true);
       setCreationMode('blank');
+      setLeadUserId(existingProject.leadUserId || '');
+
+      const assigned = existingProject.assignedUserIds || [];
+      if (assigned.length > 0) {
+        const firstColab = assigned.find((id) => id !== existingProject.leadUserId);
+        setSecondMemberId(firstColab || assigned[0] || '');
+        setAdditionalMemberIds(
+          assigned.filter(
+            (id) => id !== existingProject.leadUserId && id !== firstColab
+          )
+        );
+      } else {
+        setSecondMemberId('');
+        setAdditionalMemberIds([]);
+      }
     } else {
       const defaultClientId = initialClientId || clients[0]?.id || '';
       setClientId(defaultClientId);
       setCode(`PRJ-${new Date().getFullYear()}-${Math.floor(100 + Math.random() * 900)}`);
-      
+
       // Fecha límite sugerida: 45 días para auditoría
       const nextMonth = new Date();
       nextMonth.setDate(nextMonth.getDate() + 45);
       setDeadline(nextMonth.toISOString().split('T')[0]);
       setNotes('');
       setIsActive(true);
+
+      // Sugerir líderes operativos iniciales por defecto si existen
+      const defaultLeader =
+        teamMembers.find((m) => normalizeRole(m.role) === 'Supervisor') ||
+        teamMembers.find((m) => normalizeRole(m.role) === 'Gerente');
+      const defaultColab = teamMembers.find(
+        (m) =>
+          normalizeRole(m.role) === 'Colaborador' && m.id !== defaultLeader?.id
+      );
+
+      setLeadUserId(defaultLeader?.id || user?.id || '');
+      setSecondMemberId(defaultColab?.id || '');
+      setAdditionalMemberIds([]);
     }
   }, [existingProject?.id, initialClientId, isOpen]);
 
-  // Al cambiar la plantilla seleccionada en modo plantilla
-  const handleSelectTemplate = (templateId: string) => {
-    setSelectedTemplateId(templateId);
-    const tpl = templates.find((t) => t.id === templateId);
-    if (tpl) {
-      const clonedRubros = JSON.parse(JSON.stringify(tpl.rubros));
-      setTemplateRubros(clonedRubros);
+  // Al cambiar el servicio seleccionado en el Catálogo de Servicios
+  const handleSelectCatalogService = (serviceId: string) => {
+    setSelectedCatalogId(serviceId);
+    setCreationMode('catalog');
+    const srv = catalogServices.find((s) => s.id === serviceId);
+    if (srv) {
+      const clonedRubros = JSON.parse(JSON.stringify(srv.rubros));
+      setCatalogRubros(clonedRubros);
       const totalH = calculateTemplateTotalHours(clonedRubros);
       setTotalBudgetHours(totalH);
-      setName(`${tpl.name} ${new Date().getFullYear()}`);
+      setName(`${srv.name} ${new Date().getFullYear()}`);
     }
   };
 
   // Ajuste en vivo de horas estimadas de un rubro en la pre-alta
   const handleRubroHoursChange = (rubroNum: number, newHours: number) => {
     const validHours = Math.max(0, Number(newHours) || 0);
-    setTemplateRubros((prev) => {
+    setCatalogRubros((prev) => {
       const updated = prev.map((r) => {
         if (r.number !== rubroNum) return r;
-        const currentSum = r.activities.reduce((acc, a) => acc + (a.budgetedHours || 0), 0);
+        const currentSum = r.activities.reduce(
+          (acc, a) => acc + (a.budgetedHours || 0),
+          0
+        );
         const ratio = currentSum > 0 ? validHours / currentSum : 1;
         const updatedActs = r.activities.map((a) => ({
           ...a,
@@ -140,7 +202,7 @@ export function RayonerProjectModal({
     });
   };
 
-  // Si aún no había empresa seleccionada y aparece la primera en el catálogo, seleccionarla
+  // Si aún no había empresa seleccionada y aparece la primera, seleccionarla
   useEffect(() => {
     if (isOpen && !isEditing && !clientId && clients.length > 0) {
       setClientId(clients[0].id);
@@ -149,149 +211,223 @@ export function RayonerProjectModal({
 
   // Autogenerar código sugerido si cambia el nombre del proyecto
   const handleAutoGenerateCode = () => {
-    const selectedClient = clients.find(c => c.id === clientId);
-    const clientPrefix = selectedClient ? selectedClient.name.substring(0, 3).toUpperCase() : 'CLI';
+    const selectedClient = clients.find((c) => c.id === clientId);
+    const clientPrefix = selectedClient
+      ? selectedClient.name.substring(0, 3).toUpperCase()
+      : 'CLI';
     const words = name.trim().split(' ').filter(Boolean);
-    const namePrefix = words.length >= 2 
-      ? words.slice(0, 2).map(w => w[0].toUpperCase()).join('') 
-      : 'PRJ';
+    const namePrefix =
+      words.length >= 2
+        ? words.slice(0, 2).map((w) => w[0].toUpperCase()).join('')
+        : 'PRJ';
     const year = new Date().getFullYear();
     setCode(`${namePrefix}-${year}-${clientPrefix}`);
   };
 
-  if (!isOpen) return null;
+  // -------------------------------------------------------------
+  // Listas de Miembros Filtradas para el Paso 2
+  // -------------------------------------------------------------
+  // Socio Institucional (vinculado automáticamente)
+  const socioMember = useMemo(() => {
+    return (
+      teamMembers.find(
+        (m) =>
+          normalizeRole(m.role) === 'Socio' ||
+          (m.roleTitle || '').toLowerCase().includes('socio') ||
+          (m.email || '').toLowerCase().includes('socio.')
+      ) || null
+    );
+  }, [teamMembers]);
 
-  const handleSave = (e: React.FormEvent) => {
+  // Candidatos para Encargado del Servicio (Supervisores y Gerentes)
+  const eligibleLeaders = useMemo(() => {
+    return teamMembers.filter((m) => {
+      const r = normalizeRole(m.role);
+      const title = (m.roleTitle || '').toLowerCase();
+      const rawRole = (m.role || '').toLowerCase();
+      const isRH = r === 'RH' || rawRole.includes('rh') || title.includes('recursos');
+      const isTI = r === 'TI' || rawRole.includes('ti') || title.includes('tecnolog');
+      if (isRH || isTI) return false;
+
+      return (
+        r === 'Supervisor' ||
+        r === 'Gerente' ||
+        title.includes('supervisor') ||
+        title.includes('gerent') ||
+        title.includes('manager')
+      );
+    });
+  }, [teamMembers]);
+
+  // Candidatos para Segundo Colaborador y Adicionales (Operativos, excluye RH y TI)
+  const eligibleOperativeMembers = useMemo(() => {
+    return teamMembers.filter((m) => {
+      const r = normalizeRole(m.role);
+      const rawRole = (m.role || '').toLowerCase();
+      const title = (m.roleTitle || '').toLowerCase();
+      const isRH = r === 'RH' || rawRole.includes('rh') || title.includes('recursos');
+      const isTI = r === 'TI' || rawRole.includes('ti') || title.includes('tecnolog');
+      const isSocio = r === 'Socio' || rawRole.includes('socio');
+
+      return !isRH && !isTI && !isSocio;
+    });
+  }, [teamMembers]);
+
+  // Colaboradores operativos disponibles para segundo colaborador (excluye al líder elegido)
+  const secondMemberOptions = useMemo(() => {
+    return eligibleOperativeMembers.filter((m) => m.id !== leadUserId);
+  }, [eligibleOperativeMembers, leadUserId]);
+
+  // Colaboradores operativos disponibles para miembros adicionales
+  const additionalMemberOptions = useMemo(() => {
+    const selectedSet = new Set([leadUserId, secondMemberId, ...additionalMemberIds]);
+    return eligibleOperativeMembers.filter((m) => !selectedSet.has(m.id));
+  }, [eligibleOperativeMembers, leadUserId, secondMemberId, additionalMemberIds]);
+
+  const handleAddAdditionalMember = () => {
+    const nextAvailable = additionalMemberOptions[0];
+    if (nextAvailable) {
+      setAdditionalMemberIds((prev) => [...prev, nextAvailable.id]);
+    } else {
+      addToast('No hay más colaboradores operativos disponibles para asignar.', 'info');
+    }
+  };
+
+  const handleRemoveAdditionalMember = (indexToRemove: number) => {
+    setAdditionalMemberIds((prev) => prev.filter((_, idx) => idx !== indexToRemove));
+  };
+
+  const handleUpdateAdditionalMember = (indexToUpdate: number, newId: string) => {
+    setAdditionalMemberIds((prev) => {
+      const updated = [...prev];
+      updated[indexToUpdate] = newId;
+      return updated;
+    });
+  };
+
+  // -------------------------------------------------------------
+  // Navegación de Pasos
+  // -------------------------------------------------------------
+  const handleProceedToStep2 = (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!name.trim()) {
-      addToast('El nombre del proyecto es obligatorio', 'error');
+      addToast('El nombre del proyecto o servicio es obligatorio.', 'error');
       return;
     }
-
     if (!clientId) {
-      addToast('Debes seleccionar un cliente para este proyecto', 'error');
+      addToast('Debes seleccionar una empresa o cliente para este servicio.', 'error');
+      return;
+    }
+    if (!code.trim()) {
+      addToast('El código del proyecto es obligatorio.', 'error');
+      return;
+    }
+    if (!deadline) {
+      addToast('La fecha límite de entrega es obligatoria.', 'error');
       return;
     }
 
-    const currentUserId = user?.id || 'demo_gerente';
-    const currentUserName = user?.name 
-      ? `${user.name} ${user.lastName || ''}`.trim() 
-      : (user?.email || 'Gerente');
+    setCurrentStep(2);
+  };
 
-    // Regla de negocio 2: Encargado automático (el usuario creador)
-    const effectiveLeadId = isEditing && existingProject 
-      ? (existingProject.leadUserId || currentUserId) 
-      : currentUserId;
-    const effectiveLeadName = isEditing && existingProject 
-      ? (existingProject.leadUserName || currentUserName) 
-      : currentUserName;
+  if (!isOpen) return null;
 
-    // Regla directiva: Socio y Gerente acceden y supervisan por default (partnerId y managerId).
-    // assignedUserIds está reservado exclusivamente para los colaboradores y supervisores operativos asignados.
-    const socioMember = teamMembers.find((m) => normalizeRole(m.role) === 'Socio');
-    const partnerId = isEditing && existingProject
-      ? (existingProject.partnerId || socioMember?.id || '')
-      : (socioMember?.id || '');
+  // -------------------------------------------------------------
+  // Guardado Final (Paso 2 Confirmado)
+  // -------------------------------------------------------------
+  const handleFinalSave = (e: React.FormEvent) => {
+    e.preventDefault();
 
-    const eligibleOpIds = new Set(
-      teamMembers
-        .filter((m) => {
-          const r = normalizeRole(m.role);
-          const rawRole = (m.role || '').toLowerCase();
-          const title = (m.roleTitle || '').toLowerCase();
-          const email = (m.email || '').toLowerCase();
-          const name = (m.name || '').toLowerCase();
+    if (!leadUserId) {
+      addToast('Debes asignar un Encargado del Servicio (Supervisor o Gerente).', 'error');
+      return;
+    }
 
-          const isSocio =
-            r === 'Socio' ||
-            rawRole.includes('socio') ||
-            rawRole.includes('partner') ||
-            title.includes('socio') ||
-            title.includes('partner') ||
-            email.includes('socio.') ||
-            name.includes('socio');
+    if (!secondMemberId) {
+      addToast('Debes asignar al menos un Segundo Colaborador operativo.', 'error');
+      return;
+    }
 
-          const isGerente =
-            r === 'Gerente' ||
-            rawRole.includes('gerent') ||
-            rawRole.includes('manager') ||
-            title.includes('gerent') ||
-            title.includes('manager') ||
-            email.includes('gerente.') ||
-            name.includes('gerente');
+    const leadMember = teamMembers.find((m) => m.id === leadUserId);
+    const secondMember = teamMembers.find((m) => m.id === secondMemberId);
 
-          const isRH =
-            r === 'RH' ||
-            rawRole.includes('rh') ||
-            rawRole.includes('recursos') ||
-            title.includes('rh') ||
-            title.includes('recursos') ||
-            email.includes('rh.');
+    const leadName = leadMember
+      ? leadMember.name.trim()
+      : 'Encargado';
+    const secondName = secondMember
+      ? secondMember.name.trim()
+      : 'Colaborador';
 
-          const isTI =
-            r === 'TI' ||
-            rawRole.includes('ti') ||
-            rawRole.includes('tecnolog') ||
-            rawRole.includes('sistemas') ||
-            rawRole.includes('admin') ||
-            title.includes('ti') ||
-            title.includes('tecnolog') ||
-            title.includes('sistemas') ||
-            title.includes('admin') ||
-            email.includes('ti.');
-
-          return !isSocio && !isGerente && !isRH && !isTI;
-        })
-        .map((m) => m.id)
+    // Lista consolidada de participantes operativos asignados
+    const allAssignedIds = Array.from(
+      new Set(
+        [leadUserId, secondMemberId, ...additionalMemberIds].filter(Boolean)
+      )
     );
 
-    const baseAssignedIds = isEditing && existingProject?.assignedUserIds
-      ? existingProject.assignedUserIds.filter((id) => eligibleOpIds.has(id))
-      : [];
+    const plannedMinutes = Math.max(
+      0,
+      Math.round((Number(totalBudgetHours) || 0) * 60)
+    );
 
-    const finalAssignedUserIds = Array.from(new Set(baseAssignedIds));
-
-    const plannedMinutes = Math.max(0, Math.round((Number(totalBudgetHours) || 0) * 60));
+    const selectedCatalogItem = catalogServices.find((s) => s.id === selectedCatalogId);
+    const isUsingCatalog = !isEditing && creationMode === 'catalog';
 
     const projectPayload: Omit<Project, 'id'> = {
       clientId,
       name: name.trim(),
-      code: code.trim() || `PRJ-${Date.now()}`,
-      leadUserId: effectiveLeadId,
-      leadUserName: effectiveLeadName,
-      managerId: effectiveLeadId,
-      managerName: effectiveLeadName,
-      partnerId,
+      code: code.trim().toUpperCase() || `PRJ-${Date.now()}`,
+      leadUserId,
+      leadUserName: leadName,
+      managerId: leadUserId,
+      managerName: leadName,
+      partnerId: socioMember?.id || '',
       deadline,
       totalBudgetHours: Number((plannedMinutes / 60).toFixed(4)),
       plannedMinutes,
       notes: notes.trim(),
       isActive,
-      assignedUserIds: finalAssignedUserIds,
-      assignedToIds: finalAssignedUserIds,
-    };
-
-    const selectedTpl = templates.find((t) => t.id === selectedTemplateId);
-    const isUsingTemplate = !isEditing && creationMode === 'template';
-
-    const fullProjectPayload: Omit<Project, 'id'> = {
-      ...projectPayload,
-      templateId: isUsingTemplate ? selectedTemplateId : undefined,
-      templateName: isUsingTemplate ? (selectedTpl?.name || 'Auditoría de Estados Financieros') : undefined,
-      isFromTemplate: isUsingTemplate,
+      assignedUserIds: allAssignedIds,
+      assignedToIds: allAssignedIds,
+      templateId: isUsingCatalog ? selectedCatalogId : undefined,
+      templateName: isUsingCatalog ? selectedCatalogItem?.name : undefined,
+      isFromTemplate: isUsingCatalog,
     };
 
     if (isEditing && existingProject) {
-      updateProject(existingProject.id, fullProjectPayload);
-      addToast(`Proyecto "${name.trim()}" actualizado con éxito`, 'success');
-    } else if (isUsingTemplate && templateRubros.length > 0) {
-      const flatActivities: ServiceTemplateActivity[] = templateRubros.flatMap(r => r.activities);
-      addProjectWithActivities(fullProjectPayload, flatActivities);
-      addToast(`Servicio "${name.trim()}" creado desde plantilla oficial con ${flatActivities.length} actividades`, 'success');
+      updateProject(existingProject.id, projectPayload);
+      addToast(`Servicio "${name.trim()}" actualizado con éxito`, 'success');
+    } else if (isUsingCatalog && catalogRubros.length > 0) {
+      // Auto-asignación a todas las actividades generadas desde el Catálogo:
+      // - Todos los miembros quedan en assignedUserIds
+      // - Segundo Colaborador queda como el Responsable inicial por defecto
+      const flatActivities: ServiceTemplateActivity[] = catalogRubros
+        .flatMap((r) => r.activities)
+        .map((act) => {
+          // Si el perfil sugerido de la actividad es explícitamente Gerente y el líder es Gerente, puede quedar el líder;
+          // de lo contrario, el Segundo Colaborador toma la responsabilidad operativa de la actividad.
+          const isLeadLevel = act.perfilSugerido === 'Gerente';
+          const assignedLeadId = isLeadLevel ? leadUserId : secondMemberId;
+          const assignedLeadName = isLeadLevel ? leadName : secondName;
+
+          return {
+            ...act,
+            assignedUserIds: allAssignedIds,
+            leadUserId: assignedLeadId,
+            leadUserName: assignedLeadName,
+            status: 'pending',
+          } as ServiceTemplateActivity & { leadUserName: string };
+        });
+
+      addProjectWithActivities(projectPayload, flatActivities);
+      addToast(
+        `Servicio "${name.trim()}" creado desde el Catálogo de Servicios con ${flatActivities.length} actividades auto-asignadas.`,
+        'success'
+      );
     } else {
-      addProject(fullProjectPayload);
-      addToast(`Proyecto "${name.trim()}" creado con éxito`, 'success');
+      addProject(projectPayload);
+      addToast(`Servicio en blanco "${name.trim()}" creado con éxito.`, 'success');
     }
 
     onClose();
@@ -299,14 +435,17 @@ export function RayonerProjectModal({
 
   const handleDelete = () => {
     if (!existingProject) return;
-    const projectTasksCount = tasks.filter(t => t.projectId === existingProject.id).length;
-    const confirmMsg = projectTasksCount > 0
-      ? `¿Estás seguro de eliminar el proyecto "${existingProject.name}"? Se eliminarán también sus ${projectTasksCount} actividades asociadas.`
-      : `¿Estás seguro de eliminar el proyecto "${existingProject.name}"?`;
+    const projectTasksCount = tasks.filter(
+      (t) => t.projectId === existingProject.id
+    ).length;
+    const confirmMsg =
+      projectTasksCount > 0
+        ? `¿Estás seguro de eliminar el servicio "${existingProject.name}"? Se eliminarán también sus ${projectTasksCount} actividades asociadas.`
+        : `¿Estás seguro de eliminar el servicio "${existingProject.name}"?`;
 
     if (window.confirm(confirmMsg)) {
       deleteProject(existingProject.id);
-      addToast('Proyecto eliminado con éxito', 'info');
+      addToast('Servicio eliminado con éxito', 'info');
       onClose();
     }
   };
@@ -314,17 +453,30 @@ export function RayonerProjectModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-fade-in overflow-y-auto">
       <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden border border-slate-200 dark:border-slate-800 my-8 flex flex-col">
-        
-        {/* Cabecera del Modal (Diseño sobrio corporativo sin iconos decorativos en título) */}
+        {/* Cabecera del Modal con Navegación de Pasos */}
         <div className="px-6 py-4.5 bg-slate-50 dark:bg-slate-800/50 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
           <div>
-            <h3 className="font-bold text-slate-900 dark:text-white text-base tracking-tight">
-              {isEditing ? 'Editar Proyecto / Servicio' : 'Nuevo Proyecto / Servicio'}
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-blue-700 dark:text-blue-400">
+                {isEditing ? 'Gestión de Servicio' : 'Alta de Proyecto y Servicio'}
+              </span>
+              {!isEditing && (
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300">
+                  Paso {currentStep} de 2
+                </span>
+              )}
+            </div>
+            <h3 className="font-bold text-slate-900 dark:text-white text-base tracking-tight mt-0.5">
+              {currentStep === 1
+                ? isEditing
+                  ? 'Editar Parámetros del Servicio'
+                  : 'Paso 1: Catálogo de Servicios y Alcance'
+                : 'Paso 2: Equipo y Asignación Inicial'}
             </h3>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-              {isEditing 
-                ? 'Modifica el alcance operativo, fechas y horas estimadas del proyecto.' 
-                : 'Registra un nuevo proyecto o servicio para asignación de actividades y seguimiento de horas.'}
+              {currentStep === 1
+                ? 'Define la empresa, el tipo de servicio y las horas estimadas de ejecución.'
+                : 'Asigna al Encargado del Servicio y al Segundo Colaborador para auto-asignar las actividades.'}
             </p>
           </div>
 
@@ -336,103 +488,108 @@ export function RayonerProjectModal({
           </button>
         </div>
 
-        {/* Formulario */}
-        <form onSubmit={handleSave} className="p-6 space-y-5">
-          
-          {/* Selector de Modo de Creación: Desde Plantilla vs Personalizado */}
-          {!isEditing && (
-            <div className="space-y-3 p-3.5 bg-slate-50 dark:bg-slate-800/40 rounded-xl border border-slate-200 dark:border-slate-800">
-              <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider block">
-                Modalidad de Creación
-              </label>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setCreationMode('template');
-                    const initialTpl = templates.find((t) => t.id === AUDIT_MASTER_TEMPLATE_ID) || templates[0];
-                    if (initialTpl) {
-                      setSelectedTemplateId(initialTpl.id);
-                      setTemplateRubros(JSON.parse(JSON.stringify(initialTpl.rubros)));
-                      setTotalBudgetHours(initialTpl.totalBudgetHours || 226.2);
-                      setName(`${initialTpl.name} ${new Date().getFullYear()}`);
-                    }
-                  }}
-                  className={`flex items-start gap-2.5 p-3 rounded-lg border text-left transition-all cursor-pointer ${
-                    creationMode === 'template'
-                      ? 'bg-blue-50/80 border-blue-600 text-blue-900 dark:bg-blue-950/40 dark:border-blue-500 dark:text-blue-200 shadow-xs ring-1 ring-blue-600/30'
-                      : 'bg-white dark:bg-slate-800/80 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:border-slate-300'
-                  }`}
-                >
-                  <Layers className={`w-4 h-4 mt-0.5 shrink-0 ${creationMode === 'template' ? 'text-blue-700 dark:text-blue-400' : 'text-slate-400'}`} />
+        {/* ------------------------------------------------------------- */}
+        {/* PASO 1: DEFINICIÓN DEL SERVICIO Y CATÁLOGO */}
+        {/* ------------------------------------------------------------- */}
+        {currentStep === 1 && (
+          <form onSubmit={handleProceedToStep2} className="p-6 space-y-5">
+            {/* Modalidad: Catálogo de Servicios vs Nuevo Servicio en Blanco */}
+            {!isEditing && (
+              <div className="space-y-3 p-4 bg-slate-50 dark:bg-slate-800/40 rounded-xl border border-slate-200 dark:border-slate-800">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                   <div>
-                    <div className="text-xs font-bold flex items-center gap-1.5">
-                      <span>Desde Plantilla de Servicio</span>
-                      <span className="text-[10px] font-semibold bg-blue-100 text-blue-800 dark:bg-blue-900/60 dark:text-blue-300 px-1.5 py-0.2 rounded">Recomendado</span>
-                    </div>
-                    <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 leading-snug">
-                      19 rubros y 156 procedimientos oficiales preconfigurados (226.2h base).
-                    </p>
-                  </div>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    setCreationMode('blank');
-                    setTotalBudgetHours(60);
-                  }}
-                  className={`flex items-start gap-2.5 p-3 rounded-lg border text-left transition-all cursor-pointer ${
-                    creationMode === 'blank'
-                      ? 'bg-blue-50/80 border-blue-600 text-blue-900 dark:bg-blue-950/40 dark:border-blue-500 dark:text-blue-200 shadow-xs ring-1 ring-blue-600/30'
-                      : 'bg-white dark:bg-slate-800/80 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:border-slate-300'
-                  }`}
-                >
-                  <FileText className={`w-4 h-4 mt-0.5 shrink-0 ${creationMode === 'blank' ? 'text-blue-700 dark:text-blue-400' : 'text-slate-400'}`} />
-                  <div>
-                    <div className="text-xs font-bold">Servicio / Proyecto Personalizado</div>
-                    <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 leading-snug">
-                      Creación en blanco para definir actividades manuales desde cero.
-                    </p>
-                  </div>
-                </button>
-              </div>
-
-              {/* Selector de Plantilla específica si hay varias */}
-              {creationMode === 'template' && (
-                <div className="pt-2 border-t border-slate-200/80 dark:border-slate-700/80 space-y-2">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5">
-                    <label className="text-[11px] font-semibold text-slate-700 dark:text-slate-300">
-                      Plantilla Maestra Seleccionada:
+                    <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider block">
+                      Catálogo de Servicios de la Firma
                     </label>
-                    {templates.length > 1 && (
-                      <select
-                        value={selectedTemplateId}
-                        onChange={(e) => handleSelectTemplate(e.target.value)}
-                        className="text-xs font-medium bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg px-2 py-1 text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-blue-600"
-                      >
-                        {templates.map((tpl) => (
-                          <option key={tpl.id} value={tpl.id}>
-                            {tpl.name} ({tpl.totalBudgetHours}h)
-                          </option>
-                        ))}
-                      </select>
-                    )}
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-snug">
+                      Selecciona un servicio institucional preconfigurado o captura un nuevo servicio desde cero.
+                    </p>
                   </div>
 
-                  {/* Acordeón de Estimación Inicial de Horas por Rubro */}
-                  <div className="bg-white dark:bg-slate-800/90 rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden">
+                  {/* Opción Lateral: Nuevo Servicio en Blanco */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCreationMode('blank');
+                      setTotalBudgetHours(60);
+                      setName('');
+                    }}
+                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all cursor-pointer shrink-0 ${
+                      creationMode === 'blank'
+                        ? 'bg-blue-700 border-blue-700 text-white shadow-xs'
+                        : 'border-blue-300 text-blue-800 hover:bg-blue-50 dark:border-blue-700 dark:text-blue-300 dark:hover:bg-blue-950/40 bg-white dark:bg-slate-800'
+                    }`}
+                  >
+                    <FileText className="w-3.5 h-3.5" />
+                    <span>+ Nuevo Servicio en Blanco</span>
+                  </button>
+                </div>
+
+                {/* Tarjetas del Catálogo de Servicios */}
+                {creationMode === 'catalog' && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+                    {catalogServices.map((srv) => {
+                      const isSelected = selectedCatalogId === srv.id;
+                      return (
+                        <div
+                          key={srv.id}
+                          onClick={() => handleSelectCatalogService(srv.id)}
+                          className={`p-3 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
+                            isSelected
+                              ? 'bg-blue-50/80 border-blue-600 dark:bg-blue-950/40 dark:border-blue-500 shadow-xs ring-1 ring-blue-600/30'
+                              : 'bg-white dark:bg-slate-800/80 border-slate-200 dark:border-slate-700 hover:border-blue-300 dark:hover:border-slate-600'
+                          }`}
+                        >
+                          <div>
+                            <div className="flex items-start justify-between gap-1.5">
+                              <span
+                                className={`text-xs font-bold leading-tight ${
+                                  isSelected
+                                    ? 'text-blue-950 dark:text-blue-200'
+                                    : 'text-slate-800 dark:text-slate-200'
+                                }`}
+                              >
+                                {srv.name}
+                              </span>
+                              {srv.id === SERVICE_AUDITORIA_ESTADOS_FINANCIEROS_2026 && (
+                                <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-blue-100 text-blue-800 dark:bg-blue-900/60 dark:text-blue-300 shrink-0">
+                                  Oficial
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 line-clamp-2 leading-snug">
+                              {srv.description}
+                            </p>
+                          </div>
+
+                          <div className="flex items-center justify-between text-[10px] font-semibold text-slate-500 dark:text-slate-400 mt-2.5 pt-2 border-t border-slate-100 dark:border-slate-700/60">
+                            <span>
+                              {srv.rubros?.length || 0} rubros • {srv.totalActivities || 0} actividades
+                            </span>
+                            <span className="text-blue-700 dark:text-blue-400 font-bold">
+                              ~{srv.totalBudgetHours}h base
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* Acordeón de estimación inicial de horas para catálogo */}
+                {creationMode === 'catalog' && catalogRubros.length > 0 && (
+                  <div className="bg-white dark:bg-slate-800/90 rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden mt-2">
                     <button
                       type="button"
                       onClick={() => setShowRubrosEstimation(!showRubrosEstimation)}
                       className="w-full px-3 py-2 flex items-center justify-between text-left hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors cursor-pointer"
                     >
                       <div className="flex items-center gap-2">
-                        <span className="text-xs font-bold text-blue-900 dark:text-sky-300">
-                          Estimación Inicial de Horas por Rubro
+                        <span className="text-xs font-bold text-blue-900 dark:text-blue-300">
+                          Horas Estimadas por Rubro ({catalogRubros.length} rubros)
                         </span>
-                        <span className="text-[10px] bg-blue-100 text-blue-800 dark:bg-blue-900/60 dark:text-sky-300 font-bold px-2 py-0.5 rounded-full">
-                          {templateRubros.length} Rubros • {totalBudgetHours.toFixed(1)}h
+                        <span className="text-[10px] bg-blue-100 text-blue-800 dark:bg-blue-900/60 dark:text-blue-300 font-bold px-2 py-0.5 rounded-full">
+                          {totalBudgetHours.toFixed(1)}h totales
                         </span>
                       </div>
                       <div className="flex items-center gap-1 text-[11px] text-slate-500 font-medium">
@@ -446,21 +603,29 @@ export function RayonerProjectModal({
                     </button>
 
                     {showRubrosEstimation && (
-                      <div className="p-3 border-t border-slate-200 dark:border-slate-700 max-h-64 overflow-y-auto space-y-2 bg-slate-50/50 dark:bg-slate-900/40">
-                        <p className="text-[11px] text-slate-500 dark:text-slate-400 mb-2">
-                          Puedes ajustar las horas estimadas de cada rubro para esta empresa en particular. Las horas de sus procedimientos se recalibrarán automáticamente:
+                      <div className="p-3 border-t border-slate-200 dark:border-slate-700 max-h-56 overflow-y-auto space-y-2 bg-slate-50/50 dark:bg-slate-900/40">
+                        <p className="text-[11px] text-slate-500 dark:text-slate-400 mb-1">
+                          Ajusta las horas de cada rubro para esta empresa. Los procedimientos internos se recalibrarán en proporción:
                         </p>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                          {templateRubros.map((rubro) => {
-                            const rubroHours = rubro.activities.reduce((acc, a) => acc + (a.budgetedHours || 0), 0);
+                          {catalogRubros.map((rubro) => {
+                            const rubroHours = rubro.activities.reduce(
+                              (acc, a) => acc + (a.budgetedHours || 0),
+                              0
+                            );
                             return (
                               <div
                                 key={rubro.number}
                                 className="flex items-center justify-between p-2 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs gap-2"
                               >
                                 <div className="min-w-0 flex-1">
-                                  <div className="font-semibold text-slate-800 dark:text-slate-200 truncate" title={rubro.name}>
-                                    {rubro.number === 0 ? '0. Planeación General y Cierre' : `${rubro.number}. ${rubro.name}`}
+                                  <div
+                                    className="font-semibold text-slate-800 dark:text-slate-200 truncate"
+                                    title={rubro.name}
+                                  >
+                                    {rubro.number === 0
+                                      ? '0. Planeación General y Cierre'
+                                      : `${rubro.number}. ${rubro.name}`}
                                   </div>
                                   <div className="text-[10px] text-slate-400">
                                     {rubro.activities.length} actividades
@@ -472,7 +637,12 @@ export function RayonerProjectModal({
                                     min="0"
                                     step="0.5"
                                     value={rubroHours}
-                                    onChange={(e) => handleRubroHoursChange(rubro.number, parseFloat(e.target.value) || 0)}
+                                    onChange={(e) =>
+                                      handleRubroHoursChange(
+                                        rubro.number,
+                                        parseFloat(e.target.value) || 0
+                                      )
+                                    }
                                     className="w-16 px-2 py-1 text-right text-xs font-bold border border-slate-300 dark:border-slate-600 rounded bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-1 focus:ring-blue-600"
                                   />
                                   <span className="text-[11px] text-slate-500 font-bold">h</span>
@@ -484,206 +654,390 @@ export function RayonerProjectModal({
                       </div>
                     )}
                   </div>
-                </div>
-              )}
-            </div>
-          )}
-          
-          {/* Fila 1: Cliente y Código */}
-          <div className="grid grid-cols-1 sm:grid-cols-12 gap-4">
-            
-            {/* Empresa / Cliente Asignado */}
-            <div className="sm:col-span-7">
-              <div className="flex items-center justify-between gap-2 mb-1.5">
-                <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                  Empresa / Cliente Asignado *
-                </label>
-                {canCreateCompany && (
-                  <button
-                    type="button"
-                    onClick={() => setIsQuickCompanyOpen(true)}
-                    className="inline-flex items-center gap-1 text-[11px] font-semibold text-blue-700 dark:text-sky-400 hover:underline cursor-pointer"
-                  >
-                    <span>+ Registrar empresa</span>
-                  </button>
                 )}
               </div>
-              {clients.length === 0 ? (
-                <div className="w-full px-3.5 py-2 text-xs bg-slate-50 dark:bg-slate-800/40 border border-dashed border-slate-300 dark:border-slate-700 rounded-xl text-slate-500 flex items-center justify-between gap-2">
-                  <span>No hay empresas registradas aún.</span>
+            )}
+
+            {/* Fila 1: Empresa y Código */}
+            <div className="grid grid-cols-1 sm:grid-cols-12 gap-4">
+              {/* Empresa / Cliente Asignado */}
+              <div className="sm:col-span-7">
+                <div className="flex items-center justify-between gap-2 mb-1.5">
+                  <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                    Empresa / Cliente Asignado *
+                  </label>
                   {canCreateCompany && (
                     <button
                       type="button"
                       onClick={() => setIsQuickCompanyOpen(true)}
-                      className="inline-flex items-center text-xs font-semibold text-blue-700 dark:text-sky-400 hover:underline cursor-pointer shrink-0"
+                      className="inline-flex items-center gap-1 text-[11px] font-semibold text-blue-700 dark:text-blue-400 hover:underline cursor-pointer"
                     >
-                      + Registrar empresa
+                      <span>+ Registrar empresa</span>
                     </button>
                   )}
                 </div>
-              ) : (
-                <select
-                  value={clientId}
-                  onChange={e => setClientId(e.target.value)}
+                {clients.length === 0 ? (
+                  <div className="w-full px-3.5 py-2 text-xs bg-slate-50 dark:bg-slate-800/40 border border-dashed border-slate-300 dark:border-slate-700 rounded-xl text-slate-500 flex items-center justify-between gap-2">
+                    <span>No hay empresas registradas aún.</span>
+                    {canCreateCompany && (
+                      <button
+                        type="button"
+                        onClick={() => setIsQuickCompanyOpen(true)}
+                        className="inline-flex items-center text-xs font-semibold text-blue-700 dark:text-blue-400 hover:underline cursor-pointer shrink-0"
+                      >
+                        + Registrar empresa
+                      </button>
+                    )}
+                  </div>
+                ) : (
+                  <select
+                    value={clientId}
+                    onChange={(e) => setClientId(e.target.value)}
+                    required
+                    className="w-full px-3.5 py-2 text-xs bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-xl font-medium text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-blue-600/20 focus:border-blue-700 outline-none"
+                  >
+                    <option value="">-- Seleccionar empresa --</option>
+                    {clients.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name} {c.code ? `(${c.code})` : c.taxId ? `(${c.taxId})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+
+              {/* Código del Proyecto */}
+              <div className="sm:col-span-5">
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                    Código del Proyecto *
+                  </label>
+                  <button
+                    type="button"
+                    onClick={handleAutoGenerateCode}
+                    className="text-[10px] font-semibold text-blue-700 dark:text-blue-400 hover:underline flex items-center cursor-pointer"
+                  >
+                    <Sparkles className="w-3 h-3 mr-0.5" />
+                    Sugerir
+                  </button>
+                </div>
+                <input
+                  type="text"
                   required
-                  className="w-full px-3.5 py-2 text-xs bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-xl font-medium text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-blue-600/20 focus:border-blue-700 outline-none"
-                >
-                  <option value="">-- Seleccionar empresa --</option>
-                  {clients.map(c => (
-                    <option key={c.id} value={c.id}>
-                      {c.name} {c.code ? `(${c.code})` : c.taxId ? `(${c.taxId})` : ''}
-                    </option>
-                  ))}
-                </select>
-              )}
+                  placeholder="AUD-2026-01"
+                  value={code}
+                  onChange={(e) => setCode(e.target.value.toUpperCase())}
+                  className="w-full px-3.5 py-2 text-xs bg-white dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl font-sans font-medium tabular-nums text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-blue-600/20 focus:border-blue-700 outline-none"
+                />
+              </div>
             </div>
 
-            {/* Código del Proyecto */}
-            <div className="sm:col-span-5">
-              <div className="flex items-center justify-between mb-1.5">
-                <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                  Código del Proyecto *
-                </label>
-                <button
-                  type="button"
-                  onClick={handleAutoGenerateCode}
-                  className="text-[10px] font-semibold text-blue-700 dark:text-sky-400 hover:underline flex items-center cursor-pointer"
-                >
-                  <Sparkles className="w-3 h-3 mr-0.5" />
-                  Sugerir
-                </button>
-              </div>
+            {/* Fila 2: Nombre del Servicio */}
+            <div>
+              <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block mb-1.5">
+                Nombre del Proyecto o Servicio *
+              </label>
               <input
                 type="text"
                 required
-                placeholder="AUD-2026-01"
-                value={code}
-                onChange={e => setCode(e.target.value.toUpperCase())}
-                className="w-full px-3.5 py-2 text-xs bg-white dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl font-sans font-medium tabular-nums text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-blue-600/20 focus:border-blue-700 outline-none"
+                placeholder="Ej. Auditoría de Estados Financieros 2026 / Dictamen Fiscal"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className="w-full px-3.5 py-2.5 text-xs bg-white dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl font-medium text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:ring-2 focus:ring-blue-600/20 focus:border-blue-700 outline-none"
               />
             </div>
 
-          </div>
+            {/* Fila 3: Fecha Límite y Horas Presupuestadas */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block mb-1.5">
+                  Fecha Límite / Entrega *
+                </label>
+                <input
+                  type="date"
+                  required
+                  value={deadline}
+                  onChange={(e) => setDeadline(e.target.value)}
+                  className="w-full px-3.5 py-2 text-xs bg-white dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl font-medium text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-blue-600/20 focus:border-blue-700 outline-none"
+                />
+              </div>
 
-          {/* Fila 2: Nombre del Proyecto */}
-          <div>
-            <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block mb-1.5">
-              Nombre del Proyecto o Servicio *
-            </label>
-            <input
-              type="text"
-              required
-              placeholder="Ej. Auditoría Fiscal Anual 2026 / Dictamen SAT"
-              value={name}
-              onChange={e => setName(e.target.value)}
-              className="w-full px-3.5 py-2.5 text-xs bg-white dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl font-medium text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:ring-2 focus:ring-blue-600/20 focus:border-blue-700 outline-none"
-            />
-          </div>
-
-          {/* Fila 3: Fecha Límite */}
-          <div>
-            <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block mb-1.5">
-              Fecha Límite / Entrega *
-            </label>
-            <input
-              type="date"
-              required
-              value={deadline}
-              onChange={e => setDeadline(e.target.value)}
-              className="w-full px-3.5 py-2 text-xs bg-white dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl font-medium text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-blue-600/20 focus:border-blue-700 outline-none"
-            />
-          </div>
-
-          {/* Fila 4: Control Operativo de Horas Estimadas (Sin Tarifas ni Costos) */}
-          <div className="bg-slate-50 dark:bg-slate-800/40 p-4 rounded-xl border border-slate-200 dark:border-slate-800 space-y-3">
-            <div>
-              <span className="text-xs font-bold text-slate-800 dark:text-slate-100 uppercase tracking-wider block">
-                Horas Estimadas / Presupuestadas
-              </span>
-              <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-                Bolsa total de horas estimadas para la ejecución y seguimiento operativo del proyecto o servicio.
-              </p>
+              <div>
+                <TimeInputSexagesimal
+                  label="Total de Horas Estimadas *"
+                  totalHours={totalBudgetHours}
+                  onChange={(newH) => setTotalBudgetHours(newH)}
+                />
+              </div>
             </div>
 
-            <div className="max-w-xs" data-tour="project-budget-input">
-              <TimeInputSexagesimal
-                label="Total de Horas Estimadas"
-                totalHours={totalBudgetHours}
-                onChange={(newH) => setTotalBudgetHours(newH)}
+            {/* Fila 4: Notas */}
+            <div>
+              <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block mb-1.5">
+                Notas u Observaciones del Proyecto
+              </label>
+              <textarea
+                rows={2}
+                placeholder="Alcance operativo, requerimientos técnicos o instrucciones al equipo..."
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                className="w-full px-3.5 py-2 text-xs bg-white dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:ring-2 focus:ring-blue-600/20 focus:border-blue-700 outline-none resize-none"
               />
             </div>
-          </div>
 
-          {/* Fila 5: Notas y Observaciones */}
-          <div>
-            <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block mb-1.5">
-              Notas u Observaciones del Proyecto
-            </label>
-            <textarea
-              rows={2}
-              placeholder="Instrucciones especiales para el equipo, alcance operativo o requerimientos técnicos..."
-              value={notes}
-              onChange={e => setNotes(e.target.value)}
-              className="w-full px-3.5 py-2 text-xs bg-white dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:ring-2 focus:ring-blue-600/20 focus:border-blue-700 outline-none resize-none"
-            />
-          </div>
-
-          {/* Fila 6: Estado Activo / Inactivo */}
-          <div className="p-3 bg-slate-50 dark:bg-slate-800/40 rounded-xl border border-slate-200 dark:border-slate-800 flex items-center justify-between">
-            <div>
-              <span className="text-xs font-bold text-slate-800 dark:text-slate-100 block">Proyecto Activo</span>
-              <span className="text-[11px] text-slate-500 dark:text-slate-400">
-                Los colaboradores solo pueden registrar tiempo en proyectos activos.
-              </span>
-            </div>
-            <button
-              type="button"
-              onClick={() => setIsActive(!isActive)}
-              className={`w-11 h-6 flex items-center rounded-full p-1 transition-colors duration-200 cursor-pointer ${
-                isActive ? 'bg-blue-700' : 'bg-slate-300 dark:bg-slate-700'
-              }`}
-            >
-              <div
-                className={`bg-white w-4 h-4 rounded-full shadow-md transform transition-transform duration-200 ${
-                  isActive ? 'translate-x-5' : 'translate-x-0'
+            {/* Fila 5: Estado Activo / Inactivo */}
+            <div className="p-3 bg-slate-50 dark:bg-slate-800/40 rounded-xl border border-slate-200 dark:border-slate-800 flex items-center justify-between">
+              <div>
+                <span className="text-xs font-bold text-slate-800 dark:text-slate-100 block">
+                  Proyecto Activo
+                </span>
+                <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                  Solo se puede registrar tiempo en proyectos activos.
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsActive(!isActive)}
+                className={`w-11 h-6 flex items-center rounded-full p-1 transition-colors duration-200 cursor-pointer ${
+                  isActive ? 'bg-blue-700' : 'bg-slate-300 dark:bg-slate-700'
                 }`}
-              />
-            </button>
-          </div>
-
-          {/* Botones de Acción */}
-          <div className="flex items-center justify-between pt-4 border-t border-slate-100 dark:border-slate-800">
-            {isEditing ? (
-              <button
-                type="button"
-                onClick={handleDelete}
-                className="flex items-center text-xs font-semibold text-rose-600 hover:text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-950/30 px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
               >
-                <Trash2 className="w-3.5 h-3.5 mr-1" />
-                Eliminar Proyecto
+                <div
+                  className={`bg-white w-4 h-4 rounded-full shadow-md transform transition-transform duration-200 ${
+                    isActive ? 'translate-x-5' : 'translate-x-0'
+                  }`}
+                />
               </button>
-            ) : <span />}
+            </div>
 
-            <div className="flex items-center space-x-2">
-              <button
-                type="button"
-                onClick={onClose}
-                className="px-4 py-2 text-xs font-semibold text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700 rounded-lg transition-colors cursor-pointer"
-              >
-                Cancelar
-              </button>
+            {/* Botones de Navegación del Paso 1 */}
+            <div className="flex items-center justify-between pt-4 border-t border-slate-100 dark:border-slate-800">
+              {isEditing ? (
+                <button
+                  type="button"
+                  onClick={handleDelete}
+                  className="flex items-center text-xs font-semibold text-rose-600 hover:text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-950/30 px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
+                >
+                  <Trash2 className="w-3.5 h-3.5 mr-1" />
+                  Eliminar Proyecto
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="px-4 py-2 text-xs font-semibold text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700 rounded-lg transition-colors cursor-pointer"
+                >
+                  Cancelar
+                </button>
+              )}
+
               <button
                 type="submit"
-                className="flex items-center px-4 py-2 bg-blue-700 hover:bg-blue-800 text-white text-xs font-semibold rounded-lg shadow-sm transition-all cursor-pointer"
+                className="flex items-center px-5 py-2.5 bg-blue-700 hover:bg-blue-800 text-white text-xs font-semibold rounded-xl shadow-sm transition-all cursor-pointer gap-1.5"
               >
-                <Check className="w-3.5 h-3.5 mr-1.5" />
-                {isEditing ? 'Guardar Cambios' : 'Crear Proyecto'}
+                <span>Continuar a Asignación de Equipo</span>
+                <ArrowRight className="w-3.5 h-3.5" />
               </button>
             </div>
-          </div>
+          </form>
+        )}
 
-        </form>
+        {/* ------------------------------------------------------------- */}
+        {/* PASO 2: EQUIPO Y ASIGNACIÓN INICIAL */}
+        {/* ------------------------------------------------------------- */}
+        {currentStep === 2 && (
+          <form onSubmit={handleFinalSave} className="p-6 space-y-5">
+            {/* Tarjeta de Resumen del Servicio */}
+            <div className="flex items-center justify-between p-3.5 bg-blue-50/70 dark:bg-blue-950/30 border border-blue-200/80 dark:border-blue-900/50 rounded-xl">
+              <div>
+                <span className="text-[11px] font-bold uppercase tracking-wider text-blue-700 dark:text-blue-400">
+                  {code} • {name}
+                </span>
+                <p className="text-xs text-slate-600 dark:text-slate-300 mt-0.5">
+                  {creationMode === 'catalog'
+                    ? `${catalogRubros.length} rubros • ${catalogRubros.reduce((acc, r) => acc + r.activities.length, 0)} actividades de catálogo`
+                    : 'Servicio en blanco (0 actividades iniciales)'}{' '}
+                  • Entrega: {deadline}
+                </p>
+              </div>
+              <span className="text-xs font-bold text-blue-800 dark:text-blue-300 px-2.5 py-1 bg-white dark:bg-slate-800 border border-blue-200 dark:border-blue-800 rounded-lg">
+                {totalBudgetHours}h estimadas
+              </span>
+            </div>
 
+            {/* 1. Socio Institucional (Automático) */}
+            <div className="p-3.5 bg-slate-50 dark:bg-slate-800/40 rounded-xl border border-slate-200 dark:border-slate-800 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-full bg-blue-100 dark:bg-blue-950/60 text-blue-800 dark:text-blue-300 font-bold text-xs flex items-center justify-center border border-blue-200 dark:border-blue-900">
+                  SP
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-slate-900 dark:text-white">
+                      {socioMember ? socioMember.name : 'Socio Prueba (Institucional)'}
+                    </span>
+                    <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300">
+                      <ShieldCheck className="w-3 h-3" />
+                      Acceso Directivo por Defecto
+                    </span>
+                  </div>
+                  <span className="text-[11px] text-slate-500 dark:text-slate-400 block mt-0.5">
+                    {socioMember?.email || 'socio.prueba@russellbedford.mx'} • Supervisión ejecutiva y firma
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* 2. Encargado del Servicio (Obligatorio) */}
+            <div className="p-4 bg-white dark:bg-slate-800/80 rounded-xl border border-slate-200 dark:border-slate-700 space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                  <UserCheck className="w-4 h-4 text-blue-700 dark:text-blue-400" />
+                  <span>Encargado del Servicio * (Obligatorio)</span>
+                </label>
+                <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
+                  Supervisor o Gerente
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-snug">
+                Líder técnico responsable de coordinar el encargo, supervisar papeles de trabajo y validar avances.
+              </p>
+              <select
+                value={leadUserId}
+                onChange={(e) => setLeadUserId(e.target.value)}
+                required
+                className="w-full px-3.5 py-2 text-xs bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl font-medium text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-blue-600/20 focus:border-blue-700 outline-none"
+              >
+                <option value="">-- Seleccionar Encargado del Servicio --</option>
+                {eligibleLeaders.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.name} ({m.roleTitle || m.role}) • {m.email}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* 3. Segundo Colaborador (Obligatorio - mínimo 1) */}
+            <div className="p-4 bg-white dark:bg-slate-800/80 rounded-xl border border-slate-200 dark:border-slate-700 space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                  <Users className="w-4 h-4 text-blue-700 dark:text-blue-400" />
+                  <span>Segundo Colaborador * (Obligatorio - mínimo 1)</span>
+                </label>
+                <span className="text-[10px] font-bold text-blue-700 dark:text-blue-400 uppercase tracking-wider">
+                  Responsable Inicial de Actividades
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-snug">
+                Colaborador operativo que ejecutará los procedimientos sustantivos y quedará como Responsable por defecto de las actividades generadas.
+              </p>
+              <select
+                value={secondMemberId}
+                onChange={(e) => setSecondMemberId(e.target.value)}
+                required
+                className="w-full px-3.5 py-2 text-xs bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl font-medium text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-blue-600/20 focus:border-blue-700 outline-none"
+              >
+                <option value="">-- Seleccionar Segundo Colaborador --</option>
+                {secondMemberOptions.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.name} ({m.roleTitle || m.role}) • {m.email}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* 4. Colaboradores Adicionales (Opcional) */}
+            <div className="space-y-2.5">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                  Colaboradores Adicionales (Opcional)
+                </label>
+                <button
+                  type="button"
+                  onClick={handleAddAdditionalMember}
+                  className="inline-flex items-center gap-1 text-xs font-semibold text-blue-700 dark:text-blue-400 hover:underline cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>+ Añadir otro colaborador</span>
+                </button>
+              </div>
+
+              {additionalMemberIds.length === 0 ? (
+                <div className="p-3 text-center text-xs text-slate-400 border border-dashed border-slate-200 dark:border-slate-800 rounded-xl">
+                  No se han agregado colaboradores adicionales. Puedes sumar más integrantes según el tamaño del encargo.
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {additionalMemberIds.map((memberId, idx) => {
+                    return (
+                      <div
+                        key={idx}
+                        className="flex items-center gap-2 p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60"
+                      >
+                        <select
+                          value={memberId}
+                          onChange={(e) => handleUpdateAdditionalMember(idx, e.target.value)}
+                          className="flex-1 px-3 py-1.5 text-xs bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-800 dark:text-slate-100 outline-none focus:border-blue-700"
+                        >
+                          <option value="">-- Seleccionar colaborador --</option>
+                          {eligibleOperativeMembers
+                            .filter(
+                              (m) =>
+                                m.id === memberId ||
+                                (m.id !== leadUserId &&
+                                  m.id !== secondMemberId &&
+                                  !additionalMemberIds.includes(m.id))
+                            )
+                            .map((m) => (
+                              <option key={m.id} value={m.id}>
+                                {m.name} ({m.roleTitle || m.role}) • {m.email}
+                              </option>
+                            ))}
+                        </select>
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveAdditionalMember(idx)}
+                          className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg transition-colors cursor-pointer"
+                          title="Remover de la cuadrilla"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* Aviso de Auto-Asignación */}
+            <div className="p-3 bg-blue-50/60 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900/60 rounded-xl text-xs text-blue-900 dark:text-blue-200 flex items-start gap-2.5">
+              <ShieldCheck className="w-4 h-4 text-blue-700 dark:text-blue-400 shrink-0 mt-0.5" />
+              <span className="leading-snug">
+                Al confirmar, el sistema vinculará a los participantes seleccionados en <strong>todas las actividades generadas</strong> del servicio y establecerá al Segundo Colaborador como el <strong>Responsable</strong> inicial, pudiendo reasignar actividades individualmente en cualquier momento.
+              </span>
+            </div>
+
+            {/* Botones de Navegación del Paso 2 */}
+            <div className="flex items-center justify-between pt-4 border-t border-slate-100 dark:border-slate-800">
+              <button
+                type="button"
+                onClick={() => setCurrentStep(1)}
+                className="flex items-center px-4 py-2 text-xs font-semibold text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700 rounded-lg transition-colors cursor-pointer gap-1.5"
+              >
+                <ArrowLeft className="w-3.5 h-3.5" />
+                <span>Volver al Paso 1</span>
+              </button>
+
+              <button
+                type="submit"
+                className="flex items-center px-5 py-2.5 bg-blue-700 hover:bg-blue-800 text-white text-xs font-semibold rounded-xl shadow-sm transition-all cursor-pointer gap-1.5"
+              >
+                <Check className="w-4 h-4 stroke-[2.5]" />
+                <span>{isEditing ? 'Guardar Cambios del Servicio' : 'Crear Servicio y Asignar Actividades'}</span>
+              </button>
+            </div>
+          </form>
+        )}
       </div>
 
       {/* Acceso Rápido Inline: Registrar nueva empresa sin salir del modal de proyecto */}

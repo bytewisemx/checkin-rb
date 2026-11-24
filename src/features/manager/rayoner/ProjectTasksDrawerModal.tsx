@@ -172,7 +172,7 @@ export function ProjectTasksDrawerModal({
                         </span>
                       )}
                       <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-md bg-blue-50 text-blue-800 border border-blue-200 dark:bg-blue-950/60 dark:text-sky-300 dark:border-blue-900">
-                        Encargado: {leadDisplayName}
+                        Responsable: {leadDisplayName}
                       </span>
                     </div>
 
@@ -190,10 +190,10 @@ export function ProjectTasksDrawerModal({
                       </span>
                     </div>
 
-                    {/* Selector rápido para reasignar encargado si hay múltiples participantes */}
+                    {/* Selector rápido para reasignar responsable si hay múltiples participantes */}
                     {assignedMembers.length > 1 && (
                       <div className="flex items-center gap-2 mt-2 pt-1 border-t border-slate-100 dark:border-slate-800">
-                        <span className="text-[10px] font-medium text-slate-400">Reasignar encargado:</span>
+                        <span className="text-[10px] font-medium text-slate-400">Responsable de Actividad:</span>
                         <select
                           value={effectiveLeadId}
                           onChange={(e) => handleReassignLead(e.target.value)}

@@ -7,6 +7,7 @@ import {
   serverTimestamp,
   setDoc,
   where,
+  writeBatch,
 } from 'firebase/firestore';
 import { auth, db, isFirebaseConfigured } from './firebase';
 import { normalizeRole, type LegacyOrCurrentRole } from './rbac';
@@ -18,7 +19,7 @@ import {
   unregisterActiveListener,
 } from './firestoreTelemetry';
 import { resolveUserIdentityKeys, type UserIdentityMatcher } from './taskService';
-import type { Project } from '../types/rayoner';
+import type { Project, TaskNode } from '../types/rayoner';
 
 export interface ProjectScopeIdentity extends UserIdentityMatcher {
   teamIds?: string[];
@@ -151,6 +152,166 @@ export async function saveProjectToFirestore(
     return { success: true };
   } catch (err: any) {
     console.warn('[projectService] Error al guardar proyecto en Firestore:', err);
+    return { success: false, error: err?.message };
+  }
+}
+
+/**
+ * Guarda de forma atómica y por lotes (writeBatch) el documento padre en `projects/{projectId}`
+ * y todas sus actividades en la colección `tasks/{taskId}` en Firestore.
+ * Divide en lotes de hasta 400 operaciones para respetar el límite de 500 ops de Firestore.
+ */
+export async function saveProjectWithActivitiesBatch(
+  project: Project & { createdBy?: string },
+  activities: TaskNode[]
+): Promise<{ success: boolean; error?: string }> {
+  if (!isFirebaseConfigured() || !db) return { success: true };
+
+  const plannedMinutes =
+    typeof project.plannedMinutes === 'number'
+      ? Math.max(0, Math.round(project.plannedMinutes))
+      : Math.max(0, Math.round((project.totalBudgetHours || 0) * 60));
+
+  const unifiedAssignedIds = normalizeStringArray([
+    ...(project.assignedToIds || []),
+    ...(project.assignedUserIds || []),
+  ]);
+
+  const unifiedTeamIds = normalizeStringArray([
+    ...(project.teamIds || []),
+    project.teamId,
+  ]);
+
+  const supervisorId = (project.supervisorId || project.leadUserId || '').trim();
+  const gerenteId = (project.gerenteId || project.managerId || '').trim();
+
+  const projectPayload = {
+    id: project.id,
+    clientId: project.clientId,
+    companyId: project.clientId,
+    name: project.name.trim(),
+    code: project.code.trim().toUpperCase(),
+    leadUserId: project.leadUserId || supervisorId,
+    leadUserName: project.leadUserName || '',
+    managerId: project.managerId || gerenteId || project.leadUserId,
+    managerName: project.managerName || project.leadUserName || '',
+    partnerId: project.partnerId || '',
+    supervisorId,
+    gerenteId: gerenteId || project.managerId || '',
+    teamId: unifiedTeamIds[0] || '',
+    teamIds: unifiedTeamIds,
+    deadline: project.deadline,
+    budgetType: project.budgetType || 'fixed_project',
+    totalBudgetHours: Number((plannedMinutes / 60).toFixed(4)),
+    plannedMinutes,
+    hourlyRate: Number(project.hourlyRate || 0),
+    currency: project.currency || 'MXN',
+    notes: project.notes || '',
+    isActive: project.isActive !== false,
+    assignedToIds: unifiedAssignedIds,
+    assignedUserIds: unifiedAssignedIds,
+    assignedUserEmails: normalizeStringArray(
+      (project.assignedUserEmails || []).map((e) => e.toLowerCase())
+    ),
+    templateId: (project as any).templateId || (project as any).serviceCatalogId,
+    templateName: (project as any).templateName || (project as any).serviceCatalogName,
+    isFromTemplate: (project as any).isFromTemplate,
+    createdBy: project.createdBy || 'system',
+    updatedAt: new Date().toISOString(),
+    createdAt: serverTimestamp(),
+  };
+
+  const nowIso = new Date().toISOString();
+
+  // Agrupar en batches de hasta 400 operaciones
+  const BATCH_SIZE = 400;
+  const batches: Array<ReturnType<typeof writeBatch>> = [];
+  let currentBatch = writeBatch(db);
+  let opCount = 0;
+
+  // 1. Añadir el proyecto al primer lote
+  currentBatch.set(doc(db, 'projects', project.id), projectPayload, { merge: true });
+  opCount++;
+
+  // 2. Añadir cada una de las actividades
+  for (const act of activities) {
+    if (opCount >= BATCH_SIZE) {
+      batches.push(currentBatch);
+      currentBatch = writeBatch(db);
+      opCount = 0;
+    }
+
+    const actPlannedMin =
+      typeof act.plannedMinutes === 'number'
+        ? act.plannedMinutes
+        : Math.round((Number(act.plannedHours || (act as any).budgetedHours || 0)) * 60);
+
+    const taskAssignedIds = Array.isArray(act.assignedUserIds) && act.assignedUserIds.length > 0
+      ? act.assignedUserIds
+      : unifiedAssignedIds;
+
+    const taskPayload = {
+      id: act.id,
+      title: act.title || act.name || 'Actividad sin nombre',
+      name: act.name || act.title || 'Actividad sin nombre',
+      description: act.description || (act as any).papelTrabajo || '',
+      companyId: project.clientId,
+      companyName: (act as any).companyName || '',
+      projectId: project.id,
+      projectName: project.name,
+      teamId: unifiedTeamIds[0] || '',
+      teamIds: unifiedTeamIds,
+      gerenteId: gerenteId || project.managerId || '',
+      supervisorId: supervisorId || '',
+      created_by: project.leadUserId || supervisorId || 'system',
+      assignedTo: act.assigned_to || act.leadUserId || taskAssignedIds[0] || '',
+      assignedToId: act.assigned_to || act.leadUserId || taskAssignedIds[0] || '',
+      assignedToIds: taskAssignedIds,
+      assignedUserIds: taskAssignedIds,
+      leadUserId: act.leadUserId || act.assigned_to || '',
+      leadUserName: (act as any).leadUserName || (act as any).assignedToName || '',
+      assigned_to: act.assigned_to || act.leadUserId || taskAssignedIds[0] || '',
+      assignedToName: (act as any).assignedToName || (act as any).leadUserName || '',
+      status: act.status || 'pending',
+      priority: act.priority || 'medium',
+      plannedMinutes: actPlannedMin,
+      loggedMinutes: act.loggedMinutes || 0,
+      totalActualHours: (act as any).totalActualHours || 0,
+      dueDate: act.dueDate || project.deadline || '',
+      locationMode: act.locationMode || 'office',
+      isBillable: act.isBillable !== false,
+      isActive: act.isActive !== false,
+      rubro: (act as any).rubro || '',
+      rubroNumber: typeof (act as any).rubroNumber === 'number' ? (act as any).rubroNumber : undefined,
+      cuentaContable: (act as any).cuentaContable || '',
+      procedimiento: (act as any).procedimiento || act.name,
+      papelTrabajo: (act as any).papelTrabajo || '',
+      fase: (act as any).fase || 'Previa',
+      perfilSugerido: (act as any).perfilSugerido || 'Staff',
+      activityNumber: typeof (act as any).activityNumber === 'number' ? (act as any).activityNumber : undefined,
+      budgetedHours: typeof (act as any).budgetedHours === 'number' ? (act as any).budgetedHours : Number(act.plannedHours || 0),
+      reviewStatus: (act as any).reviewStatus || 'pending',
+      hoursByUser: (act as any).hoursByUser || {},
+      createdAt: (act as any).createdAt || act.created_at || nowIso,
+      updatedAt: nowIso,
+    };
+
+    currentBatch.set(doc(db, 'tasks', act.id), taskPayload, { merge: true });
+    opCount++;
+  }
+
+  if (opCount > 0) {
+    batches.push(currentBatch);
+  }
+
+  try {
+    for (const b of batches) {
+      await b.commit();
+    }
+    trackFirestoreWrite(1 + activities.length);
+    return { success: true };
+  } catch (err: any) {
+    console.error('[projectService] Error al guardar proyecto y actividades en Firestore batch:', err);
     return { success: false, error: err?.message };
   }
 }
