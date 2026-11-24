@@ -1,6 +1,8 @@
-import { collection, doc, getDoc, getDocs, query, setDoc, where, deleteDoc, writeBatch } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, query, setDoc, where, deleteDoc, writeBatch, serverTimestamp } from 'firebase/firestore';
 import { db, auth, isFirebaseConfigured, loginWithEmail, registerWithEmail } from './firebase';
 import { validateShiftTimeDistribution } from './attendanceService';
+import { logSystemMovement } from './auditLogger';
+import { useRayonerStore } from '../store/useRayonerStore';
 import {
   trackFirestoreDelete,
   trackFirestoreRead,
@@ -855,4 +857,131 @@ export async function adjustTaskTimeInFirestore(
     console.warn('[taskService] Error al ajustar tiempo manualmente en Firestore:', err);
     return { success: false, error: err?.message || 'Error de permisos o red al actualizar tiempo.' };
   }
+}
+
+export interface FinalizeTaskReviewParams {
+  taskId: string;
+  projectId?: string;
+  taskTitle?: string;
+  projectName?: string;
+  companyName?: string;
+  reviewer: {
+    uid: string;
+    name: string;
+    role: string;
+  };
+  reviewNotes?: string;
+}
+
+/**
+ * Finaliza la revisión de una tarea por un Supervisor o Gerente:
+ * - Actualiza status = 'completed', reviewStatus = 'lead_reviewed', progress = 100
+ * - Detiene cronómetro activo en esa tarea
+ * - Registra reviewedBy y reviewNotes
+ * - Registra en audit_logs (TASK_REVIEW_FINALIZED)
+ */
+export async function finalizeTaskReviewInFirestore(
+  params: FinalizeTaskReviewParams
+): Promise<{ success: boolean; error?: string }> {
+  const nowIso = new Date().toISOString();
+
+  // 1. Detener cronómetros activos para esta tarea
+  try {
+    const rayonerState = useRayonerStore.getState();
+    const active = rayonerState.activeWorkers.find((w) => w.taskId === params.taskId);
+    if (active && active.userId) {
+      rayonerState.stopWorkerTimer(active.userId);
+    }
+  } catch (timerErr) {
+    console.warn('[taskService] Error al detener cronómetro activo:', timerErr);
+  }
+
+  const reviewedByObj = {
+    uid: params.reviewer.uid,
+    name: params.reviewer.name,
+    role: params.reviewer.role.toLowerCase(),
+  };
+
+  const patch: Record<string, any> = {
+    status: 'completed',
+    reviewStatus: 'lead_reviewed',
+    progress: 100,
+    reviewedBy: reviewedByObj,
+    reviewedAt: nowIso,
+    reviewNotes: params.reviewNotes ? params.reviewNotes.trim() : '',
+    updatedAt: nowIso,
+  };
+
+  // 2. Actualizar estado local en useRayonerStore
+  try {
+    useRayonerStore.getState().updateTask(params.taskId, {
+      status: 'completed',
+      progress: 100,
+      reviewStatus: 'lead_reviewed',
+      reviewedBy: reviewedByObj,
+      reviewedAt: nowIso,
+      reviewNotes: params.reviewNotes ? params.reviewNotes.trim() : '',
+    } as any);
+  } catch (stErr) {
+    console.warn('[taskService] Error al actualizar Zustand task:', stErr);
+  }
+
+  // 3. Persistir en Firestore
+  if (isFirebaseConfigured() && db) {
+    try {
+      await setDoc(
+        doc(db, 'tasks', params.taskId),
+        {
+          ...patch,
+          reviewedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+      trackFirestoreWrite(1);
+
+      // Si tiene proyecto padre, recalcular progreso
+      if (params.projectId) {
+        try {
+          const tasksOfProject = useRayonerStore
+            .getState()
+            .tasks.filter((t) => t.projectId === params.projectId);
+          const totalTasks = tasksOfProject.length;
+          const completedTasks = tasksOfProject.filter(
+            (t) => t.id === params.taskId || t.status === 'completed'
+          ).length;
+          const progressPercent = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 100;
+          await setDoc(
+            doc(db, 'projects', params.projectId),
+            {
+              progress: progressPercent,
+              updatedAt: serverTimestamp(),
+            },
+            { merge: true }
+          );
+          trackFirestoreWrite(1);
+        } catch (_) {}
+      }
+    } catch (dbErr: any) {
+      console.error('[taskService] Error al persistir revisión de tarea en Firestore:', dbErr);
+      return { success: false, error: dbErr?.message || 'Error al persistir en Firestore' };
+    }
+  }
+
+  // 4. Registrar en audit_logs
+  await logSystemMovement({
+    eventType: 'TASK_REVIEW_FINALIZED',
+    actorId: params.reviewer.uid,
+    actorName: params.reviewer.name,
+    actorEmail: '',
+    actorRole: params.reviewer.role,
+    targetResource: `Tarea: ${params.taskTitle || params.taskId}`,
+    details: `Revisión finalizada y aprobada por ${params.reviewer.name} (${params.reviewer.role}). Estado completado al 100%. Observación: ${params.reviewNotes || 'Sin observaciones adicionales'}.`,
+    metadata: {
+      taskId: params.taskId,
+      projectId: params.projectId,
+      reviewNotes: params.reviewNotes,
+    },
+  });
+
+  return { success: true };
 }

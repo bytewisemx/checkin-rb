@@ -299,7 +299,7 @@ export function TeamMembersView({ onNavigateToTree }: TeamMembersViewProps) {
               className="h-9 px-4 bg-blue-700 hover:bg-blue-800 active:bg-blue-900 text-white text-xs font-semibold rounded-lg shadow-sm hover:shadow transition-all cursor-pointer inline-flex items-center gap-2 shrink-0 border border-blue-600/60"
             >
               <UserPlus className="w-3.5 h-3.5 shrink-0 stroke-[2.5]" />
-              <span>+ Solicitar Alta de Usuario</span>
+              <span>Solicitar Alta de Usuario</span>
             </button>
           ) : (
             <button
@@ -578,7 +578,7 @@ export function TeamMembersView({ onNavigateToTree }: TeamMembersViewProps) {
                     className="px-3 py-1 bg-blue-700 hover:bg-blue-800 text-white text-[11px] font-semibold rounded-lg transition-colors cursor-pointer inline-flex items-center gap-1.5"
                   >
                     <UserPlus className="w-3.5 h-3.5" />
-                    <span>+ Nueva Solicitud</span>
+                    <span>Nueva Solicitud</span>
                   </button>
                 )}
               </div>

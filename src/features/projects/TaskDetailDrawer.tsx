@@ -8,7 +8,8 @@ import {
   FileEdit,
   ChevronDown,
   ChevronUp,
-  Info
+  Info,
+  CheckCircle2
 } from 'lucide-react';
 import type { TaskNode, TaskNote } from '../../types/rayoner';
 import { CompanyLogoBadge } from '../../components/common/CompanyLogoBadge';
@@ -29,6 +30,8 @@ interface TaskDetailDrawerProps {
   onAddNote: (note: { text: string; linkUrl?: string }) => void;
   onFinalizeTask?: () => void;
   onAdjustTime?: (newMinutes: number, reason: string) => Promise<void> | void;
+  canReview?: boolean;
+  onFinalizeReview?: () => void;
 }
 
 export function TaskDetailDrawer({
@@ -45,6 +48,8 @@ export function TaskDetailDrawer({
   onAddNote,
   onFinalizeTask,
   onAdjustTime,
+  canReview,
+  onFinalizeReview,
 }: TaskDetailDrawerProps) {
   const activeCheckin = useCheckinStore((state) => state.activeCheckin);
   const addToast = useCheckinStore((state) => state.addToast);
@@ -503,6 +508,25 @@ export function TaskDetailDrawer({
           </div>
         )}
 
+        {/* Tarea con Revisión Finalizada */}
+        {task.reviewStatus === 'lead_reviewed' && (
+          <div className="mb-3 p-3.5 rounded-lg border border-emerald-200 dark:border-emerald-800 bg-emerald-50/70 dark:bg-emerald-950/30 text-xs space-y-1">
+            <div className="flex items-center gap-1.5 font-bold text-emerald-800 dark:text-emerald-300">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+              <span>Revisión Finalizada</span>
+            </div>
+            <p className="text-slate-600 dark:text-slate-300">
+              Aprobado por: <span className="font-semibold text-slate-800 dark:text-white">{(task as any).reviewedBy?.name || 'Supervisor'}</span> ({(task as any).reviewedBy?.role || 'supervisor'})
+              {(task as any).reviewedAt ? ` • ${new Date((task as any).reviewedAt).toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric' })}` : ''}
+            </p>
+            {(task as any).reviewNotes && (
+              <p className="text-slate-700 dark:text-slate-200 italic mt-1 bg-white/60 dark:bg-slate-900/40 p-2 rounded border border-emerald-100 dark:border-emerald-900">
+                "{(task as any).reviewNotes}"
+              </p>
+            )}
+          </div>
+        )}
+
         {/* Bitácora de Avances y Notas de Seguimiento */}
         <div className="flex-1 flex flex-col min-h-0 space-y-3">
           <div className="flex items-center justify-between">
@@ -605,6 +629,20 @@ export function TaskDetailDrawer({
               className="px-4 py-2 bg-blue-700 hover:bg-blue-800 text-white text-xs font-medium rounded-md shadow-xs transition-colors cursor-pointer"
             >
               Finalizar y Enviar a Revisión
+            </button>
+          )}
+
+          {canReview && task.reviewStatus !== 'lead_reviewed' && onFinalizeReview && (
+            <button
+              type="button"
+              onClick={() => {
+                onClose();
+                onFinalizeReview();
+              }}
+              className="px-4 py-2 bg-blue-700 hover:bg-blue-800 active:bg-blue-900 text-white text-xs font-semibold rounded-md shadow-xs transition-colors cursor-pointer inline-flex items-center gap-1.5"
+            >
+              <CheckCircle2 className="w-4 h-4 stroke-[2]" />
+              <span>Finalizar Revisión</span>
             </button>
           )}
         </div>

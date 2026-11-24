@@ -51,6 +51,7 @@ export interface Project {
   deadline: string; // ISO date YYYY-MM-DD
   budgetType?: BudgetType;
   totalBudgetHours: number;
+  plannedHours?: number;
   plannedMinutes?: number;
   hourlyRate?: number;
   currency?: string;
@@ -62,6 +63,8 @@ export interface Project {
   templateId?: string;
   templateName?: string;
   isFromTemplate?: boolean;
+  companyName?: string;
+  startDate?: string;
 }
 
 export interface TaskNote {
@@ -125,6 +128,15 @@ export interface TaskNode {
   budgetedHours?: number;
   unbudgetedHours?: number;
   reviewStatus?: 'pending' | 'staff_pt_done' | 'lead_reviewed' | 'completed';
+  reviewedBy?: {
+    uid: string;
+    name: string;
+    role?: string;
+  };
+  reviewedAt?: any;
+  reviewNotes?: string;
+  progress?: number;
+  actualHours?: number;
   hoursByUser?: Record<string, number>;
   totalActualHours?: number;
   comments?: string;
@@ -196,6 +208,7 @@ export interface TeamMember {
   name: string;
   email: string;
   photoURL?: string | null;
+  avatar?: string;
   role?: UserRole;
   roleTitle: string;
   team: string;

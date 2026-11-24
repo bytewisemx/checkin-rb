@@ -523,7 +523,7 @@ export default function App() {
               <ModuleProtectedRoute moduleKey="reports">
                 <MainLayout
                   initialSupervisorTab="report"
-                  initialTiTab="audit_accounts"
+                  initialTiTab="users_permissions"
                 />
               </ModuleProtectedRoute>
             }

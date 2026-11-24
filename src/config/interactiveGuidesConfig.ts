@@ -461,33 +461,6 @@ export const INTERACTIVE_GUIDES: Record<string, InteractiveGuide[]> = {
       ],
     },
     {
-      id: 'ti_hierarchy_teams',
-      title: 'Estructura Organizacional y Árbol de Equipos',
-      question: '¿Cómo crear y auditar equipos y departamentos en el organigrama?',
-      description: 'Crea nuevos equipos en Firestore y organiza la jerarquía de líderes.',
-      role: 'ti',
-      steps: [
-        {
-          target: '[data-tour="nav-audit-hierarchy"]',
-          title: 'Pestaña Auditar Jerarquía',
-          text: 'Accede al organigrama interactivo de la firma.',
-          navHint: 'Menú de pestañas superior',
-        },
-        {
-          target: '[data-tour="btn-new-team"]',
-          title: 'Alta de Nuevo Equipo',
-          text: 'Crea un nuevo equipo o departamento con su líder y código institucional.',
-          navHint: 'Barra superior de jerarquía',
-        },
-        {
-          target: '[data-tour="hierarchy-tree-view"]',
-          title: 'Árbol Jerárquico Operativo',
-          text: 'Explora la cadena de mando desde Socios y Gerentes hasta Supervisores y miembros.',
-          navHint: 'Árbol organizacional',
-        },
-      ],
-    },
-    {
       id: 'ti_high_level_invites',
       title: 'Invitaciones de Alto Nivel',
       question: '¿Cómo invitar a supervisores, gerentes y socios desde TI?',

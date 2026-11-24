@@ -15,7 +15,6 @@ import { UserPermissionsTable } from './UserPermissionsTable';
 import { ITAccountRequestsView } from './ITAccountRequestsView';
 import { SystemDiagnostics } from './SystemDiagnostics';
 import { ExecutiveAuditLogView } from '../audit/ExecutiveAuditLogView';
-import { AuditHierarchyView } from '../hierarchy/AuditHierarchyView';
 import { InviteMemberModal } from '../manager/rayoner/InviteMemberModal';
 import { normalizeCorporateDatabase } from '../../services/dataNormalizationService';
 import { resetCleanEnvironment } from '../../services/adminResetService';
@@ -24,7 +23,7 @@ import { subscribePendingAccountRequests, type AccountRequest } from '../../serv
 import { Send, Loader2, X, RefreshCw, Trash2, AlertTriangle } from 'lucide-react';
 
 export interface TIDashboardProps {
-  initialTab?: 'account_requests' | 'invitations' | 'users_permissions' | 'audit_accounts' | 'rbac_matrix' | 'supervisor_view' | 'clients_directory' | 'audit_logs' | 'system_diagnostics';
+  initialTab?: 'account_requests' | 'invitations' | 'users_permissions' | 'rbac_matrix' | 'supervisor_view' | 'clients_directory' | 'audit_logs' | 'system_diagnostics';
 }
 
 export function TIDashboard({ initialTab = 'users_permissions' }: TIDashboardProps) {
@@ -50,7 +49,7 @@ export function TIDashboard({ initialTab = 'users_permissions' }: TIDashboardPro
   // Carga global de todos los equipos activos (TI no pertenece a un equipo operativo)
   const activeTeams = useMemo(() => teams.filter((t) => t.status !== 'inactive'), [teams]);
 
-  const [activeTab, setActiveTab] = useState<'account_requests' | 'invitations' | 'users_permissions' | 'audit_accounts' | 'rbac_matrix' | 'supervisor_view' | 'clients_directory' | 'audit_logs' | 'system_diagnostics'>(initialTab);
+  const [activeTab, setActiveTab] = useState<'account_requests' | 'invitations' | 'users_permissions' | 'rbac_matrix' | 'supervisor_view' | 'clients_directory' | 'audit_logs' | 'system_diagnostics'>(initialTab);
   const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
   const [accountRequests, setAccountRequests] = useState<AccountRequest[]>([]);
 
@@ -372,7 +371,7 @@ export function TIDashboard({ initialTab = 'users_permissions' }: TIDashboardPro
         </div>
 
         {/* Pestañas Pills */}
-        <div className="flex items-center gap-1 bg-slate-100/80 dark:bg-slate-800/80 p-1 rounded-xl border border-slate-200/60 dark:border-slate-700/60 overflow-x-auto">
+        <div className="flex items-center gap-1 bg-slate-100/80 dark:bg-slate-800/80 p-1 rounded-xl border border-slate-200/60 dark:border-slate-700/60 overflow-x-auto no-scrollbar max-w-full">
           <button
             type="button"
             data-tour="nav-account-requests-tab"
@@ -411,17 +410,6 @@ export function TIDashboard({ initialTab = 'users_permissions' }: TIDashboardPro
               }`}
           >
             Bitácora de Movimientos
-          </button>
-          <button
-            type="button"
-            data-tour="nav-audit-hierarchy"
-            onClick={() => setActiveTab('audit_accounts')}
-            className={`px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer ${activeTab === 'audit_accounts'
-                ? 'bg-white dark:bg-slate-900 text-blue-700 dark:text-sky-400 font-semibold shadow-xs border border-slate-200/80 dark:border-slate-700/80'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-              }`}
-          >
-            Auditar Jerarquía
           </button>
           <button
             type="button"
@@ -741,13 +729,6 @@ export function TIDashboard({ initialTab = 'users_permissions' }: TIDashboardPro
 
       {/* PESTAÑA: BITÁCORA DE AUDITORÍA EJECUTIVA */}
       {activeTab === 'audit_logs' && <ExecutiveAuditLogView />}
-
-      {/* PESTAÑA 2: AUDITORÍA DE JERARQUÍA */}
-      {activeTab === 'audit_accounts' && (
-        <div className="animate-fade-in">
-          <AuditHierarchyView onNavigateToInvitations={() => setIsInviteModalOpen(true)} />
-        </div>
-      )}
 
       {/* PESTAÑA 3: MATRIZ DE ACCESO RBAC */}
       {activeTab === 'rbac_matrix' && (

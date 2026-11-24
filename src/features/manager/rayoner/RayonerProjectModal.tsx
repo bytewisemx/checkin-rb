@@ -520,7 +520,7 @@ export function RayonerProjectModal({
                       }`}
                   >
                     <FileText className="w-3.5 h-3.5" />
-                    <span>+ Nuevo Servicio en Blanco</span>
+                    <span>Nuevo Servicio en Blanco</span>
                   </button>
                 </div>
 
@@ -669,7 +669,7 @@ export function RayonerProjectModal({
                       onClick={() => setIsQuickCompanyOpen(true)}
                       className="inline-flex items-center gap-1 text-[11px] font-semibold text-blue-700 dark:text-blue-400 hover:underline cursor-pointer"
                     >
-                      <span>+ Registrar empresa</span>
+                      <span>Registrar empresa</span>
                     </button>
                   )}
                 </div>
@@ -953,7 +953,7 @@ export function RayonerProjectModal({
                   className="inline-flex items-center gap-1 text-xs font-semibold text-blue-700 dark:text-blue-400 hover:underline cursor-pointer"
                 >
                   <Plus className="w-3.5 h-3.5" />
-                  <span>+ Añadir otro colaborador</span>
+                  <span>Añadir otro colaborador</span>
                 </button>
               </div>
 

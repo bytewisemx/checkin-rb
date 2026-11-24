@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
-import { Search, X, Play, Pause } from 'lucide-react';
+import { Search, X, Play, Pause, CheckCircle2 } from 'lucide-react';
 import { useCheckinStore } from '../../store/useCheckinStore';
 import { useRayonerStore } from '../../store/useRayonerStore';
 import { useOperationalCatalogSync } from '../../hooks/useLiveTeamTimers';
@@ -11,6 +11,7 @@ import { CompanyLogoBadge } from '../../components/common/CompanyLogoBadge';
 import type { TaskNode } from '../../types/rayoner';
 import { TaskDetailDrawer } from './TaskDetailDrawer';
 import { FinalizeTaskModal } from './FinalizeTaskModal';
+import { FinalizeReviewModal } from './FinalizeReviewModal';
 import { UserCalendarView } from './UserCalendarView';
 import { CreateExtraordinaryTaskModal } from './CreateExtraordinaryTaskModal';
 
@@ -83,8 +84,18 @@ export function KanbanBoard() {
   // Estado del Modal de Confirmación para Finalizar Tarea
   const [finalizingTask, setFinalizingTask] = useState<TaskNode | null>(null);
 
+  // Estado del Modal para Finalizar Revisión (Supervisor / Gerente / Socio)
+  const [reviewModalTask, setReviewModalTask] = useState<{
+    task: TaskNode;
+    projectName?: string;
+    companyName?: string;
+  } | null>(null);
+
   // Modal para Tareas Extraordinarias Sin Empresa
   const [isExtraordinaryModalOpen, setIsExtraordinaryModalOpen] = useState(false);
+
+  const normRole = normalizeRole(user?.role);
+  const canReview = normRole === 'Supervisor' || normRole === 'Gerente' || normRole === 'Socio';
 
   // Contador de segundos en vivo para re-renderizado suave del cronómetro activo
   const [liveClockTick, setLiveClockTick] = useState<number>(0);
@@ -859,18 +870,45 @@ export function KanbanBoard() {
                                 </button>
                               )}
 
-                              {/* En Revisión: Tarjeta de solo lectura */}
-                              {stage.id === 'review' && (
-                                <span className="text-[11px] font-medium text-slate-500 bg-slate-50 px-2 py-0.5 rounded">
-                                  En Revisión
+                              {/* Acción de Revisión para Supervisor / Gerente / Socio */}
+                              {task.reviewStatus === 'lead_reviewed' ? (
+                                <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-200 dark:border-emerald-800" title={`Revisión aprobada por ${task.reviewedBy?.name || 'Supervisor'}`}>
+                                  <CheckCircle2 className="w-3 h-3 text-emerald-600 shrink-0" />
+                                  <span>Revisión Finalizada</span>
                                 </span>
-                              )}
+                              ) : canReview ? (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setReviewModalTask({
+                                      task,
+                                      projectName: displayProjectName,
+                                      companyName: displayCompanyName,
+                                    });
+                                  }}
+                                  className="px-2.5 py-1 text-xs font-semibold text-white bg-blue-700 hover:bg-blue-800 active:bg-blue-900 rounded shadow-xs transition-colors cursor-pointer inline-flex items-center gap-1 shrink-0"
+                                  title="Finalizar revisión y aprobar tarea al 100%"
+                                >
+                                  <CheckCircle2 className="w-3.5 h-3.5 stroke-[2]" />
+                                  <span>Finalizar Revisión</span>
+                                </button>
+                              ) : (
+                                <>
+                                  {/* En Revisión: Tarjeta de solo lectura */}
+                                  {stage.id === 'review' && (
+                                    <span className="text-[11px] font-medium text-slate-500 bg-slate-50 px-2 py-0.5 rounded">
+                                      En Revisión
+                                    </span>
+                                  )}
 
-                              {/* Finalizadas: Tarjeta de solo lectura */}
-                              {stage.id === 'completed' && (
-                                <span className="text-[11px] font-medium text-slate-500 bg-slate-50 px-2 py-0.5 rounded">
-                                  Concluida
-                                </span>
+                                  {/* Finalizadas: Tarjeta de solo lectura */}
+                                  {stage.id === 'completed' && (
+                                    <span className="text-[11px] font-medium text-slate-500 bg-slate-50 px-2 py-0.5 rounded">
+                                      Concluida
+                                    </span>
+                                  )}
+                                </>
                               )}
                             </div>
                           </div>
@@ -991,6 +1029,19 @@ export function KanbanBoard() {
               handleOpenFinalizeModal(activeDetailTaskLive);
             }
           }}
+          canReview={canReview}
+          onFinalizeReview={() => {
+            if (activeDetailTaskLive) {
+              setReviewModalTask({
+                task: activeDetailTaskLive,
+                projectName: detailProject?.name || activeDetailTaskLive.projectName,
+                companyName:
+                  detailCompany?.commercialName ||
+                  detailCompany?.name ||
+                  activeDetailTaskLive.companyName,
+              });
+            }
+          }}
         />
       )}
 
@@ -1040,6 +1091,17 @@ export function KanbanBoard() {
               'success'
             );
           }}
+        />
+      )}
+
+      {/* Modal de Finalizar Revisión para Supervisor / Gerente / Socio */}
+      {reviewModalTask && (
+        <FinalizeReviewModal
+          isOpen={Boolean(reviewModalTask)}
+          onClose={() => setReviewModalTask(null)}
+          task={reviewModalTask.task}
+          projectName={reviewModalTask.projectName}
+          companyName={reviewModalTask.companyName}
         />
       )}
     </div>

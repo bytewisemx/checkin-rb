@@ -9,13 +9,12 @@ import { RayonerTimeReport } from './rayoner/RayonerTimeReport';
 import { RayonerTaskModal } from './rayoner/RayonerTaskModal';
 import { TeamMembersView } from './rayoner/TeamMembersView';
 import { ExecutiveAuditLogView } from '../audit/ExecutiveAuditLogView';
-import { AuditHierarchyView } from '../hierarchy/AuditHierarchyView';
 import { CheckinPanel } from '../checkin/CheckinPanel';
 import { KanbanBoard } from '../projects/KanbanBoard';
 import { useLiveTeamTimers, useOperationalCatalogSync } from '../../hooks/useLiveTeamTimers';
 import { canAccessClientsDirectory } from '../../services/companyService';
 
-export type SupervisorTab = 'tree' | 'clients' | 'report' | 'attendance' | 'audit_accounts' | 'my_checkin' | 'audit_logs' | 'my_tasks';
+export type SupervisorTab = 'tree' | 'clients' | 'report' | 'attendance' | 'my_checkin' | 'audit_logs' | 'my_tasks';
 
 export interface SupervisorDashboardProps {
   initialTab?: SupervisorTab;
@@ -42,7 +41,6 @@ export function SupervisorDashboard({ initialTab }: SupervisorDashboardProps = {
   const canSeeMyTasks = normRole !== 'RH' && (userPerms.canAccessMyTasks ?? true);
   const canSeeReports = userPerms.canExportReports || effectiveModules.reports;
   const canSeeAudit = userPerms.canViewExecutiveAuditLogs;
-  const canSeeHierarchy = normRole === 'Socio' || normRole === 'Gerente';
   const forcedFacialByTI = effectiveModules.facialCheckIn;
   const showPersonalCheckInTab = forcedFacialByTI || effectiveModules.checkIn || userPerms.canCheckIn;
 
@@ -76,9 +74,6 @@ export function SupervisorDashboard({ initialTab }: SupervisorDashboardProps = {
       return 'attendance';
     }
     if (activeTab === 'audit_logs' && !canSeeAudit) {
-      return canSeeTree ? 'tree' : 'attendance';
-    }
-    if (activeTab === 'audit_accounts' && !canSeeHierarchy) {
       return canSeeTree ? 'tree' : 'attendance';
     }
     if (activeTab === 'my_checkin' && !showPersonalCheckInTab) {
@@ -143,14 +138,14 @@ export function SupervisorDashboard({ initialTab }: SupervisorDashboardProps = {
             </p>
           </div>
 
-          {/* Pestañas Superiores Estilizadas como Pills Modernas */}
-          <nav className="inline-flex items-center gap-1.5 p-1 bg-slate-100 dark:bg-slate-800/80 rounded-xl border border-slate-200/60 dark:border-slate-700/60 self-start lg:self-auto">
+          {/* Pestañas Superiores Estilizadas como Pills Modernas con scroll horizontal fluido y sin barras toscas */}
+          <nav className="inline-flex items-center gap-1.5 p-1 bg-slate-100 dark:bg-slate-800/80 rounded-xl border border-slate-200/60 dark:border-slate-700/60 self-start lg:self-auto overflow-x-auto no-scrollbar max-w-full">
             {canSeeTree && (
               <button
                 type="button"
                 data-tour="nav-projects-tab"
                 onClick={() => setActiveTab('tree')}
-                className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${resolvedTab === 'tree'
+                className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${resolvedTab === 'tree'
                   ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs'
                   : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
                   }`}
@@ -165,7 +160,7 @@ export function SupervisorDashboard({ initialTab }: SupervisorDashboardProps = {
                 type="button"
                 data-tour="nav-my-tasks-tab"
                 onClick={() => setActiveTab('my_tasks')}
-                className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${resolvedTab === 'my_tasks'
+                className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${resolvedTab === 'my_tasks'
                   ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs'
                   : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
                   }`}
@@ -180,7 +175,7 @@ export function SupervisorDashboard({ initialTab }: SupervisorDashboardProps = {
                 type="button"
                 data-tour="nav-clients-tab"
                 onClick={() => setActiveTab('clients')}
-                className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${resolvedTab === 'clients'
+                className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${resolvedTab === 'clients'
                   ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs'
                   : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
                   }`}
@@ -193,7 +188,7 @@ export function SupervisorDashboard({ initialTab }: SupervisorDashboardProps = {
               type="button"
               data-tour="nav-team-tab"
               onClick={() => setActiveTab('attendance')}
-              className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${resolvedTab === 'attendance'
+              className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${resolvedTab === 'attendance'
                 ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs'
                 : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
                 }`}
@@ -207,7 +202,7 @@ export function SupervisorDashboard({ initialTab }: SupervisorDashboardProps = {
                 type="button"
                 data-tour="nav-reports-tab"
                 onClick={() => setActiveTab('report')}
-                className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${resolvedTab === 'report'
+                className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${resolvedTab === 'report'
                   ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs'
                   : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
                   }`}
@@ -222,7 +217,7 @@ export function SupervisorDashboard({ initialTab }: SupervisorDashboardProps = {
                 type="button"
                 data-tour="nav-audit-logs"
                 onClick={() => setActiveTab('audit_logs')}
-                className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${resolvedTab === 'audit_logs'
+                className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${resolvedTab === 'audit_logs'
                   ? 'bg-white dark:bg-slate-900 text-blue-700 dark:text-sky-400 font-bold shadow-xs'
                   : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
                   }`}
@@ -231,26 +226,11 @@ export function SupervisorDashboard({ initialTab }: SupervisorDashboardProps = {
               </button>
             )}
 
-            {/* Pestaña Auditar Jerarquía: Socios y Gerentes */}
-            {canSeeHierarchy && (
-              <button
-                type="button"
-                data-tour="nav-audit-hierarchy"
-                onClick={() => setActiveTab('audit_accounts')}
-                className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${resolvedTab === 'audit_accounts'
-                  ? 'bg-white dark:bg-slate-900 text-blue-700 dark:text-sky-400 font-bold shadow-xs'
-                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-                  }`}
-              >
-                Auditar Jerarquía
-              </button>
-            )}
-
             {showPersonalCheckInTab && (
               <button
                 type="button"
                 onClick={() => setActiveTab('my_checkin')}
-                className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${resolvedTab === 'my_checkin'
+                className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${resolvedTab === 'my_checkin'
                   ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs'
                   : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
                   }`}
@@ -404,12 +384,6 @@ export function SupervisorDashboard({ initialTab }: SupervisorDashboardProps = {
       )}
 
       {resolvedTab === 'audit_logs' && canSeeAudit && <ExecutiveAuditLogView />}
-
-      {resolvedTab === 'audit_accounts' && canSeeHierarchy && (
-        <div className="bg-white dark:bg-[#0B111E] rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs">
-          <AuditHierarchyView onNavigateToInvitations={() => setActiveTab('attendance')} />
-        </div>
-      )}
 
       {resolvedTab === 'my_checkin' && showPersonalCheckInTab && (
         <div className="pt-2">

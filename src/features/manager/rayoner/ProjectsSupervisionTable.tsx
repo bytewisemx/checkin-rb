@@ -21,6 +21,7 @@ import { RayonerProjectModal } from './RayonerProjectModal';
 import { ProjectTeamAssignmentModal } from './ProjectTeamAssignmentModal';
 import { ProjectTasksDrawerModal } from './ProjectTasksDrawerModal';
 import { ProjectExecutiveReportModal } from './ProjectExecutiveReportModal';
+import { ProjectDetailsDrawer } from './ProjectDetailsDrawer';
 import { AuditServiceAccordionView } from './AuditServiceAccordionView';
 import { exportAuditPlanToExcel } from '../../../services/auditPlanExportService';
 import { LiveTimerCell } from '../../../components/common/LiveTimerCell';
@@ -34,7 +35,7 @@ interface ProjectsSupervisionTableProps {
 
 export function ProjectsSupervisionTable({
   onOpenTaskModal,
-  onSelectProjectForReport,
+  onSelectProjectForReport: _onSelectProjectForReport,
 }: ProjectsSupervisionTableProps) {
   useLiveTeamTimers();
   const {
@@ -66,6 +67,7 @@ export function ProjectsSupervisionTable({
 
   const [teamAssignmentProject, setTeamAssignmentProject] = useState<Project | null>(null);
   const [tasksDrawerProject, setTasksDrawerProject] = useState<Project | null>(null);
+  const [detailsDrawerProject, setDetailsDrawerProject] = useState<Project | null>(null);
   const [reportModalProject, setReportModalProject] = useState<Project | null>(null);
 
   // Auto-selección por defecto: seleccionar automáticamente la primera empresa registrada al cargar la vista
@@ -245,14 +247,6 @@ export function ProjectsSupervisionTable({
       return true;
     });
   }, [enrichedProjects, selectedCompanyId, searchQuery, budgetFilter]);
-
-  const handleOpenReport = (project: Project) => {
-    if (onSelectProjectForReport) {
-      onSelectProjectForReport(project.id);
-    } else {
-      setReportModalProject(project);
-    }
-  };
 
   return (
     <div className="w-full space-y-6">
@@ -556,16 +550,9 @@ export function ProjectsSupervisionTable({
                                 );
                               })}
                             </div>
-
-                            <button
-                              type="button"
-                              data-tour="project-actions-team"
-                              onClick={() => setTeamAssignmentProject(project)}
-                              className="inline-flex items-center text-xs font-semibold text-blue-700 hover:text-blue-900 dark:text-sky-400 dark:hover:text-sky-300 hover:underline whitespace-nowrap cursor-pointer"
-                              title="Gestionar asignaciones del equipo"
-                            >
-                              Gestionar ({assignedMembers.length})
-                            </button>
+                            {assignedMembers.length === 0 && (
+                              <span className="text-xs text-slate-400 font-medium">Sin asignar</span>
+                            )}
                           </div>
                         </td>
 
@@ -672,12 +659,12 @@ export function ProjectsSupervisionTable({
                               </button>
                             )}
 
-                            {/* Botón Ver Reporte */}
+                            {/* Botón Detalles del Proyecto (Drawer Lateral) */}
                             <button
                               type="button"
-                              onClick={() => handleOpenReport(project)}
-                              className="p-2 text-slate-400 hover:text-slate-800 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
-                              title="Ver reporte ejecutivo de tiempos"
+                              onClick={() => setDetailsDrawerProject(project)}
+                              className="p-2 text-slate-400 hover:text-blue-700 dark:hover:text-sky-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
+                              title="Detalles del proyecto"
                             >
                               <FileText className="w-4 h-4" />
                             </button>
@@ -1008,6 +995,21 @@ export function ProjectsSupervisionTable({
         isOpen={Boolean(reportModalProject)}
         onClose={() => setReportModalProject(null)}
         project={reportModalProject}
+      />
+
+      {/* Drawer Lateral de Detalles del Proyecto */}
+      <ProjectDetailsDrawer
+        isOpen={Boolean(detailsDrawerProject)}
+        onClose={() => setDetailsDrawerProject(null)}
+        project={detailsDrawerProject}
+        client={clients.find((c) => c.id === detailsDrawerProject?.clientId) || null}
+        projectTasks={tasks.filter((t) => t.projectId === detailsDrawerProject?.id)}
+        teamMembers={teamMembers}
+        onOpenTasksDrawer={() => {
+          if (detailsDrawerProject) {
+            setTasksDrawerProject(detailsDrawerProject);
+          }
+        }}
       />
     </div>
   );
