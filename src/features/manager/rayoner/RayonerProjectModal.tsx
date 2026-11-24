@@ -4,7 +4,6 @@ import {
   Check,
   Trash2,
   Sparkles,
-  FileText,
   ChevronDown,
   ChevronUp,
   UserCheck,
@@ -24,8 +23,27 @@ import { CreateCompanyModal } from './CreateCompanyModal';
 import {
   getServiceCatalog,
   SERVICE_AUDITORIA_ESTADOS_FINANCIEROS_2026,
+  SERVICE_DICTAMEN_FISCAL_IMSS,
+  SERVICE_REVISION_LIMITADA,
+  SERVICE_CONSULTORIA_CONTROL_INTERNO,
   calculateTemplateTotalHours,
 } from '../../../services/serviceCatalogService';
+
+// Etiquetas de enfoque para el Catálogo de Servicios
+const CATALOG_ITEM_BADGES: Record<string, string> = {
+  [SERVICE_AUDITORIA_ESTADOS_FINANCIEROS_2026]: 'NIA / Integral',
+  [SERVICE_DICTAMEN_FISCAL_IMSS]: 'Fiscal / IMSS',
+  [SERVICE_REVISION_LIMITADA]: 'Financiero',
+  [SERVICE_CONSULTORIA_CONTROL_INTERNO]: 'COSO / TI',
+};
+
+// Formatea el nombre sugerido evitando duplicar el año (ej: "Auditoría de Estados Financieros 2026")
+function formatSuggestedServiceName(templateName: string): string {
+  if (/\b20\d{2}\b/.test(templateName)) {
+    return templateName;
+  }
+  return `${templateName} ${new Date().getFullYear()}`;
+}
 import type {
   ServiceTemplate,
   ServiceTemplateRubro,
@@ -104,7 +122,7 @@ export function RayonerProjectModal({
         setCatalogRubros(JSON.parse(JSON.stringify(initialSrv.rubros)));
         setTotalBudgetHours(initialSrv.totalBudgetHours || 226.2);
         if (!name) {
-          setName(`${initialSrv.name} ${new Date().getFullYear()}`);
+          setName(formatSuggestedServiceName(initialSrv.name));
         }
       }
     });
@@ -175,7 +193,7 @@ export function RayonerProjectModal({
       setCatalogRubros(clonedRubros);
       const totalH = calculateTemplateTotalHours(clonedRubros);
       setTotalBudgetHours(totalH);
-      setName(`${srv.name} ${new Date().getFullYear()}`);
+      setName(formatSuggestedServiceName(srv.name));
     }
   };
 
@@ -458,7 +476,7 @@ export function RayonerProjectModal({
           <div>
             <div className="flex items-center gap-2">
               <span className="text-[11px] font-bold uppercase tracking-wider text-blue-700 dark:text-blue-400">
-                {isEditing ? 'Gestión de Servicio' : 'Alta de Proyecto y Servicio'}
+                {isEditing ? 'Gestión de Servicio' : 'Nuevo Servicio'}
               </span>
               {!isEditing && (
                 <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300">
@@ -470,7 +488,7 @@ export function RayonerProjectModal({
               {currentStep === 1
                 ? isEditing
                   ? 'Editar Parámetros del Servicio'
-                  : 'Paso 1: Catálogo de Servicios y Alcance'
+                  : 'Nuevo Servicio'
                 : 'Paso 2: Equipo y Asignación Inicial'}
             </h3>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
@@ -493,142 +511,211 @@ export function RayonerProjectModal({
         {/* ------------------------------------------------------------- */}
         {currentStep === 1 && (
           <form onSubmit={handleProceedToStep2} className="p-6 space-y-5">
-            {/* Modalidad: Catálogo de Servicios vs Nuevo Servicio en Blanco */}
+            {/* Modalidad: Catálogo de Servicios (Rediseño Compacto: Bloque A y Bloque B) */}
             {!isEditing && (
-              <div className="space-y-3 p-4 bg-slate-50 dark:bg-slate-800/40 rounded-xl border border-slate-200 dark:border-slate-800">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                  <div>
+              <div className="space-y-3">
+                {/* Bloque A: Lista Seleccionable Compacta (Filas de 1 línea) */}
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
                     <label className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider block">
                       Catálogo de Servicios de la Firma
                     </label>
-                    <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-snug">
-                      Selecciona un servicio institucional preconfigurado o captura un nuevo servicio desde cero.
-                    </p>
+                    <span className="text-[11px] text-slate-400 font-medium">
+                      Selecciona una plantilla o servicio en blanco
+                    </span>
                   </div>
 
-                  {/* Opción Lateral: Nuevo Servicio en Blanco */}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setCreationMode('blank');
-                      setTotalBudgetHours(60);
-                      setName('');
-                    }}
-                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all cursor-pointer shrink-0 ${creationMode === 'blank'
-                      ? 'bg-blue-700 border-blue-700 text-white shadow-xs'
-                      : 'border-blue-300 text-blue-800 hover:bg-blue-50 dark:border-blue-700 dark:text-blue-300 dark:hover:bg-blue-950/40 bg-white dark:bg-slate-800'
-                      }`}
-                  >
-                    <FileText className="w-3.5 h-3.5" />
-                    <span>Nuevo Servicio en Blanco</span>
-                  </button>
-                </div>
-
-                {/* Tarjetas del Catálogo de Servicios */}
-                {creationMode === 'catalog' && (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+                  <div className="divide-y divide-slate-200 dark:divide-slate-700 border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden bg-white dark:bg-slate-850 shadow-xs">
+                    {/* Filas 1 a 4: Plantillas Institucionales */}
                     {catalogServices.map((srv) => {
-                      const isSelected = selectedCatalogId === srv.id;
+                      const isSelected = creationMode === 'catalog' && selectedCatalogId === srv.id;
+                      const rubrosCount = srv.rubros?.length || 0;
+                      const activitiesCount = srv.totalActivities || (srv.rubros ? srv.rubros.reduce((acc, r) => acc + (r.activities?.length || 0), 0) : 0);
+                      const displayHours = Number(
+                        isSelected
+                          ? totalBudgetHours
+                          : (srv.totalBudgetHours || calculateTemplateTotalHours(srv.rubros))
+                      ).toFixed(1);
+                      const badgeText = CATALOG_ITEM_BADGES[srv.id] || 'Oficial';
+
                       return (
                         <div
                           key={srv.id}
                           onClick={() => handleSelectCatalogService(srv.id)}
-                          className={`p-3 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between ${isSelected
-                            ? 'bg-blue-50/80 border-blue-600 dark:bg-blue-950/40 dark:border-blue-500 shadow-xs ring-1 ring-blue-600/30'
-                            : 'bg-white dark:bg-slate-800/80 border-slate-200 dark:border-slate-700 hover:border-blue-300 dark:hover:border-slate-600'
-                            }`}
+                          className={`flex items-center gap-2.5 py-2.5 px-3.5 transition-all cursor-pointer ${
+                            isSelected
+                              ? 'bg-blue-50/80 dark:bg-blue-950/40 border-l-4 border-l-blue-700'
+                              : 'hover:bg-slate-50/70 dark:hover:bg-slate-800/40'
+                          }`}
                         >
-                          <div>
-                            <div className="flex items-start justify-between gap-1.5">
-                              <span
-                                className={`text-xs font-bold leading-tight ${isSelected
-                                  ? 'text-blue-950 dark:text-blue-200'
-                                  : 'text-slate-800 dark:text-slate-200'
-                                  }`}
-                              >
-                                {srv.name}
-                              </span>
-                              {srv.id === SERVICE_AUDITORIA_ESTADOS_FINANCIEROS_2026 && (
-                                <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-blue-100 text-blue-800 dark:bg-blue-900/60 dark:text-blue-300 shrink-0">
-                                  Oficial
-                                </span>
-                              )}
-                            </div>
-                            <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 line-clamp-2 leading-snug">
-                              {srv.description}
-                            </p>
+                          {/* Radio indicador */}
+                          <div
+                            className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 transition-colors ${
+                              isSelected
+                                ? 'border-blue-700 bg-blue-700 text-white'
+                                : 'border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800'
+                            }`}
+                          >
+                            {isSelected && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
                           </div>
 
-                          <div className="flex items-center justify-between text-[10px] font-semibold text-slate-500 dark:text-slate-400 mt-2.5 pt-2 border-t border-slate-100 dark:border-slate-700/60">
-                            <span>
-                              {srv.rubros?.length || 0} rubros • {srv.totalActivities || 0} actividades
-                            </span>
-                            <span className="text-blue-700 dark:text-blue-400 font-bold">
-                              ~{srv.totalBudgetHours}h base
+                          {/* Nombre del Servicio */}
+                          <span
+                            className={`text-xs truncate ${
+                              isSelected
+                                ? 'text-blue-950 dark:text-blue-100 font-semibold'
+                                : 'text-slate-800 dark:text-slate-200 font-medium'
+                            }`}
+                          >
+                            {srv.name}
+                          </span>
+
+                          {/* Etiqueta corta de enfoque */}
+                          <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 dark:bg-blue-900/60 dark:text-blue-300 shrink-0">
+                            {badgeText}
+                          </span>
+
+                          {/* Métricas alineadas a la derecha */}
+                          <div className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 tabular-nums shrink-0 ml-auto">
+                            <span>{rubrosCount} rubros</span>
+                            <span>•</span>
+                            <span>{activitiesCount} act.</span>
+                            <span>•</span>
+                            <span
+                              className={`font-bold ${
+                                isSelected ? 'text-blue-700 dark:text-sky-400' : 'text-slate-700 dark:text-slate-300'
+                              }`}
+                            >
+                              {displayHours}h
                             </span>
                           </div>
                         </div>
                       );
                     })}
-                  </div>
-                )}
 
-                {/* Acordeón de estimación inicial de horas para catálogo */}
+                    {/* Fila 5: Servicio en Blanco (Personalizado) */}
+                    {(() => {
+                      const isBlankSelected = creationMode === 'blank';
+                      return (
+                        <div
+                          onClick={() => {
+                            setCreationMode('blank');
+                            setSelectedCatalogId('blank');
+                            setTotalBudgetHours(60);
+                            setName('');
+                          }}
+                          className={`flex items-center gap-2.5 py-2.5 px-3.5 transition-all cursor-pointer ${
+                            isBlankSelected
+                              ? 'bg-blue-50/80 dark:bg-blue-950/40 border-l-4 border-l-blue-700'
+                              : 'hover:bg-slate-50/70 dark:hover:bg-slate-800/40'
+                          }`}
+                        >
+                          {/* Radio indicador */}
+                          <div
+                            className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 transition-colors ${
+                              isBlankSelected
+                                ? 'border-blue-700 bg-blue-700 text-white'
+                                : 'border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800'
+                            }`}
+                          >
+                            {isBlankSelected && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                          </div>
+
+                          {/* Nombre del Servicio */}
+                          <span
+                            className={`text-xs truncate ${
+                              isBlankSelected
+                                ? 'text-blue-950 dark:text-blue-100 font-semibold'
+                                : 'text-slate-800 dark:text-slate-200 font-medium'
+                            }`}
+                          >
+                            Servicio en Blanco (Personalizado)
+                          </span>
+
+                          {/* Etiqueta corta de enfoque */}
+                          <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400 shrink-0">
+                            0 actividades
+                          </span>
+
+                          {/* Métricas alineadas a la derecha */}
+                          <span className="text-xs text-slate-500 dark:text-slate-400 font-medium ml-auto">
+                            Personalizable
+                          </span>
+                        </div>
+                      );
+                    })()}
+                  </div>
+                </div>
+
+                {/* Bloque B: Ficha Técnica de la Plantilla Seleccionada (Detalles Claros) */}
                 {creationMode === 'catalog' && catalogRubros.length > 0 && (
-                  <div className="bg-white dark:bg-slate-800/90 rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden mt-2">
-                    <button
-                      type="button"
-                      onClick={() => setShowRubrosEstimation(!showRubrosEstimation)}
-                      className="w-full px-3 py-2 flex items-center justify-between text-left hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors cursor-pointer"
-                    >
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs font-bold text-blue-900 dark:text-blue-300">
-                          Horas Estimadas por Rubro ({catalogRubros.length} rubros)
+                  <div className="bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl p-3 space-y-2.5">
+                    {/* Resumen superior en una línea */}
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                      <div className="flex items-center gap-1.5 text-xs text-slate-700 dark:text-slate-300 flex-wrap">
+                        <span className="font-medium text-slate-500 dark:text-slate-400">Estructura incluida:</span>
+                        <span className="font-bold text-slate-900 dark:text-white">
+                          {catalogRubros.length} Rubros
                         </span>
-                        <span className="text-[10px] bg-blue-100 text-blue-800 dark:bg-blue-900/60 dark:text-blue-300 font-bold px-2 py-0.5 rounded-full">
-                          {totalBudgetHours.toFixed(1)}h totales
+                        <span>•</span>
+                        <span className="font-bold text-slate-900 dark:text-white">
+                          {catalogRubros.reduce((acc, r) => acc + (r.activities?.length || 0), 0)} Actividades predeterminadas
+                        </span>
+                        <span>•</span>
+                        <span className="font-bold text-blue-700 dark:text-sky-400 tabular-nums">
+                          Total: {totalBudgetHours.toFixed(1)}h estimadas
                         </span>
                       </div>
-                      <div className="flex items-center gap-1 text-[11px] text-slate-500 font-medium">
-                        <span>{showRubrosEstimation ? 'Ocultar' : 'Ajustar horas'}</span>
+
+                      <button
+                        type="button"
+                        onClick={() => setShowRubrosEstimation(!showRubrosEstimation)}
+                        className="text-xs font-semibold text-blue-700 dark:text-sky-400 hover:text-blue-800 hover:underline flex items-center gap-1 cursor-pointer self-start sm:self-auto shrink-0"
+                      >
+                        <span>
+                          {showRubrosEstimation
+                            ? `Ocultar rubros (${catalogRubros.length})`
+                            : `Ver y ajustar rubros (${catalogRubros.length})`}
+                        </span>
                         {showRubrosEstimation ? (
                           <ChevronUp className="w-3.5 h-3.5" />
                         ) : (
                           <ChevronDown className="w-3.5 h-3.5" />
                         )}
-                      </div>
-                    </button>
+                      </button>
+                    </div>
 
+                    {/* Acordeón Desplegable de Rubros y Horas */}
                     {showRubrosEstimation && (
-                      <div className="p-3 border-t border-slate-200 dark:border-slate-700 max-h-56 overflow-y-auto space-y-2 bg-slate-50/50 dark:bg-slate-900/40">
-                        <p className="text-[11px] text-slate-500 dark:text-slate-400 mb-1">
-                          Ajusta las horas de cada rubro para esta empresa. Los procedimientos internos se recalibrarán en proporción:
-                        </p>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <div className="pt-2.5 border-t border-slate-200 dark:border-slate-700">
+                        <div className="max-h-48 overflow-y-auto pr-1 space-y-1.5 scrollbar-thin scrollbar-thumb-slate-200 dark:scrollbar-thumb-slate-700">
                           {catalogRubros.map((rubro) => {
                             const rubroHours = rubro.activities.reduce(
                               (acc, a) => acc + (a.budgetedHours || 0),
                               0
                             );
+                            const cleanRubroName = rubro.name.replace(/^Rubro \d+\s*—\s*/i, '');
+                            const rubroTitle = rubro.number === 0
+                              ? '0. Planeación General y Cierre'
+                              : `${rubro.number}. ${cleanRubroName}`;
+
                             return (
                               <div
                                 key={rubro.number}
-                                className="flex items-center justify-between p-2 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs gap-2"
+                                className="flex items-center justify-between p-2 rounded-lg bg-white dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700 text-xs gap-3 hover:border-slate-300 dark:hover:border-slate-600 transition-colors"
                               >
                                 <div className="min-w-0 flex-1">
-                                  <div
-                                    className="font-semibold text-slate-800 dark:text-slate-200 truncate"
+                                  <span
+                                    className="font-semibold text-slate-800 dark:text-slate-200 truncate block"
                                     title={rubro.name}
                                   >
-                                    {rubro.number === 0
-                                      ? '0. Planeación General y Cierre'
-                                      : `${rubro.number}. ${rubro.name}`}
-                                  </div>
-                                  <div className="text-[10px] text-slate-400">
+                                    {rubroTitle}
+                                  </span>
+                                  <span className="text-[10px] text-slate-400">
                                     {rubro.activities.length} actividades
-                                  </div>
+                                  </span>
                                 </div>
-                                <div className="flex items-center gap-1 shrink-0">
+                                <div className="flex items-center gap-1.5 shrink-0">
                                   <input
                                     type="number"
                                     min="0"
@@ -640,7 +727,7 @@ export function RayonerProjectModal({
                                         parseFloat(e.target.value) || 0
                                       )
                                     }
-                                    className="w-16 px-2 py-1 text-right text-xs font-bold border border-slate-300 dark:border-slate-600 rounded bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-1 focus:ring-blue-600"
+                                    className="w-16 px-2 py-1 text-right text-xs font-bold border border-slate-300 dark:border-slate-600 rounded bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-1 focus:ring-blue-600 tabular-nums"
                                   />
                                   <span className="text-[11px] text-slate-500 font-bold">h</span>
                                 </div>
@@ -682,7 +769,7 @@ export function RayonerProjectModal({
                         onClick={() => setIsQuickCompanyOpen(true)}
                         className="inline-flex items-center text-xs font-semibold text-blue-700 dark:text-blue-400 hover:underline cursor-pointer shrink-0"
                       >
-                        + Registrar empresa
+                        Registrar empresa
                       </button>
                     )}
                   </div>
@@ -703,11 +790,11 @@ export function RayonerProjectModal({
                 )}
               </div>
 
-              {/* Código del Proyecto */}
+              {/* Código del Servicio */}
               <div className="sm:col-span-5">
                 <div className="flex items-center justify-between mb-1.5">
                   <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                    Código del Proyecto *
+                    Código del Servicio *
                   </label>
                   <button
                     type="button"
@@ -732,7 +819,7 @@ export function RayonerProjectModal({
             {/* Fila 2: Nombre del Servicio */}
             <div>
               <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block mb-1.5">
-                Nombre del Proyecto o Servicio *
+                Nombre del Servicio *
               </label>
               <input
                 type="text"
@@ -814,7 +901,7 @@ export function RayonerProjectModal({
                   className="flex items-center text-xs font-semibold text-rose-600 hover:text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-950/30 px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
                 >
                   <Trash2 className="w-3.5 h-3.5 mr-1" />
-                  Eliminar Proyecto
+                  Eliminar Servicio
                 </button>
               ) : (
                 <button

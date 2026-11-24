@@ -184,8 +184,8 @@ export const INTERACTIVE_GUIDES: Record<string, InteractiveGuide[]> = {
         },
         {
           target: '[data-tour="btn-new-project"]',
-          title: 'Nuevo Proyecto',
-          text: 'Inicia el formulario para crear un proyecto con su cliente y fecha de entrega.',
+          title: 'Nuevo Servicio',
+          text: 'Inicia el formulario para crear un nuevo servicio a partir del catálogo o en blanco.',
           navHint: 'Barra superior de proyectos',
         },
         {

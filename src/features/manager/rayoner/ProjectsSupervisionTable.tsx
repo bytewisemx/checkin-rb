@@ -303,8 +303,8 @@ export function ProjectsSupervisionTable({
             }}
             className="h-9 px-4 text-xs font-semibold text-white bg-blue-700 hover:bg-blue-800 rounded-lg shadow-sm transition-colors cursor-pointer inline-flex items-center gap-1.5 shrink-0"
           >
-            <Plus className="w-3.5 h-3.5 shrink-0" />
-            <span>Nuevo Proyecto</span>
+            <Plus className="w-4 h-4 shrink-0" />
+            <span>Nuevo Servicio</span>
           </button>
         </div>
       </div>
@@ -334,17 +334,15 @@ export function ProjectsSupervisionTable({
             <button
               type="button"
               onClick={() => setSelectedCompanyId('all')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold shrink-0 transition-all flex items-center gap-1.5 cursor-pointer border ${
-                selectedCompanyId === 'all'
-                  ? 'bg-blue-800 text-white border-blue-800 shadow-sm'
-                  : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-800 hover:border-blue-400 hover:text-blue-800'
-              }`}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold shrink-0 transition-all flex items-center gap-1.5 cursor-pointer border ${selectedCompanyId === 'all'
+                ? 'bg-blue-800 text-white border-blue-800 shadow-sm'
+                : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-800 hover:border-blue-400 hover:text-blue-800'
+                }`}
             >
               <span>Todas</span>
               <span
-                className={`text-[11px] font-bold tabular-nums ${
-                  selectedCompanyId === 'all' ? 'text-blue-100' : 'text-slate-400'
-                }`}
+                className={`text-[11px] font-bold tabular-nums ${selectedCompanyId === 'all' ? 'text-blue-100' : 'text-slate-400'
+                  }`}
               >
                 ({projects.length})
               </span>
@@ -367,11 +365,10 @@ export function ProjectsSupervisionTable({
                   key={company.id}
                   type="button"
                   onClick={() => setSelectedCompanyId(company.id)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold shrink-0 transition-all flex items-center gap-2 cursor-pointer border ${
-                    isSelected
-                      ? 'bg-blue-800 text-white border-blue-800 shadow-sm'
-                      : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-800 hover:border-blue-400 hover:text-blue-800'
-                  }`}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold shrink-0 transition-all flex items-center gap-2 cursor-pointer border ${isSelected
+                    ? 'bg-blue-800 text-white border-blue-800 shadow-sm'
+                    : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-800 hover:border-blue-400 hover:text-blue-800'
+                    }`}
                 >
                   {company.logoUrl ? (
                     <img
@@ -381,20 +378,18 @@ export function ProjectsSupervisionTable({
                     />
                   ) : (
                     <span
-                      className={`w-6 h-6 rounded font-bold text-[10px] flex items-center justify-center shrink-0 tracking-tight ${
-                        isSelected
-                          ? 'bg-blue-900/80 text-white border border-blue-600/50'
-                          : 'bg-blue-50 text-blue-800 dark:bg-blue-950 dark:text-blue-300 border border-blue-200 dark:border-blue-900'
-                      }`}
+                      className={`w-6 h-6 rounded font-bold text-[10px] flex items-center justify-center shrink-0 tracking-tight ${isSelected
+                        ? 'bg-blue-900/80 text-white border border-blue-600/50'
+                        : 'bg-blue-50 text-blue-800 dark:bg-blue-950 dark:text-blue-300 border border-blue-200 dark:border-blue-900'
+                        }`}
                     >
                       {initials}
                     </span>
                   )}
                   <span className="text-xs font-bold truncate max-w-[180px]">{displayName}</span>
                   <span
-                    className={`text-[11px] font-bold tabular-nums ${
-                      isSelected ? 'text-blue-100' : 'text-slate-400'
-                    }`}
+                    className={`text-[11px] font-bold tabular-nums ${isSelected ? 'text-blue-100' : 'text-slate-400'
+                      }`}
                   >
                     ({companyProjectsCount})
                   </span>
@@ -428,8 +423,8 @@ export function ProjectsSupervisionTable({
           }}
           className="h-8 px-3 text-xs font-semibold text-white bg-blue-700 hover:bg-blue-800 rounded-lg shadow-xs transition-colors cursor-pointer inline-flex items-center gap-1.5 shrink-0 self-start sm:self-auto"
         >
-          <Plus className="w-3.5 h-3.5 shrink-0" />
-          <span>Nuevo Proyecto en esta Empresa</span>
+          <Plus className="w-4 h-4 shrink-0" />
+          <span>Nuevo Servicio</span>
         </button>
       </div>
 
@@ -476,9 +471,8 @@ export function ProjectsSupervisionTable({
                   return (
                     <Fragment key={project.id}>
                       <tr
-                        className={`hover:bg-slate-50/50 dark:hover:bg-slate-800/40 transition-colors ${
-                          isExpanded ? 'bg-slate-50/40 dark:bg-slate-800/20' : ''
-                        }`}
+                        className={`hover:bg-slate-50/50 dark:hover:bg-slate-800/40 transition-colors ${isExpanded ? 'bg-slate-50/40 dark:bg-slate-800/20' : ''
+                          }`}
                       >
                         {/* 1. Proyecto / Cliente con Logotipo (o Monograma) y Toggle de Acordeón */}
                         <td className="p-4">
@@ -565,10 +559,10 @@ export function ProjectsSupervisionTable({
                               </span>
                               <span
                                 className={`font-bold ${isOverBudget
-                                    ? 'text-rose-600 dark:text-rose-400'
-                                    : isWarning
-                                      ? 'text-amber-600 dark:text-amber-400'
-                                      : 'text-blue-700 dark:text-blue-400'
+                                  ? 'text-rose-600 dark:text-rose-400'
+                                  : isWarning
+                                    ? 'text-amber-600 dark:text-amber-400'
+                                    : 'text-blue-700 dark:text-blue-400'
                                   }`}
                               >
                                 {percent}%
@@ -577,10 +571,10 @@ export function ProjectsSupervisionTable({
                             <div className="w-full bg-slate-100 dark:bg-slate-800 rounded-full h-1.5 overflow-hidden">
                               <div
                                 className={`h-1.5 rounded-full transition-all duration-300 ${isOverBudget
-                                    ? 'bg-rose-600'
-                                    : isWarning
-                                      ? 'bg-amber-500'
-                                      : 'bg-blue-700 dark:bg-blue-600'
+                                  ? 'bg-rose-600'
+                                  : isWarning
+                                    ? 'bg-amber-500'
+                                    : 'bg-blue-700 dark:bg-blue-600'
                                   }`}
                                 style={{ width: `${Math.min(percent, 100)}%` }}
                               />
@@ -682,211 +676,210 @@ export function ProjectsSupervisionTable({
                                 onOpenTaskModal={onOpenTaskModal}
                               />
                             ) : (
-                            <div className="space-y-3">
-                              <div className="flex items-center justify-between pb-2 border-b border-slate-200/60 dark:border-slate-700/60">
-                                <div className="flex items-center gap-2">
-                                  <ListTodo className="w-4 h-4 text-blue-700 dark:text-blue-400" />
-                                  <span className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider">
-                                    Actividades y Tareas del Proyecto ({projectTasks.length})
-                                  </span>
-                                </div>
-                                <button
-                                  type="button"
-                                  onClick={() => onOpenTaskModal(null, project.id)}
-                                  className="inline-flex items-center gap-1.5 text-xs font-semibold text-blue-700 hover:text-blue-800 dark:text-blue-300 bg-white dark:bg-slate-900 border border-blue-200 dark:border-blue-900 px-2.5 py-1 rounded-md shadow-2xs hover:bg-blue-50 dark:hover:bg-blue-950/40 transition cursor-pointer"
-                                >
-                                  <Plus className="w-3.5 h-3.5" />
-                                  <span>Agregar Actividad</span>
-                                </button>
-                              </div>
-
-                              {projectTasks.length === 0 ? (
-                                <div className="py-6 text-center space-y-2">
-                                  <p className="text-xs text-slate-500 dark:text-slate-400">
-                                    Este proyecto aún no tiene actividades o tareas registradas.
-                                  </p>
+                              <div className="space-y-3">
+                                <div className="flex items-center justify-between pb-2 border-b border-slate-200/60 dark:border-slate-700/60">
+                                  <div className="flex items-center gap-2">
+                                    <ListTodo className="w-4 h-4 text-blue-700 dark:text-blue-400" />
+                                    <span className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider">
+                                      Actividades y Tareas del Proyecto ({projectTasks.length})
+                                    </span>
+                                  </div>
                                   <button
                                     type="button"
                                     onClick={() => onOpenTaskModal(null, project.id)}
-                                    className="text-xs font-semibold text-blue-700 hover:text-blue-800 dark:text-sky-400 underline cursor-pointer"
+                                    className="inline-flex items-center gap-1.5 text-xs font-semibold text-blue-700 hover:text-blue-800 dark:text-blue-300 bg-white dark:bg-slate-900 border border-blue-200 dark:border-blue-900 px-2.5 py-1 rounded-md shadow-2xs hover:bg-blue-50 dark:hover:bg-blue-950/40 transition cursor-pointer"
                                   >
-                                    + Crear primera actividad
+                                    <Plus className="w-3.5 h-3.5" />
+                                    <span>Agregar Actividad</span>
                                   </button>
                                 </div>
-                              ) : (
-                                <div className="space-y-2">
-                                  {projectTasks.map((task: TaskNode) => {
-                                    const actualMinutes =
-                                      task.loggedMinutes !== undefined
-                                        ? Math.max(0, Math.round(task.loggedMinutes))
-                                        : Math.max(0, Math.round((taskActualHours[task.id] || 0) * 60));
-                                    const plannedMinutes =
-                                      task.plannedMinutes !== undefined
-                                        ? Math.max(0, Math.round(task.plannedMinutes))
-                                        : Math.max(0, Math.round((task.plannedHours || 0) * 60));
-                                    const taskPercent =
-                                      plannedMinutes > 0 ? Math.round((actualMinutes / plannedMinutes) * 100) : 0;
-                                    const isTaskOver = taskPercent >= 100;
-                                    const isTaskWarning = taskPercent >= 80 && taskPercent < 100;
 
-                                    const rawAssigned =
-                                      Array.isArray(task.assignedUserIds) && task.assignedUserIds.length > 0
-                                        ? task.assignedUserIds
-                                        : Array.isArray(task.assignedToIds) && task.assignedToIds.length > 0
-                                        ? task.assignedToIds
-                                        : task.assignedToId || task.assigned_to
-                                        ? [task.assignedToId || task.assigned_to!]
-                                        : [];
-                                    const taskMembers = teamMembers.filter((m) => rawAssigned.includes(m.id));
+                                {projectTasks.length === 0 ? (
+                                  <div className="py-6 text-center space-y-2">
+                                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                                      Este proyecto aún no tiene actividades o tareas registradas.
+                                    </p>
+                                    <button
+                                      type="button"
+                                      onClick={() => onOpenTaskModal(null, project.id)}
+                                      className="text-xs font-semibold text-blue-700 hover:text-blue-800 dark:text-sky-400 underline cursor-pointer"
+                                    >
+                                      + Crear primera actividad
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <div className="space-y-2">
+                                    {projectTasks.map((task: TaskNode) => {
+                                      const actualMinutes =
+                                        task.loggedMinutes !== undefined
+                                          ? Math.max(0, Math.round(task.loggedMinutes))
+                                          : Math.max(0, Math.round((taskActualHours[task.id] || 0) * 60));
+                                      const plannedMinutes =
+                                        task.plannedMinutes !== undefined
+                                          ? Math.max(0, Math.round(task.plannedMinutes))
+                                          : Math.max(0, Math.round((task.plannedHours || 0) * 60));
+                                      const taskPercent =
+                                        plannedMinutes > 0 ? Math.round((actualMinutes / plannedMinutes) * 100) : 0;
+                                      const isTaskOver = taskPercent >= 100;
+                                      const isTaskWarning = taskPercent >= 80 && taskPercent < 100;
 
-                                    const effectiveLeadId =
-                                      task.leadUserId ||
-                                      task.assignedToId ||
-                                      task.assigned_to ||
-                                      rawAssigned[0] ||
-                                      '';
-                                    const leadMember = teamMembers.find((m) => m.id === effectiveLeadId);
-                                    const leadDisplayName =
-                                      task.leadUserName || leadMember?.name || task.assignedToName || 'Sin asignar';
+                                      const rawAssigned =
+                                        Array.isArray(task.assignedUserIds) && task.assignedUserIds.length > 0
+                                          ? task.assignedUserIds
+                                          : Array.isArray(task.assignedToIds) && task.assignedToIds.length > 0
+                                            ? task.assignedToIds
+                                            : task.assignedToId || task.assigned_to
+                                              ? [task.assignedToId || task.assigned_to!]
+                                              : [];
+                                      const taskMembers = teamMembers.filter((m) => rawAssigned.includes(m.id));
 
-                                    const handleReassignLead = (newLeadId: string) => {
-                                      const target = teamMembers.find((m) => m.id === newLeadId);
-                                      if (!target) return;
-                                      updateTask(task.id, {
-                                        leadUserId: target.id,
-                                        leadUserName: target.name,
-                                        assigned_to: target.id,
-                                        assignedToId: target.id,
-                                        assignedToName: target.name,
-                                        assignedToEmail: (target.email || '').toLowerCase(),
-                                      });
-                                    };
+                                      const effectiveLeadId =
+                                        task.leadUserId ||
+                                        task.assignedToId ||
+                                        task.assigned_to ||
+                                        rawAssigned[0] ||
+                                        '';
+                                      const leadMember = teamMembers.find((m) => m.id === effectiveLeadId);
+                                      const leadDisplayName =
+                                        task.leadUserName || leadMember?.name || task.assignedToName || 'Sin asignar';
 
-                                    return (
-                                      <div
-                                        key={task.id}
-                                        className="p-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg flex flex-col md:flex-row md:items-center justify-between gap-3 shadow-2xs hover:border-blue-300 dark:hover:border-blue-800 transition-colors"
-                                      >
-                                        {/* Título de actividad y Badge de Responsable */}
-                                        <div className="flex flex-col sm:flex-row sm:items-center gap-2 min-w-0">
-                                          <span className="text-xs font-bold text-slate-800 dark:text-slate-100 truncate">
-                                            {task.name || task.title}
-                                          </span>
-                                          {task.isExtraordinary && (
-                                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 shrink-0">
-                                              Extraordinaria
+                                      const handleReassignLead = (newLeadId: string) => {
+                                        const target = teamMembers.find((m) => m.id === newLeadId);
+                                        if (!target) return;
+                                        updateTask(task.id, {
+                                          leadUserId: target.id,
+                                          leadUserName: target.name,
+                                          assigned_to: target.id,
+                                          assignedToId: target.id,
+                                          assignedToName: target.name,
+                                          assignedToEmail: (target.email || '').toLowerCase(),
+                                        });
+                                      };
+
+                                      return (
+                                        <div
+                                          key={task.id}
+                                          className="p-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg flex flex-col md:flex-row md:items-center justify-between gap-3 shadow-2xs hover:border-blue-300 dark:hover:border-blue-800 transition-colors"
+                                        >
+                                          {/* Título de actividad y Badge de Responsable */}
+                                          <div className="flex flex-col sm:flex-row sm:items-center gap-2 min-w-0">
+                                            <span className="text-xs font-bold text-slate-800 dark:text-slate-100 truncate">
+                                              {task.name || task.title}
                                             </span>
-                                          )}
-                                          <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-md bg-blue-50 text-blue-800 border border-blue-200 dark:bg-blue-950/60 dark:text-sky-300 dark:border-blue-900 shrink-0">
-                                            Responsable: {leadDisplayName}
-                                          </span>
-                                        </div>
+                                            {task.isExtraordinary && (
+                                              <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 shrink-0">
+                                                Extraordinaria
+                                              </span>
+                                            )}
+                                            <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-md bg-blue-50 text-blue-800 border border-blue-200 dark:bg-blue-950/60 dark:text-sky-300 dark:border-blue-900 shrink-0">
+                                              Responsable: {leadDisplayName}
+                                            </span>
+                                          </div>
 
-                                        {/* Participantes asignados, Horas y Reasignación rápida */}
-                                        <div className="flex flex-wrap items-center gap-3 text-xs">
-                                          {/* Participantes asignados (avatares alineados) */}
-                                          <div className="flex items-center gap-1.5">
-                                            <div className="flex -space-x-1.5 items-center shrink-0">
-                                              {taskMembers.length > 0 ? (
-                                                taskMembers.map((m) => {
-                                                  const initials = m.name
-                                                    .split(' ')
-                                                    .map((n) => n[0])
-                                                    .slice(0, 2)
-                                                    .join('')
-                                                    .toUpperCase();
-                                                  const photo = m.photoURL || (m as any).avatarUrl;
-                                                  return (
-                                                    <div
-                                                      key={m.id}
-                                                      title={`${m.name} (${m.roleTitle || 'Colaborador'})`}
-                                                      className="w-6 h-6 rounded-full ring-2 ring-white dark:ring-slate-900 bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200 flex items-center justify-center text-[9px] font-bold shrink-0 overflow-hidden select-none"
-                                                    >
-                                                      {photo ? (
-                                                        <img
-                                                          src={photo}
-                                                          referrerPolicy="no-referrer"
-                                                          alt={m.name}
-                                                          className="w-full h-full object-cover"
-                                                        />
-                                                      ) : (
-                                                        <span>{initials}</span>
-                                                      )}
-                                                    </div>
-                                                  );
-                                                })
-                                              ) : (
-                                                <span className="text-[11px] text-slate-400 italic">
-                                                  Sin participantes
+                                          {/* Participantes asignados, Horas y Reasignación rápida */}
+                                          <div className="flex flex-wrap items-center gap-3 text-xs">
+                                            {/* Participantes asignados (avatares alineados) */}
+                                            <div className="flex items-center gap-1.5">
+                                              <div className="flex -space-x-1.5 items-center shrink-0">
+                                                {taskMembers.length > 0 ? (
+                                                  taskMembers.map((m) => {
+                                                    const initials = m.name
+                                                      .split(' ')
+                                                      .map((n) => n[0])
+                                                      .slice(0, 2)
+                                                      .join('')
+                                                      .toUpperCase();
+                                                    const photo = m.photoURL || (m as any).avatarUrl;
+                                                    return (
+                                                      <div
+                                                        key={m.id}
+                                                        title={`${m.name} (${m.roleTitle || 'Colaborador'})`}
+                                                        className="w-6 h-6 rounded-full ring-2 ring-white dark:ring-slate-900 bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200 flex items-center justify-center text-[9px] font-bold shrink-0 overflow-hidden select-none"
+                                                      >
+                                                        {photo ? (
+                                                          <img
+                                                            src={photo}
+                                                            referrerPolicy="no-referrer"
+                                                            alt={m.name}
+                                                            className="w-full h-full object-cover"
+                                                          />
+                                                        ) : (
+                                                          <span>{initials}</span>
+                                                        )}
+                                                      </div>
+                                                    );
+                                                  })
+                                                ) : (
+                                                  <span className="text-[11px] text-slate-400 italic">
+                                                    Sin participantes
+                                                  </span>
+                                                )}
+                                              </div>
+                                            </div>
+
+                                            {/* Horas registradas */}
+                                            <div className="flex items-center gap-1.5 tabular-nums flex-wrap">
+                                              <span className="font-semibold text-slate-700 dark:text-slate-200">
+                                                {formatMinutesSexagesimal(actualMinutes)} / {formatMinutesSexagesimal(plannedMinutes)}
+                                              </span>
+                                              <span
+                                                className={`font-bold text-[11px] ${isTaskOver
+                                                  ? 'text-rose-600 dark:text-rose-400'
+                                                  : isTaskWarning
+                                                    ? 'text-amber-600 dark:text-amber-400'
+                                                    : 'text-blue-700 dark:text-blue-400'
+                                                  }`}
+                                              >
+                                                ({taskPercent}%)
+                                              </span>
+                                              {task.isManuallyModified && (
+                                                <span
+                                                  title={
+                                                    task.manualAdjustment?.reason
+                                                      ? `Modificado manualmente por ${task.manualAdjustment.modifiedByName || 'Supervisor'}: "${task.manualAdjustment.reason}"`
+                                                      : 'Modificado de manera manual'
+                                                  }
+                                                  className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border border-amber-300/60 dark:border-amber-800 cursor-help"
+                                                >
+                                                  Modificado manual
                                                 </span>
                                               )}
                                             </div>
-                                          </div>
 
-                                          {/* Horas registradas */}
-                                          <div className="flex items-center gap-1.5 tabular-nums flex-wrap">
-                                            <span className="font-semibold text-slate-700 dark:text-slate-200">
-                                              {formatMinutesSexagesimal(actualMinutes)} / {formatMinutesSexagesimal(plannedMinutes)}
-                                            </span>
-                                            <span
-                                              className={`font-bold text-[11px] ${
-                                                isTaskOver
-                                                  ? 'text-rose-600 dark:text-rose-400'
-                                                  : isTaskWarning
-                                                  ? 'text-amber-600 dark:text-amber-400'
-                                                  : 'text-blue-700 dark:text-blue-400'
-                                              }`}
-                                            >
-                                              ({taskPercent}%)
-                                            </span>
-                                            {task.isManuallyModified && (
-                                              <span
-                                                title={
-                                                  task.manualAdjustment?.reason
-                                                    ? `Modificado manualmente por ${task.manualAdjustment.modifiedByName || 'Supervisor'}: "${task.manualAdjustment.reason}"`
-                                                    : 'Modificado de manera manual'
-                                                }
-                                                className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border border-amber-300/60 dark:border-amber-800 cursor-help"
-                                              >
-                                                Modificado manual
-                                              </span>
+                                            {/* Selector dinámico de Responsable de Actividad */}
+                                            {taskMembers.length > 1 && (
+                                              <div className="flex items-center gap-1.5">
+                                                <span className="text-[10px] text-slate-400">Responsable:</span>
+                                                <select
+                                                  value={effectiveLeadId}
+                                                  onChange={(e) => handleReassignLead(e.target.value)}
+                                                  className="text-[10px] font-medium bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded px-1.5 py-0.5 text-slate-700 dark:text-slate-200 focus:outline-none focus:border-blue-700 cursor-pointer"
+                                                >
+                                                  {taskMembers.map((m) => (
+                                                    <option key={m.id} value={m.id}>
+                                                      {m.name}
+                                                    </option>
+                                                  ))}
+                                                </select>
+                                              </div>
                                             )}
+
+                                            {/* Botón editar actividad */}
+                                            <button
+                                              type="button"
+                                              onClick={() => onOpenTaskModal(task.id, project.id)}
+                                              className="p-1 text-slate-400 hover:text-blue-700 dark:hover:text-blue-400 rounded transition cursor-pointer"
+                                              title="Editar actividad"
+                                            >
+                                              <Edit2 className="w-3.5 h-3.5" />
+                                            </button>
                                           </div>
-
-                                          {/* Selector dinámico de Responsable de Actividad */}
-                                          {taskMembers.length > 1 && (
-                                            <div className="flex items-center gap-1.5">
-                                              <span className="text-[10px] text-slate-400">Responsable:</span>
-                                              <select
-                                                value={effectiveLeadId}
-                                                onChange={(e) => handleReassignLead(e.target.value)}
-                                                className="text-[10px] font-medium bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded px-1.5 py-0.5 text-slate-700 dark:text-slate-200 focus:outline-none focus:border-blue-700 cursor-pointer"
-                                              >
-                                                {taskMembers.map((m) => (
-                                                  <option key={m.id} value={m.id}>
-                                                    {m.name}
-                                                  </option>
-                                                ))}
-                                              </select>
-                                            </div>
-                                          )}
-
-                                          {/* Botón editar actividad */}
-                                          <button
-                                            type="button"
-                                            onClick={() => onOpenTaskModal(task.id, project.id)}
-                                            className="p-1 text-slate-400 hover:text-blue-700 dark:hover:text-blue-400 rounded transition cursor-pointer"
-                                            title="Editar actividad"
-                                          >
-                                            <Edit2 className="w-3.5 h-3.5" />
-                                          </button>
                                         </div>
-                                      </div>
-                                    );
-                                  })}
-                                </div>
-                              )}
-                            </div>
+                                      );
+                                    })}
+                                  </div>
+                                )}
+                              </div>
                             )}
                           </td>
                         </tr>
