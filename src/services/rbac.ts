@@ -29,6 +29,7 @@ export type LegacyOrCurrentRole = UserRole | string | undefined;
  */
 export interface UserGranularPermissions {
   canCheckIn: boolean;                  // Check-in biométrico y cronómetro continuo
+  canAccessMyTasks: boolean;            // Acceso al tablero Mis Tareas personal
   canCreateTasks: boolean;              // Crear tareas nuevas dentro de un proyecto asignado
   canAdjustTeamTimes: boolean;          // Supervisar y ajustar tiempos/registros del equipo
   canManageClientsAndProjects: boolean; // Alta de Clientes y creación de Proyectos
@@ -156,6 +157,7 @@ export const DEFAULT_PERMISSIONS_BY_ROLE: Record<CanonicalRole, UserGranularPerm
   // 1. Colaborador: Check-in, cronómetro y crear tareas dentro de proyecto asignado
   Colaborador: {
     canCheckIn: true,
+    canAccessMyTasks: true,
     canCreateTasks: true,
     canAdjustTeamTimes: false,
     canManageClientsAndProjects: false,
@@ -171,6 +173,7 @@ export const DEFAULT_PERMISSIONS_BY_ROLE: Record<CanonicalRole, UserGranularPerm
   // 2. Supervisor: Todo lo de Colaborador + supervisar avances y ajustar tiempos de su equipo
   Supervisor: {
     canCheckIn: true,
+    canAccessMyTasks: true,
     canCreateTasks: true,
     canAdjustTeamTimes: true,
     canManageClientsAndProjects: false,
@@ -186,6 +189,7 @@ export const DEFAULT_PERMISSIONS_BY_ROLE: Record<CanonicalRole, UserGranularPerm
   // 3. Gerente: Clientes/Proyectos, finanzas, asignación de miembros, invitaciones e informes
   Gerente: {
     canCheckIn: true,
+    canAccessMyTasks: true,
     canCreateTasks: true,
     canAdjustTeamTimes: true,
     canManageClientsAndProjects: true,
@@ -201,6 +205,7 @@ export const DEFAULT_PERMISSIONS_BY_ROLE: Record<CanonicalRole, UserGranularPerm
   // 4. Socio / Jefatura: Acceso total a Gerencia y RH + Bitácora de Auditoría Ejecutiva
   Socio: {
     canCheckIn: true,
+    canAccessMyTasks: true,
     canCreateTasks: true,
     canAdjustTeamTimes: true,
     canManageClientsAndProjects: true,
@@ -216,6 +221,7 @@ export const DEFAULT_PERMISSIONS_BY_ROLE: Record<CanonicalRole, UserGranularPerm
   // 5. Recursos Humanos: Control de asistencias, sábana quincenal, ajuste de checadas y kardex
   RH: {
     canCheckIn: true,
+    canAccessMyTasks: false,
     canCreateTasks: false,
     canAdjustTeamTimes: false,
     canManageClientsAndProjects: false,
@@ -231,6 +237,7 @@ export const DEFAULT_PERMISSIONS_BY_ROLE: Record<CanonicalRole, UserGranularPerm
   // 6. Administrador TI (Root): Control maestro total y consola RBAC
   TI: {
     canCheckIn: true,
+    canAccessMyTasks: true,
     canCreateTasks: true,
     canAdjustTeamTimes: true,
     canManageClientsAndProjects: true,

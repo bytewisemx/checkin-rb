@@ -794,7 +794,7 @@ export function ProjectsSupervisionTable({
                                           </div>
 
                                           {/* Horas registradas */}
-                                          <div className="flex items-center gap-1.5 tabular-nums">
+                                          <div className="flex items-center gap-1.5 tabular-nums flex-wrap">
                                             <span className="font-semibold text-slate-700 dark:text-slate-200">
                                               {formatMinutesSexagesimal(actualMinutes)} / {formatMinutesSexagesimal(plannedMinutes)}
                                             </span>
@@ -809,6 +809,18 @@ export function ProjectsSupervisionTable({
                                             >
                                               ({taskPercent}%)
                                             </span>
+                                            {task.isManuallyModified && (
+                                              <span
+                                                title={
+                                                  task.manualAdjustment?.reason
+                                                    ? `Modificado manualmente por ${task.manualAdjustment.modifiedByName || 'Supervisor'}: "${task.manualAdjustment.reason}"`
+                                                    : 'Modificado de manera manual'
+                                                }
+                                                className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border border-amber-300/60 dark:border-amber-800 cursor-help"
+                                              >
+                                                Modificado manual
+                                              </span>
+                                            )}
                                           </div>
 
                                           {/* Selector dinámico de encargado si hay múltiples participantes */}

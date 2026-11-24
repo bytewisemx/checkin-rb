@@ -98,6 +98,12 @@ export const GRANULAR_PERMISSION_DEFINITIONS: Array<{
     description: 'Permite registrar entradas, salidas y cronometrar jornadas.',
   },
   {
+    key: 'canAccessMyTasks',
+    label: 'Tablero Mis Tareas',
+    category: 'operativo',
+    description: 'Permite acceder al módulo personal Mis Tareas para ejecutar y supervisar actividades asignadas.',
+  },
+  {
     key: 'canCreateTasks',
     label: 'Crear Tareas en Proyecto',
     category: 'operativo',

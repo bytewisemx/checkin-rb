@@ -59,6 +59,15 @@ export interface TaskDocument {
   hoursByUser?: Record<string, number>;
   totalActualHours?: number;
   comments?: string;
+  isManuallyModified?: boolean;
+  manualAdjustment?: {
+    previousSeconds: number;
+    adjustedSeconds: number;
+    reason: string;
+    modifiedByUid: string;
+    modifiedByName: string;
+    modifiedAt: string;
+  };
   createdAt: string;
   updatedAt?: string;
 }
@@ -181,6 +190,8 @@ export function doesTaskBelongToUser(
   const { ids, email } = resolveUserIdentityKeys(identity);
   const taskIds = [
     ...(Array.isArray(task.assignedToIds) ? task.assignedToIds : []),
+    ...(Array.isArray((task as any).assignedUserIds) ? (task as any).assignedUserIds : []),
+    (task as any).leadUserId,
     task.assignedToId,
     task.assigned_to,
     task.assignedTo,
@@ -376,6 +387,8 @@ export async function saveTaskToFirestore(
     hoursByUser: (task as any).hoursByUser,
     totalActualHours: (task as any).totalActualHours,
     comments: (task as any).comments,
+    isManuallyModified: Boolean((task as any).isManuallyModified),
+    manualAdjustment: (task as any).manualAdjustment,
   };
 
   if (!isFirebaseConfigured() || !db) {
@@ -545,6 +558,8 @@ function mapRawDocToTaskDocument(docId: string, d: Record<string, any>): TaskDoc
     hoursByUser: typeof d.hoursByUser === 'object' && d.hoursByUser !== null ? d.hoursByUser : undefined,
     totalActualHours: typeof d.totalActualHours === 'number' ? d.totalActualHours : undefined,
     comments: d.comments ? String(d.comments) : undefined,
+    isManuallyModified: Boolean(d.isManuallyModified),
+    manualAdjustment: typeof d.manualAdjustment === 'object' && d.manualAdjustment !== null ? d.manualAdjustment : undefined,
   };
 }
 
@@ -750,5 +765,94 @@ export async function deleteTaskFromFirestore(taskId: string): Promise<boolean> 
   } catch (err) {
     console.warn('[taskService] Error al eliminar tarea:', err);
     return false;
+  }
+}
+
+export interface ManualTimeAdjustmentPayload {
+  previousSeconds: number;
+  adjustedSeconds: number;
+  reason: string;
+  modifiedByUid: string;
+  modifiedByName: string;
+  modifiedAt: string;
+}
+
+/**
+ * Ajusta manualmente el tiempo invertido en una tarea con trazabilidad obligatoria
+ * y registra la auditoría en tasks/{taskId} y en la colección time_adjustments_log.
+ */
+export async function adjustTaskTimeInFirestore(
+  taskId: string,
+  taskCurrentMinutes: number,
+  adjustedMinutes: number,
+  reason: string,
+  actor: { id: string; name?: string; email?: string },
+  taskMeta?: { title?: string; projectId?: string; projectName?: string; companyId?: string; companyName?: string }
+): Promise<{ success: boolean; adjustment?: ManualTimeAdjustmentPayload; error?: string }> {
+  const previousSeconds = Math.max(0, Math.round(taskCurrentMinutes * 60));
+  const adjustedSeconds = Math.max(0, Math.round(adjustedMinutes * 60));
+  const nowIso = new Date().toISOString();
+  const modifiedByUid = actor.id || 'desconocido';
+  const modifiedByName = actor.name || actor.email || 'Usuario';
+
+  const adjustment: ManualTimeAdjustmentPayload = {
+    previousSeconds,
+    adjustedSeconds,
+    reason: reason.trim(),
+    modifiedByUid,
+    modifiedByName,
+    modifiedAt: nowIso,
+  };
+
+  const totalActualHours = Number((adjustedMinutes / 60).toFixed(2));
+
+  const patch: Record<string, any> = {
+    loggedMinutes: adjustedMinutes,
+    totalActualHours,
+    isManuallyModified: true,
+    manualAdjustment: adjustment,
+    updatedAt: nowIso,
+  };
+
+  if (modifiedByUid) {
+    patch[`hoursByUser.${modifiedByUid}`] = totalActualHours;
+  }
+
+  if (!isFirebaseConfigured() || !db) {
+    return { success: true, adjustment };
+  }
+
+  try {
+    // 1. Actualizar la tarea en Firestore
+    await setDoc(doc(db, 'tasks', taskId), patch, { merge: true });
+    trackFirestoreWrite(1);
+
+    // 2. Registrar en la bitácora de auditoría histórica de ajustes de tiempo
+    const logId = `adj-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+    const auditRecord = {
+      id: logId,
+      taskId,
+      taskTitle: taskMeta?.title || '',
+      projectId: taskMeta?.projectId || '',
+      projectName: taskMeta?.projectName || '',
+      companyId: taskMeta?.companyId || '',
+      companyName: taskMeta?.companyName || '',
+      modifiedByUid,
+      modifiedByName,
+      previousMinutes: taskCurrentMinutes,
+      adjustedMinutes,
+      differenceMinutes: adjustedMinutes - taskCurrentMinutes,
+      reason: reason.trim(),
+      timestamp: nowIso,
+    };
+
+    void setDoc(doc(db, 'time_adjustments_log', logId), auditRecord).catch((err) => {
+      console.warn('[taskService] No se pudo guardar en time_adjustments_log:', err);
+    });
+
+    return { success: true, adjustment };
+  } catch (err: any) {
+    console.warn('[taskService] Error al ajustar tiempo manualmente en Firestore:', err);
+    return { success: false, error: err?.message || 'Error de permisos o red al actualizar tiempo.' };
   }
 }

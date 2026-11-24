@@ -11,10 +11,11 @@ import { TeamMembersView } from './rayoner/TeamMembersView';
 import { ExecutiveAuditLogView } from '../audit/ExecutiveAuditLogView';
 import { AuditHierarchyView } from '../hierarchy/AuditHierarchyView';
 import { CheckinPanel } from '../checkin/CheckinPanel';
+import { KanbanBoard } from '../projects/KanbanBoard';
 import { useLiveTeamTimers, useOperationalCatalogSync } from '../../hooks/useLiveTeamTimers';
 import { canAccessClientsDirectory } from '../../services/companyService';
 
-export type SupervisorTab = 'tree' | 'clients' | 'report' | 'attendance' | 'audit_accounts' | 'my_checkin' | 'audit_logs';
+export type SupervisorTab = 'tree' | 'clients' | 'report' | 'attendance' | 'audit_accounts' | 'my_checkin' | 'audit_logs' | 'my_tasks';
 
 export interface SupervisorDashboardProps {
   initialTab?: SupervisorTab;
@@ -38,6 +39,7 @@ export function SupervisorDashboard({ initialTab }: SupervisorDashboardProps = {
   const normRole = normalizeRole(user?.role);
   const canSeeTree = effectiveModules.tasks || effectiveModules.clients || userPerms.canManageClientsAndProjects;
   const canSeeClientsDirectory = canAccessClientsDirectory(user?.role);
+  const canSeeMyTasks = normRole !== 'RH' && (userPerms.canAccessMyTasks ?? true);
   const canSeeReports = userPerms.canExportReports || effectiveModules.reports;
   const canSeeAudit = userPerms.canViewExecutiveAuditLogs;
   const canSeeHierarchy = normRole === 'Socio' || normRole === 'Gerente';
@@ -59,6 +61,9 @@ export function SupervisorDashboard({ initialTab }: SupervisorDashboardProps = {
 
   const resolvedTab: SupervisorTab = (() => {
     if (activeTab === 'clients' && !canSeeClientsDirectory) {
+      return canSeeTree ? 'tree' : 'attendance';
+    }
+    if (activeTab === 'my_tasks' && !canSeeMyTasks) {
       return canSeeTree ? 'tree' : 'attendance';
     }
     if (activeTab === 'tree' && !canSeeTree) {
@@ -151,6 +156,21 @@ export function SupervisorDashboard({ initialTab }: SupervisorDashboardProps = {
                   }`}
               >
                 Proyectos y Tiempos
+              </button>
+            )}
+
+            {/* Pestaña Mis Tareas: Colaborador, Supervisor y Gerente asignados */}
+            {canSeeMyTasks && (
+              <button
+                type="button"
+                data-tour="nav-my-tasks-tab"
+                onClick={() => setActiveTab('my_tasks')}
+                className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${resolvedTab === 'my_tasks'
+                  ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                  }`}
+              >
+                Mis Tareas
               </button>
             )}
 
@@ -352,6 +372,12 @@ export function SupervisorDashboard({ initialTab }: SupervisorDashboardProps = {
       )}
 
       {/* 3. Renderizado de la Vista Seleccionada */}
+      {resolvedTab === 'my_tasks' && canSeeMyTasks && (
+        <div className="animate-fade-in">
+          <KanbanBoard />
+        </div>
+      )}
+
       {resolvedTab === 'tree' && canSeeTree && (
         <ProjectsSupervisionTable
           onOpenTaskModal={(taskId, projectId) =>

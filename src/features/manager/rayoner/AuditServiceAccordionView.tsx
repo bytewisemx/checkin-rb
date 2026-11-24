@@ -706,8 +706,20 @@ export function AuditServiceAccordionView({
 
                             {/* Horas Reales Ejercidas y Variación */}
                             <td className="py-2.5 px-2.5 text-right">
-                              <div className="font-bold text-slate-900 dark:text-white tabular-nums">
-                                {actual.toFixed(2)}h
+                              <div className="font-bold text-slate-900 dark:text-white tabular-nums flex items-center justify-end gap-1">
+                                <span>{actual.toFixed(2)}h</span>
+                                {task.isManuallyModified && (
+                                  <span
+                                    title={
+                                      task.manualAdjustment?.reason
+                                        ? `Modificado manualmente por ${task.manualAdjustment.modifiedByName || 'Supervisor'}: "${task.manualAdjustment.reason}"`
+                                        : 'Modificado de manera manual'
+                                    }
+                                    className="px-1 py-0.2 rounded text-[9px] font-bold bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border border-amber-300/60 dark:border-amber-800 cursor-help"
+                                  >
+                                    Manual
+                                  </span>
+                                )}
                               </div>
                               <div className={`text-[10px] font-medium tabular-nums ${
                                 diff < 0 ? 'text-amber-600 font-bold' : 'text-blue-700 dark:text-sky-400'

@@ -128,6 +128,15 @@ export interface TaskNode {
   hoursByUser?: Record<string, number>;
   totalActualHours?: number;
   comments?: string;
+  isManuallyModified?: boolean;
+  manualAdjustment?: {
+    previousSeconds: number;
+    adjustedSeconds: number;
+    reason: string;
+    modifiedByUid: string;
+    modifiedByName: string;
+    modifiedAt: string;
+  };
 }
 
 export interface TaskAssignment {

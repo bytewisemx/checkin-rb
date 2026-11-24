@@ -27,7 +27,13 @@ export function ProjectTeamAssignmentModal({
   const eligibleTeamMembers = useMemo(() => {
     return teamMembers.filter((m) => {
       const r = normalizeRole(m.role);
-      return r !== 'Socio' && r !== 'Gerente' && r !== 'RH' && r !== 'TI';
+      const title = (m.roleTitle || '').toLowerCase();
+      const isSocio = r === 'Socio' || title.includes('socio') || title.includes('partner');
+      const isGerente = r === 'Gerente' || title.includes('gerent') || title.includes('manager');
+      const isRH = r === 'RH' || title.includes('rh') || title.includes('recursos');
+      const isTI = r === 'TI' || title.includes('ti') || title.includes('tecnolog') || title.includes('sistemas') || title.includes('admin');
+
+      return !isSocio && !isGerente && !isRH && !isTI;
     });
   }, [teamMembers]);
 

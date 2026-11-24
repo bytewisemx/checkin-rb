@@ -13,6 +13,7 @@ import {
   updateTaskProgressInFirestore,
   deleteTaskFromFirestore,
   addTaskNoteInFirestore,
+  adjustTaskTimeInFirestore,
 } from '../services/taskService';
 import { trackFirestoreWrite, trackFirestoreDelete } from '../services/firestoreTelemetry';
 import { useNotificationStore } from './useNotificationStore';
@@ -111,6 +112,12 @@ interface RayonerState {
   createAndAssignTask: (projectId: string, taskName: string, plannedHours: number, userId: string, userName: string, supervisorId?: string, supervisorName?: string) => string;
   moveTaskStatus: (taskId: string, newStatus: TaskStatusType, actorUserId?: string, actorName?: string) => void;
   updateTaskActualHours: (taskId: string, userId: string, hours: number) => void;
+  adjustTaskTimeManually: (
+    taskId: string,
+    adjustedMinutes: number,
+    reason: string,
+    actor: { id: string; name?: string; email?: string }
+  ) => Promise<boolean>;
   finalizeTaskWithHours: (taskId: string, userId: string, finalHours?: number, userName?: string) => void;
   requestTaskRevision: (taskId: string, note?: string, supervisorId?: string, supervisorName?: string) => void;
   approveTaskRevision: (taskId: string, supervisorId?: string, supervisorName?: string) => void;
@@ -1210,6 +1217,65 @@ export const useRayonerStore = create<RayonerState>()(
           loggedMinutes: updatedTaskMinutes,
         });
         broadcastRayonerSync('TASK_HOURS_UPDATED', { taskId, userId, hours });
+      },
+
+      adjustTaskTimeManually: async (taskId, adjustedMinutes, reason, actor) => {
+        const task = get().tasks.find((t) => t.id === taskId);
+        if (!task) return false;
+
+        const currentMins = task.loggedMinutes !== undefined
+          ? task.loggedMinutes
+          : Math.round((get().taskActualHours[taskId] || task.plannedHours || 0) * 60);
+
+        const res = await adjustTaskTimeInFirestore(
+          taskId,
+          currentMins,
+          adjustedMinutes,
+          reason,
+          actor,
+          {
+            title: task.name || task.title,
+            projectId: task.projectId,
+            projectName: task.projectName,
+            companyId: task.companyId,
+            companyName: task.companyName,
+          }
+        );
+
+        if (res.success && res.adjustment) {
+          const totalHours = Number((adjustedMinutes / 60).toFixed(2));
+          const modifiedByUid = actor.id;
+
+          set((state) => ({
+            tasks: state.tasks.map((t) => {
+              if (t.id !== taskId) return t;
+              const updatedHoursByUser = { ...(t.hoursByUser || {}) };
+              if (modifiedByUid) {
+                updatedHoursByUser[modifiedByUid] = totalHours;
+              }
+              return {
+                ...t,
+                loggedMinutes: adjustedMinutes,
+                totalActualHours: totalHours,
+                hoursByUser: updatedHoursByUser,
+                isManuallyModified: true,
+                manualAdjustment: res.adjustment,
+              };
+            }),
+            taskActualHours: {
+              ...state.taskActualHours,
+              [taskId]: totalHours,
+            },
+            userTaskActualHours: {
+              ...state.userTaskActualHours,
+              [taskId]: totalHours,
+            },
+          }));
+
+          broadcastRayonerSync('TASK_UPDATED', { taskId });
+          return true;
+        }
+        return false;
       },
 
       finalizeTaskWithHours: (taskId, userId, finalHours, userName) => {

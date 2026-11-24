@@ -281,9 +281,9 @@ export function TeamMembersView({ onNavigateToTree }: TeamMembersViewProps) {
             type="button"
             data-tour="btn-invite-member"
             onClick={() => setIsInviteModalOpen(true)}
-            className="h-9 px-4 bg-blue-800 hover:bg-blue-900 active:bg-blue-950 text-white text-xs font-semibold rounded-lg shadow-xs hover:shadow transition-all cursor-pointer inline-flex items-center gap-2 shrink-0 border border-blue-700/60"
+            className="h-9 px-4 bg-blue-700 hover:bg-blue-800 active:bg-blue-900 text-white text-xs font-semibold rounded-lg shadow-sm hover:shadow transition-all cursor-pointer inline-flex items-center gap-2 shrink-0 border border-blue-600/60"
           >
-            <Plus className="w-4 h-4 shrink-0 stroke-[2.25]" />
+            <Plus className="w-3.5 h-3.5 shrink-0 stroke-[2.5]" />
             <span>Invitar Miembro al Equipo</span>
           </button>
         </div>

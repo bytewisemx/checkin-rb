@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
-import { Search, X } from 'lucide-react';
+import { Search, X, Play, Pause } from 'lucide-react';
 import { useCheckinStore } from '../../store/useCheckinStore';
 import { useRayonerStore } from '../../store/useRayonerStore';
 import { useOperationalCatalogSync } from '../../hooks/useLiveTeamTimers';
@@ -61,13 +61,18 @@ export function KanbanBoard() {
     activeWorkers,
     moveTaskStatus,
     finalizeTaskWithHours,
+    startWorkerTimer,
     stopWorkerTimer,
+    adjustTaskTimeManually,
     addExtraordinaryTask,
     addTaskNote,
   } = useRayonerStore();
 
   const [activeTab, setActiveTab] = useState<TabType>('board');
   const [selectedClientId, setSelectedClientId] = useState<string>('all');
+  const [selectedProjectId, setSelectedProjectId] = useState<string>('all');
+  const [selectedRubro, setSelectedRubro] = useState<string>('all');
+  const [selectedStatus, setSelectedStatus] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [sortOrder, setSortOrder] = useState<SortOrder>('none');
 
@@ -178,6 +183,28 @@ export function KanbanBoard() {
     return clients.filter((c) => clientIds.has(c.id) && c.id !== 'cli-extraordinario');
   }, [clients, currentMember, userAssignedTasks, projects]);
 
+  // Proyectos asignados al usuario (filtrados opcionalmente por cliente)
+  const assignedProjects = useMemo(() => {
+    const projIds = new Set(userAssignedTasks.map((t) => t.projectId).filter(Boolean));
+    return projects.filter((p) => {
+      if (!projIds.has(p.id)) return false;
+      if (selectedClientId !== 'all' && selectedClientId !== 'extraordinary') {
+        return p.clientId === selectedClientId;
+      }
+      return true;
+    });
+  }, [userAssignedTasks, projects, selectedClientId]);
+
+  // Rubros disponibles en las tareas asignadas al usuario
+  const availableRubros = useMemo(() => {
+    const rubros = new Set<string>();
+    userAssignedTasks.forEach((t) => {
+      if (t.rubro) rubros.add(t.rubro);
+      else if (typeof t.rubroNumber === 'number') rubros.add(`Rubro ${t.rubroNumber}`);
+    });
+    return Array.from(rubros);
+  }, [userAssignedTasks]);
+
   const getTaskAllocatedHours = (taskId: string): number => {
     const asg = assignments.find(
       (a) =>
@@ -244,6 +271,22 @@ export function KanbanBoard() {
       );
     }
 
+    if (selectedProjectId !== 'all') {
+      result = result.filter((t) => t.projectId === selectedProjectId);
+    }
+
+    if (selectedRubro !== 'all') {
+      result = result.filter(
+        (t) =>
+          t.rubro === selectedRubro ||
+          (typeof t.rubroNumber === 'number' && `Rubro ${t.rubroNumber}` === selectedRubro)
+      );
+    }
+
+    if (selectedStatus !== 'all') {
+      result = result.filter((t) => getEffectiveColumnId(t) === selectedStatus);
+    }
+
     if (searchTerm.trim()) {
       const query = searchTerm.toLowerCase();
       result = result.filter((t) => {
@@ -257,7 +300,9 @@ export function KanbanBoard() {
               (cli.commercialName || '').toLowerCase().includes(query))) ||
           (t.companyName && t.companyName.toLowerCase().includes(query)) ||
           (proj && proj.name.toLowerCase().includes(query)) ||
-          (t.projectName && t.projectName.toLowerCase().includes(query))
+          (t.projectName && t.projectName.toLowerCase().includes(query)) ||
+          (t.procedimiento && t.procedimiento.toLowerCase().includes(query)) ||
+          (t.rubro && t.rubro.toLowerCase().includes(query))
         );
       });
     }
@@ -269,7 +314,20 @@ export function KanbanBoard() {
     }
 
     return result;
-  }, [userAssignedTasks, selectedClientId, searchTerm, sortOrder, projects, clients]);
+  }, [
+    userAssignedTasks,
+    selectedClientId,
+    selectedProjectId,
+    selectedRubro,
+    selectedStatus,
+    searchTerm,
+    sortOrder,
+    projects,
+    clients,
+    myActiveWorker,
+    userTaskActualHours,
+    tasks,
+  ]);
 
   // Acción única de la columna En Proceso: Finalizar Tarea
   const handleOpenFinalizeModal = (task: TaskNode) => {
@@ -355,22 +413,71 @@ export function KanbanBoard() {
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 py-2 px-1">
           <div className="flex items-center space-x-3 flex-wrap gap-y-2">
             <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
-              Empresa Asignada:
+              Filtros:
             </span>
 
+            {/* Filtro Empresa */}
             <select
               data-tour="task-selector"
               value={selectedClientId}
-              onChange={(e) => setSelectedClientId(e.target.value)}
+              onChange={(e) => {
+                setSelectedClientId(e.target.value);
+                setSelectedProjectId('all');
+              }}
               className="bg-white border border-slate-300 rounded-md px-3 py-1.5 text-xs font-semibold text-slate-900 focus:outline-hidden focus:ring-1 focus:ring-blue-700 focus:border-blue-700 cursor-pointer"
             >
-              <option value="all">Todas mis empresas asignadas ({assignedClients.length})</option>
-              <option value="extraordinary">Actividades Extraordinarias (Sin empresa asignada)</option>
+              <option value="all">Todas las empresas ({assignedClients.length})</option>
+              <option value="extraordinary">Actividades Extraordinarias</option>
               {assignedClients.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.commercialName || c.name}
                 </option>
               ))}
+            </select>
+
+            {/* Filtro Proyecto / Servicio */}
+            {assignedProjects.length > 0 && (
+              <select
+                value={selectedProjectId}
+                onChange={(e) => setSelectedProjectId(e.target.value)}
+                className="bg-white border border-slate-300 rounded-md px-3 py-1.5 text-xs font-semibold text-slate-900 focus:outline-hidden focus:ring-1 focus:ring-blue-700 focus:border-blue-700 cursor-pointer max-w-[200px] truncate"
+              >
+                <option value="all">Todos los proyectos / servicios ({assignedProjects.length})</option>
+                {assignedProjects.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>
+            )}
+
+            {/* Filtro Rubro */}
+            {availableRubros.length > 0 && (
+              <select
+                value={selectedRubro}
+                onChange={(e) => setSelectedRubro(e.target.value)}
+                className="bg-white border border-slate-300 rounded-md px-3 py-1.5 text-xs font-semibold text-slate-900 focus:outline-hidden focus:ring-1 focus:ring-blue-700 focus:border-blue-700 cursor-pointer max-w-[180px] truncate"
+              >
+                <option value="all">Todos los rubros ({availableRubros.length})</option>
+                {availableRubros.map((r) => (
+                  <option key={r} value={r}>
+                    {r}
+                  </option>
+                ))}
+              </select>
+            )}
+
+            {/* Filtro Estado */}
+            <select
+              value={selectedStatus}
+              onChange={(e) => setSelectedStatus(e.target.value)}
+              className="bg-white border border-slate-300 rounded-md px-3 py-1.5 text-xs font-semibold text-slate-900 focus:outline-hidden focus:ring-1 focus:ring-blue-700 focus:border-blue-700 cursor-pointer"
+            >
+              <option value="all">Todos los estados</option>
+              <option value="pending">Nuevas Asignadas</option>
+              <option value="progress">En Proceso</option>
+              <option value="review">En Revisión</option>
+              <option value="completed">Finalizadas</option>
             </select>
 
             <button
@@ -518,6 +625,18 @@ export function KanbanBoard() {
                             )}
 
                             <div className="flex items-center space-x-1.5 shrink-0">
+                              {task.isManuallyModified && (
+                                <span
+                                  title={
+                                    task.manualAdjustment?.reason
+                                      ? `Modificado manualmente por ${task.manualAdjustment.modifiedByName || 'Supervisor'}: "${task.manualAdjustment.reason}"`
+                                      : 'Modificado de manera manual'
+                                  }
+                                  className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border border-amber-300/60 dark:border-amber-800 cursor-help"
+                                >
+                                  Modificado manual
+                                </span>
+                              )}
                               {isCurrentlyActive && (
                                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[9px] font-semibold tracking-wider bg-blue-700 text-white shadow-2xs">
                                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
@@ -633,42 +752,92 @@ export function KanbanBoard() {
                             </div>
                           </div>
 
-                          {/* Pie de la Tarjeta con Acción Única Sobria */}
-                          <div className="pt-2.5 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs">
-                            <span className="text-xs text-slate-400">
+                          {/* Pie de la Tarjeta con Acción Única Sobria y Cronómetro */}
+                          <div className="pt-2.5 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs gap-2">
+                            <span className="text-xs text-slate-400 truncate">
                               {task.notes && task.notes.length > 0
-                                ? `${task.notes.length} notas en bitácora`
-                                : 'Clic para ver detalle'}
+                                ? `${task.notes.length} notas`
+                                : 'Ver detalle'}
                             </span>
 
-                            {/* En Proceso: Acción Única -> Finalizar */}
-                            {stage.id === 'progress' && (
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleOpenFinalizeModal(task);
-                                }}
-                                className="px-3.5 py-1.5 text-xs font-medium text-white bg-[#1E3A8A] hover:bg-[#1D4ED8] rounded-md transition-colors cursor-pointer"
-                                title="Finalizar tarea y enviar a revisión del supervisor"
-                              >
-                                Finalizar
-                              </button>
-                            )}
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              {/* Iniciar / Pausar Cronómetro directo */}
+                              {stage.id !== 'completed' && stage.id !== 'review' && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    if (isCurrentlyActive) {
+                                      stopWorkerTimer(currentUserId);
+                                      addToast(`Cronómetro en pausa para "${task.name}".`, 'info');
+                                    } else {
+                                      startWorkerTimer({
+                                        userId: currentUserId,
+                                        userName: currentMember?.name || user?.name || 'Usuario',
+                                        taskId: task.id,
+                                        taskName: task.name,
+                                        projectId: task.projectId,
+                                        projectName: displayProjectName,
+                                        clientName: displayCompanyName,
+                                        startedAtMs: Date.now(),
+                                        startedAt: Date.now(),
+                                        accumulatedSeconds: runningSeconds,
+                                        isRunning: true,
+                                        currentDurationStr: formatMinutesSexagesimal(liveMinutes),
+                                      });
+                                      addToast(`Cronómetro iniciado en "${task.name}".`, 'success');
+                                    }
+                                  }}
+                                  className={`px-2 py-1 rounded text-[11px] font-semibold transition-colors cursor-pointer inline-flex items-center gap-1 border ${
+                                    isCurrentlyActive
+                                      ? 'bg-amber-50 text-amber-800 hover:bg-amber-100 border-amber-300'
+                                      : 'bg-blue-50 text-blue-700 hover:bg-blue-100 border-blue-200'
+                                  }`}
+                                  title={isCurrentlyActive ? 'Pausar cronómetro' : 'Iniciar cronómetro en esta tarea'}
+                                >
+                                  {isCurrentlyActive ? (
+                                    <>
+                                      <Pause className="w-3 h-3 fill-current" />
+                                      <span>Pausar</span>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Play className="w-3 h-3 fill-current" />
+                                      <span>Iniciar</span>
+                                    </>
+                                  )}
+                                </button>
+                              )}
 
-                            {/* En Revisión: Tarjeta de solo lectura */}
-                            {stage.id === 'review' && (
-                              <span className="text-[11px] font-medium text-slate-500 bg-slate-50 px-2 py-0.5 rounded">
-                                En Revisión
-                              </span>
-                            )}
+                              {/* En Proceso: Acción Única -> Finalizar */}
+                              {stage.id === 'progress' && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleOpenFinalizeModal(task);
+                                  }}
+                                  className="px-3 py-1 text-xs font-medium text-white bg-[#1E3A8A] hover:bg-[#1D4ED8] rounded transition-colors cursor-pointer"
+                                  title="Finalizar tarea y enviar a revisión del supervisor"
+                                >
+                                  Finalizar
+                                </button>
+                              )}
 
-                            {/* Finalizadas: Tarjeta de solo lectura */}
-                            {stage.id === 'completed' && (
-                              <span className="text-[11px] font-medium text-slate-500 bg-slate-50 px-2 py-0.5 rounded">
-                                Concluida
-                              </span>
-                            )}
+                              {/* En Revisión: Tarjeta de solo lectura */}
+                              {stage.id === 'review' && (
+                                <span className="text-[11px] font-medium text-slate-500 bg-slate-50 px-2 py-0.5 rounded">
+                                  En Revisión
+                                </span>
+                              )}
+
+                              {/* Finalizadas: Tarjeta de solo lectura */}
+                              {stage.id === 'completed' && (
+                                <span className="text-[11px] font-medium text-slate-500 bg-slate-50 px-2 py-0.5 rounded">
+                                  Concluida
+                                </span>
+                              )}
+                            </div>
                           </div>
                         </div>
                       );
@@ -768,6 +937,20 @@ export function KanbanBoard() {
             activeDetailTaskLive ? computeActiveLiveSeconds(activeDetailTaskLive.id) : 0
           }
           onAddNote={handleAddNoteToTask}
+          onAdjustTime={async (newMinutes, reason) => {
+            if (!activeDetailTaskLive) return;
+            await adjustTaskTimeManually(
+              activeDetailTaskLive.id,
+              newMinutes,
+              reason,
+              {
+                id: currentUserId,
+                name: currentMember?.name || user?.name || 'Usuario',
+                email: user?.email,
+              }
+            );
+            addToast('Tiempo de la tarea ajustado exitosamente con registro de auditoría.', 'success');
+          }}
           onFinalizeTask={() => {
             if (activeDetailTaskLive) {
               handleOpenFinalizeModal(activeDetailTaskLive);
